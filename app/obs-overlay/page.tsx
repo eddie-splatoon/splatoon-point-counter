@@ -40,7 +40,7 @@ const ObsOverlayPage: React.FC = () => {
     }, []);
 
     if (!data) {
-        return <div className="w-[1450px] h-[200px] bg-black/70 flex items-center justify-center text-white">Loading Overlay...</div>;
+        return <div className="w-[1450px] h-[160px] bg-black/70 flex items-center justify-center text-white">Loading Overlay...</div>;
     }
 
     const activePreset = data.messagePresets.find(p => p.name === data.activePresetName);
@@ -48,7 +48,7 @@ const ObsOverlayPage: React.FC = () => {
 
     return (
         <div
-            className="w-[1450px] h-[200px] flex items-center justify-between px-6"
+            className="w-[1450px] h-[160px] flex items-center justify-between px-6" // 高さを160pxに変更
             style={{
                 backgroundColor: 'transparent',
                 fontFamily: data.fontFamily || 'sans-serif',
@@ -67,7 +67,7 @@ const ObsOverlayPage: React.FC = () => {
                     fontSize={data.fontSize}
                 />
                 <RandomTipScroller
-                    fontSize={18}
+                    fontSize={24} // フォントサイズを大きく調整
                     intervalSeconds={15}
                 />
             </div>

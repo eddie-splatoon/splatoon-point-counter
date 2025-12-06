@@ -366,10 +366,9 @@ const ControlPanelPage: React.FC = () => {
 
                     <Box sx={{ mt: 4, p: 2, border: '1px dashed grey', borderRadius: '4px', bgcolor: 'rgba(255, 255, 255, 0.05)' }}>
                         <Typography variant="body2" fontWeight="bold">OBSブラウザソース設定</Typography>
-                        <Typography variant="body2">URL: <code style={{ backgroundColor: '#333', padding: '2px 4px', borderRadius: '4px', color: 'text.primary' }}>{origin}/obs-overlay</code></Typography>
-                        <Typography variant="body2">幅: 1450, 高さ: 140</Typography>
-                    </Box>
-                </Box>
+                                        <Typography variant="body2">URL: <code style={{ backgroundColor: '#333', padding: '2px 4px', borderRadius: '4px', color: 'text.primary' }}>{origin}/obs-overlay</code></Typography>
+                                        <Typography variant="body2">幅: 1450, 高さ: 160</Typography>
+                                    </Box>                </Box>
             </Box>
         </ThemeProvider>
     );
