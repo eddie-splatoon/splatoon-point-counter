@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
+import axios from 'axios'; // axiosをインポート
 import { StreamData } from '../api/stream-data/route';
 import { TextField, Button, Select, MenuItem, InputLabel, FormControl, Box, Paper, Typography, IconButton } from '@mui/material';
 import RemoveCircleIcon from '@mui/icons-material/RemoveCircle';
@@ -11,7 +12,7 @@ interface MessageItem {
 }
 
 const ControlPanelPage: React.FC = () => {
-    // ... (コードは前回提示したものと変更なし)
+    // ... (state declarations are the same)
     const [scoreLabel, setScoreLabel] = useState<string>('');
     const [scoreValue, setScoreValue] = useState<number>(0);
     const [messages, setMessages] = useState<MessageItem[]>([]);
@@ -19,14 +20,20 @@ const ControlPanelPage: React.FC = () => {
     const [transitionEffect, setTransitionEffect] = useState<string>('fade');
     const [transitionDuration, setTransitionDuration] = useState<number>(5);
     const [status, setStatus] = useState<'idle' | 'loading' | 'success' | 'error'>('idle');
+    const [origin, setOrigin] = useState<string>('');
 
     // 初期データをAPIから取得
     useEffect(() => {
+        if (typeof window !== 'undefined') {
+            setOrigin(window.location.origin);
+        }
+
         const fetchInitialData = async () => {
             try {
-                const res = await fetch('/api/stream-data');
-                if (res.ok) {
-                    const initialData: StreamData = await res.json();
+                // axios.getを使用してデータを取得
+                const res = await axios.get<StreamData>('/api/stream-data');
+                if (res.status === 200) {
+                    const initialData = res.data;
                     setScoreLabel(initialData.scoreLabel);
                     setScoreValue(initialData.scoreValue);
                     setMessages(initialData.messages);
@@ -55,25 +62,22 @@ const ControlPanelPage: React.FC = () => {
     const handleSubmit = async () => {
         setStatus('loading');
         try {
-            const res = await fetch('/api/stream-data', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                },
-                body: JSON.stringify({
-                    scoreLabel: scoreLabel,
-                    scoreValue: Number(scoreValue),
-                    messages: messages,
-                    transitionEffect: transitionEffect,
-                    transitionDuration: Number(transitionDuration),
-                }),
-            });
+            // axios.postを使用してデータを送信
+            const payload = {
+                scoreLabel: scoreLabel,
+                scoreValue: Number(scoreValue),
+                messages: messages,
+                transitionEffect: transitionEffect,
+                transitionDuration: Number(transitionDuration),
+            };
+            const res = await axios.post('/api/stream-data', payload);
 
-            if (res.ok) {
+            if (res.status === 200) {
                 setStatus('success');
             } else {
                 setStatus('error');
             }
+            // eslint-disable-next-line @typescript-eslint/no-unused-vars
         } catch (error) {
             setStatus('error');
         } finally {
@@ -139,7 +143,7 @@ const ControlPanelPage: React.FC = () => {
 
             <Box sx={{ mt: 4, p: 2, border: '1px dashed #ccc', bgcolor: '#f9f9f9', borderRadius: '4px' }}>
                 <Typography variant="body2" fontWeight="bold">OBSブラウザソース設定</Typography>
-                <Typography variant="body2">URL: <code style={{ backgroundColor: '#eee', padding: '2px 4px', borderRadius: '4px' }}>{window.location.origin}/obs-overlay</code></Typography>
+                <Typography variant="body2">URL: <code style={{ backgroundColor: '#eee', padding: '2px 4px', borderRadius: '4px' }}>{origin}/obs-overlay</code></Typography>
                 <Typography variant="body2">幅: 1450, 高さ: 140</Typography>
             </Box>
         </Box>

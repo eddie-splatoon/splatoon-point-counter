@@ -21,12 +21,14 @@ let streamData: StreamData = {
 };
 
 export async function GET() {
+    console.log('API Route (GET): Sending data to obs-overlay ->', streamData);
     return NextResponse.json(streamData);
 }
 
 export async function POST(request: Request) {
     try {
         const body = await request.json();
+        console.log('API Route (POST): Received data from control-panel ->', body);
         const { scoreLabel, scoreValue, messages, transitionEffect, transitionDuration } = body;
 
         if (typeof scoreLabel !== 'string' || typeof scoreValue !== 'number' || typeof transitionDuration !== 'number') {
