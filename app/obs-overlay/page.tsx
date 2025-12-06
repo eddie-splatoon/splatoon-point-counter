@@ -67,7 +67,7 @@ const ObsOverlayPage: React.FC = () => {
                     fontSize={data.fontSize}
                 />
                 <RandomTipScroller
-                    fontSize={24} // フォントサイズを大きく調整
+                    fontSize={36} // フォントサイズをさらに大きく調整
                     intervalSeconds={15}
                 />
             </div>
