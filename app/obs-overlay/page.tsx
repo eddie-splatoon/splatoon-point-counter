@@ -1,9 +1,13 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import axios from 'axios'; // axiosをインポート
+import axios from 'axios';
 import ScoreDisplay from '../../components/ScoreDisplay';
 import MessageScroller from '../../components/MessageScroller';
+import RandomTipScroller from '../../components/RandomTipScroller';
+import HeartEffect from '../../components/HeartEffect';
+import StarEffect from '../../components/StarEffect';
+import SparkleEffect from '../../components/SparkleEffect';
 import { StreamData } from '../api/stream-data/route';
 
 const POLLING_INTERVAL = 2000; // 2秒
@@ -14,7 +18,6 @@ const ObsOverlayPage: React.FC = () => {
     useEffect(() => {
         const fetchDataInternal = async () => {
             try {
-                // axios.getを使用してデータを取得し、キャッシュを無効化
                 const res = await axios.get<StreamData>('/api/stream-data', {
                     headers: {
                         'Cache-Control': 'no-cache',
@@ -33,31 +36,44 @@ const ObsOverlayPage: React.FC = () => {
 
         fetchDataInternal().catch(error => {
             console.error("Initial data fetch error:", error);
-        }); // 初回データ取得とエラーハンドリング
-        const interval = setInterval(fetchDataInternal, POLLING_INTERVAL); // 以降のポーリング
+        });
+        const interval = setInterval(fetchDataInternal, POLLING_INTERVAL);
         return () => clearInterval(interval);
     }, []);
 
     if (!data) {
-        return <div className="w-[1450px] h-[140px] bg-black/70 flex items-center justify-center text-white">Loading Overlay...</div>;
+        return <div className="w-[1450px] h-[160px] bg-black/70 flex items-center justify-center text-white">Loading Overlay...</div>;
     }
+
+    const activePreset = data.messagePresets.find(p => p.name === data.activePresetName);
+    const activeMessages = activePreset ? activePreset.messages : [];
 
     return (
         <div
-            className="w-[1450px] h-[140px] flex items-center justify-between px-6"
+            className="w-[1450px] h-[160px] flex items-center justify-between px-6" // 高さを160pxに変更
             style={{
                 backgroundColor: 'transparent',
                 fontFamily: data.fontFamily || 'sans-serif',
+                position: 'relative', // エフェクトの親要素として機能させる
             }}
         >
-            <ScoreDisplay scoreLabel={data.scoreLabel} scoreValue={data.scoreValue} fontSize={data.fontSize} />
+            {/* Effect Components */}
+            <HeartEffect trigger={data.lastEvent?.name === 'LOVE' ? data.lastEvent.timestamp : undefined} />
+            <StarEffect trigger={data.lastEvent?.name === 'STAR' ? data.lastEvent.timestamp : undefined} />
+            <SparkleEffect trigger={data.lastEvent?.name === 'SPARKLE' ? data.lastEvent.timestamp : undefined} />
 
-            <div className="flex-grow flex items-center justify-end h-full w-full max-w-[1000px]">
+            <ScoreDisplay scoreLabel={data.scoreLabel} scoreValue={data.scoreValue} fontSize={data.fontSize} />
+            
+            <div className="flex flex-col justify-center h-full w-full max-w-[1000px]">
                 <MessageScroller
-                    messages={data.messages}
+                    messages={activeMessages}
                     transitionEffect={data.transitionEffect}
                     transitionDuration={data.transitionDuration}
                     fontSize={data.fontSize}
+                />
+                <RandomTipScroller
+                    fontSize={36} // フォントサイズをさらに大きく調整
+                    intervalSeconds={15}
                 />
             </div>
         </div>
