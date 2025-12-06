@@ -48,7 +48,7 @@ const ObsOverlayPage: React.FC = () => {
             className="w-[1450px] h-[140px] flex items-center justify-between px-6"
             style={{
                 backgroundColor: 'transparent',
-                fontFamily: 'sans-serif',
+                fontFamily: data.fontFamily || 'sans-serif',
             }}
         >
             <ScoreDisplay scoreLabel={data.scoreLabel} scoreValue={data.scoreValue} />

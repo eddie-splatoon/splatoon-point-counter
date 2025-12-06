@@ -2,7 +2,7 @@
 
 import React, { useEffect, useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { StreamData } from '../app/api/stream-data/route';
+import { StreamData } from '@/app/api/stream-data/route';
 
 interface MessageScrollerProps {
     messages: StreamData['messages'];
@@ -19,6 +19,8 @@ const MessageScroller: React.FC<MessageScrollerProps> = ({
 
     useEffect(() => {
         if (messages.length < 2 || transitionDuration < 1) {
+            // このstate更新は、propsの変更に同期させるための意図的な処理
+            // eslint-disable-next-line react-hooks/set-state-in-effect
             setIndex(0);
             return;
         }
