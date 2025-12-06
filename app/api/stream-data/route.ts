@@ -25,28 +25,28 @@ let streamData: StreamData = {
 };
 
 export async function GET() {
-    console.log('API Route (GET): Sending data to obs-overlay ->', streamData);
     return NextResponse.json(streamData);
 }
 
 export async function POST(request: Request) {
     try {
         const body = await request.json();
-        console.log('API Route (POST): Received data from control-panel ->', body);
         const {scoreLabel, scoreValue, messages, transitionEffect, transitionDuration, fontFamily, fontSize} = body;
 
-        if (typeof scoreLabel !== 'string' || typeof scoreValue !== 'number' || typeof transitionDuration !== 'number') {
+        // データ検証を強化
+        if (typeof scoreLabel !== 'string' || typeof scoreValue !== 'number' || typeof transitionDuration !== 'number' || typeof fontFamily !== 'string' || typeof fontSize !== 'number') {
             return NextResponse.json({message: 'Invalid data format.'}, {status: 400});
         }
 
+        // 0のようなfalsy値を正しく扱うために、より安全な更新ロジックに変更
         streamData = {
-            scoreLabel: scoreLabel,
-            scoreValue: scoreValue,
+            scoreLabel: typeof scoreLabel !== 'undefined' ? scoreLabel : streamData.scoreLabel,
+            scoreValue: typeof scoreValue === 'number' ? scoreValue : streamData.scoreValue,
             messages: Array.isArray(messages) ? messages : streamData.messages,
-            transitionEffect: transitionEffect || streamData.transitionEffect,
-            transitionDuration: transitionDuration || streamData.transitionDuration,
-            fontFamily: fontFamily || streamData.fontFamily,
-            fontSize: fontSize || streamData.fontSize,
+            transitionEffect: typeof transitionEffect !== 'undefined' ? transitionEffect : streamData.transitionEffect,
+            transitionDuration: typeof transitionDuration === 'number' ? transitionDuration : streamData.transitionDuration,
+            fontFamily: typeof fontFamily !== 'undefined' ? fontFamily : streamData.fontFamily,
+            fontSize: typeof fontSize === 'number' ? fontSize : streamData.fontSize,
         };
 
         return NextResponse.json(streamData);

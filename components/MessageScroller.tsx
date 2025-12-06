@@ -20,19 +20,21 @@ const MessageScroller: React.FC<MessageScrollerProps> = ({
     const [index, setIndex] = useState(0);
 
     useEffect(() => {
+        // アニメーションが不要な場合は、タイマーを設定せずに終了
         if (messages.length < 2 || transitionDuration < 1) {
-            // このstate更新は、propsの変更に同期させるための意図的な処理
-            // eslint-disable-next-line react-hooks/set-state-in-effect
-            setIndex(0);
             return;
         }
+
         const intervalId = setInterval(() => {
             setIndex((prev) => (prev + 1) % messages.length);
         }, transitionDuration * 1000);
+
         return () => clearInterval(intervalId);
     }, [messages, transitionDuration]);
-
-    const current = messages[index]?.text ?? '';
+    
+    // 表示すべきインデックスをレンダリング時に決定する。これによりuseEffect内でのstateリセットが不要になる
+    const displayIndex = (messages.length < 2 || transitionDuration < 1) ? 0 : index;
+    const current = messages[displayIndex]?.text ?? '';
 
     const variants = {
         fade: {
@@ -54,7 +56,7 @@ const MessageScroller: React.FC<MessageScrollerProps> = ({
         >
             <AnimatePresence mode="wait">
                 <motion.p
-                    key={index}
+                    key={displayIndex}
                     initial={variants[transitionEffect].initial}
                     animate={variants[transitionEffect].animate}
                     exit={variants[transitionEffect].exit}

@@ -24,7 +24,6 @@ const ObsOverlayPage: React.FC = () => {
                 });
                 if (res.status === 200) {
                     const json = res.data;
-                    //console.log('OBS Overlay: Fetched data', json); // データ取得のログを追加
                     setData(json);
                 }
             } catch (error) {
