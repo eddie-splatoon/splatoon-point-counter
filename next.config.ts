@@ -1,10 +1,8 @@
-import type { NextConfig } from "next";
+import type {NextConfig} from "next";
 
 const nextConfig: NextConfig = {
-  devIndicators: {
-    buildActivity: false, // ビルドアクティビティインジケーターを無効化
-  },
-  /* config options here */
+    devIndicators: false,
+    /* config options here */
 };
 
 export default nextConfig;
