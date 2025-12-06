@@ -51,13 +51,14 @@ const ObsOverlayPage: React.FC = () => {
                 fontFamily: data.fontFamily || 'sans-serif',
             }}
         >
-            <ScoreDisplay scoreLabel={data.scoreLabel} scoreValue={data.scoreValue} />
+            <ScoreDisplay scoreLabel={data.scoreLabel} scoreValue={data.scoreValue} fontSize={data.fontSize} />
 
             <div className="flex-grow flex items-center justify-end h-full w-full max-w-[1000px]">
                 <MessageScroller
                     messages={data.messages}
                     transitionEffect={data.transitionEffect}
                     transitionDuration={data.transitionDuration}
+                    fontSize={data.fontSize}
                 />
             </div>
         </div>

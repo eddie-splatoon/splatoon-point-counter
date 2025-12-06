@@ -7,11 +7,12 @@ export interface StreamData {
     transitionEffect: string;
     transitionDuration: number;
     fontFamily: string;
+    fontSize: number;
 }
 
 // データを一時的にインメモリで保持するストア (本番ではDBが必要です)
 let streamData: StreamData = {
-    scoreLabel: 'ハイスコア',
+    scoreLabel: '現在の評価',
     scoreValue: 580,
     messages: [
         {id: 1, text: 'チャンネル登録・高評価お願いします！'},
@@ -20,6 +21,7 @@ let streamData: StreamData = {
     transitionEffect: 'fade',
     transitionDuration: 2,
     fontFamily: 'FOT-Kurokane Std',
+    fontSize: 54,
 };
 
 export async function GET() {
@@ -31,7 +33,7 @@ export async function POST(request: Request) {
     try {
         const body = await request.json();
         console.log('API Route (POST): Received data from control-panel ->', body);
-        const {scoreLabel, scoreValue, messages, transitionEffect, transitionDuration, fontFamily,} = body;
+        const {scoreLabel, scoreValue, messages, transitionEffect, transitionDuration, fontFamily, fontSize} = body;
 
         if (typeof scoreLabel !== 'string' || typeof scoreValue !== 'number' || typeof transitionDuration !== 'number') {
             return NextResponse.json({message: 'Invalid data format.'}, {status: 400});
@@ -44,6 +46,7 @@ export async function POST(request: Request) {
             transitionEffect: transitionEffect || streamData.transitionEffect,
             transitionDuration: transitionDuration || streamData.transitionDuration,
             fontFamily: fontFamily || streamData.fontFamily,
+            fontSize: fontSize || streamData.fontSize,
         };
 
         return NextResponse.json(streamData);

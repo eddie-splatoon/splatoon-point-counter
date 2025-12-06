@@ -31,6 +31,7 @@ const ControlPanelPage: React.FC = () => {
     const [transitionEffect, setTransitionEffect] = useState<string>('fade');
     const [transitionDuration, setTransitionDuration] = useState<number>(2);
     const [fontFamily, setFontFamily] = useState<string>('');
+    const [fontSize, setFontSize] = useState<number>(54);
     const [status, setStatus] = useState<'idle' | 'loading' | 'success' | 'error'>('idle');
     const [origin, setOrigin] = useState<string>('');
 
@@ -52,6 +53,7 @@ const ControlPanelPage: React.FC = () => {
                     setTransitionEffect(initialData.transitionEffect);
                     setTransitionDuration(initialData.transitionDuration);
                     setFontFamily(initialData.fontFamily);
+                    setFontSize(initialData.fontSize);
                 }
             } catch (e) {
                 console.error("Failed to fetch initial data", e);
@@ -83,6 +85,7 @@ const ControlPanelPage: React.FC = () => {
                 transitionEffect: transitionEffect,
                 transitionDuration: Number(transitionDuration),
                 fontFamily: fontFamily,
+                fontSize: Number(fontSize),
             };
             const res = await axios.post('/api/stream-data', payload);
 
@@ -126,6 +129,15 @@ const ControlPanelPage: React.FC = () => {
                     fullWidth
                     margin="normal"
                     helperText="システムフォントや、OBS側でカスタムフォントがインストールされているフォント名を入力してください。"
+                />
+                <TextField
+                    label="フォントサイズ (px)"
+                    type="number"
+                    value={fontSize}
+                    onChange={(e) => setFontSize(Number(e.target.value))}
+                    fullWidth
+                    margin="normal"
+                    inputProps={{ min: 1 }}
                 />
             </Paper>
 

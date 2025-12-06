@@ -8,12 +8,14 @@ interface MessageScrollerProps {
     messages: StreamData['messages'];
     transitionEffect: 'fade' | 'slide';
     transitionDuration: number;  // 秒
+    fontSize: number;
 }
 
 const MessageScroller: React.FC<MessageScrollerProps> = ({
                                                              messages,
                                                              transitionEffect,
                                                              transitionDuration,
+                                                             fontSize,
                                                          }) => {
     const [index, setIndex] = useState(0);
 
@@ -46,7 +48,10 @@ const MessageScroller: React.FC<MessageScrollerProps> = ({
     };
 
     return (
-        <div className="relative overflow-hidden w-full h-10 flex items-center justify-center">
+        <div 
+            className="relative overflow-hidden w-full flex items-center justify-center"
+            style={{ height: `${fontSize * 1.5}px` }}
+        >
             <AnimatePresence mode="wait">
                 <motion.p
                     key={index}
@@ -54,8 +59,11 @@ const MessageScroller: React.FC<MessageScrollerProps> = ({
                     animate={variants[transitionEffect].animate}
                     exit={variants[transitionEffect].exit}
                     transition={{ duration: 0.5, ease: 'easeInOut' }}  // アニメーション時間 500ms
-                    className="absolute text-2xl font-semibold text-white drop-shadow-lg"
-                    style={{ transitionProperty: 'opacity, transform' }}
+                    className="absolute font-semibold text-white drop-shadow-lg"
+                    style={{ 
+                        transitionProperty: 'opacity, transform',
+                        fontSize: `${fontSize}px`,
+                    }}
                 >
                     {current}
                 </motion.p>
