@@ -13,9 +13,13 @@ export interface StreamData {
     transitionDuration: number;
     fontFamily: string;
     fontSize: number;
-    // 新しいデータ構造
     messagePresets: MessagePreset[];
     activePresetName: string;
+    // エフェクト機能用の新しいプロパティ
+    lastEvent: {
+        name: string;
+        timestamp: number;
+    } | null;
 }
 
 // データを一時的にインメモリで保持するストア (本番ではDBが必要です)
@@ -40,25 +44,11 @@ let streamData: StreamData = {
                 {id: 2, text: '大会参加中！応援してね！'},
             ]
         },
-        {
-            name: 'ビッグラン', messages: [
-                {id: 1, text: 'チャンネル登録・高評価お願いします！'},
-
-            ]
-        },
-        {
-            name: 'バチコン', messages: [
-                {id: 1, text: 'チャンネル登録・高評価お願いします！'},
-
-            ]
-        },
-        {
-            name: 'その他', messages: [
-                {id: 1, text: 'チャンネル登録・高評価お願いします！'},
-
-            ]
-        },
-    ]
+        {name: 'ビッグラン', messages: [{id: 1, text: 'チャンネル登録・高評価お願いします！'},]},
+        {name: 'バチコン', messages: [{id: 1, text: 'チャンネル登録・高評価お願いします！'},]},
+        {name: 'その他', messages: [{id: 1, text: 'チャンネル登録・高評価お願いします！'},]},
+    ],
+    lastEvent: null, // 初期値はnull
 };
 
 export async function GET() {
@@ -75,25 +65,28 @@ export async function POST(request: Request) {
             transitionDuration,
             fontFamily,
             fontSize,
-            messagePresets, // 更新されたデータ
-            activePresetName, // 更新されたデータ
+            messagePresets,
+            activePresetName,
+            lastEvent, // lastEventを受け取る
         } = body;
 
-        // データ検証を強化
+        // データ検証
         if (typeof scoreLabel !== 'string' || typeof scoreValue !== 'number' || typeof transitionDuration !== 'number' || typeof fontFamily !== 'string' || typeof fontSize !== 'number' || typeof activePresetName !== 'string' || !Array.isArray(messagePresets)) {
             return NextResponse.json({message: 'Invalid data format.'}, {status: 400});
         }
 
-        // 0のようなfalsy値を正しく扱うために、より安全な更新ロジックに変更
+        // データを更新
         streamData = {
-            scoreLabel: typeof scoreLabel !== 'undefined' ? scoreLabel : streamData.scoreLabel,
-            scoreValue: typeof scoreValue === 'number' ? scoreValue : streamData.scoreValue,
-            transitionEffect: typeof transitionEffect !== 'undefined' ? transitionEffect : streamData.transitionEffect,
-            transitionDuration: typeof transitionDuration === 'number' ? transitionDuration : streamData.transitionDuration,
-            fontFamily: typeof fontFamily !== 'undefined' ? fontFamily : streamData.fontFamily,
-            fontSize: typeof fontSize === 'number' ? fontSize : streamData.fontSize,
-            messagePresets: Array.isArray(messagePresets) ? messagePresets : streamData.messagePresets,
-            activePresetName: typeof activePresetName !== 'undefined' ? activePresetName : streamData.activePresetName,
+            scoreLabel: scoreLabel ?? streamData.scoreLabel,
+            scoreValue: scoreValue ?? streamData.scoreValue,
+            transitionEffect: transitionEffect ?? streamData.transitionEffect,
+            transitionDuration: transitionDuration ?? streamData.transitionDuration,
+            fontFamily: fontFamily ?? streamData.fontFamily,
+            fontSize: fontSize ?? streamData.fontSize,
+            messagePresets: messagePresets ?? streamData.messagePresets,
+            activePresetName: activePresetName ?? streamData.activePresetName,
+            // lastEventがbodyに含まれていれば更新、そうでなければ元の値を維持
+            lastEvent: 'lastEvent' in body ? lastEvent : streamData.lastEvent,
         };
 
         return NextResponse.json(streamData);

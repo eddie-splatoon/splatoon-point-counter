@@ -137,13 +137,13 @@ const ControlPanelPage: React.FC = () => {
     const [messagePresets, setMessagePresets] = useState<MessagePreset[]>([]);
     const [activePresetName, setActivePresetName] = useState<string>('');
     const [status, setStatus] = useState<'idle' | 'loading' | 'success' | 'error'>('idle');
+    const [effectStatus, setEffectStatus] = useState<'idle' | 'loading' | 'success' | 'error'>('idle'); // エフェクトボタン用のState
     const [origin, setOrigin] = useState<string>('');
 
     useEffect(() => {
         if (typeof window !== 'undefined') {
             setOrigin(window.location.origin);
         }
-
         const fetchInitialData = async () => {
             try {
                 const res = await axios.get<StreamData>('/api/stream-data');
@@ -191,6 +191,36 @@ const ControlPanelPage: React.FC = () => {
         updateActiveMessages(updatedMessages);
     };
 
+    const handleTriggerEffect = async (effectName: string) => {
+        setEffectStatus('loading');
+        try {
+            const payload = {
+                // 現在のすべてのstateを一緒に送信して、サーバーの状態を上書きする
+                scoreLabel,
+                scoreValue: Number(scoreValue),
+                transitionEffect,
+                transitionDuration: Number(transitionDuration),
+                fontFamily,
+                fontSize: Number(fontSize),
+                messagePresets,
+                activePresetName,
+                // 今回トリガーするイベント情報を付与
+                lastEvent: { name: effectName, timestamp: Date.now() },
+            };
+            const res = await axios.post('/api/stream-data', payload);
+            if (res.status === 200) {
+                setEffectStatus('success');
+            } else {
+                setEffectStatus('error');
+            }
+        } catch (error) {
+            setEffectStatus('error');
+        } finally {
+            setTimeout(() => setEffectStatus('idle'), 2000);
+        }
+    };
+    
+    // データ更新の処理
     const handleSubmit = async () => {
         setStatus('loading');
         try {
@@ -203,6 +233,7 @@ const ControlPanelPage: React.FC = () => {
                 fontSize: Number(fontSize),
                 messagePresets,
                 activePresetName,
+                lastEvent: null, // 通常の更新ではイベントをnull化する
             };
             const res = await axios.post('/api/stream-data', payload);
 
@@ -265,17 +296,32 @@ const ControlPanelPage: React.FC = () => {
                             onChange={(e) => setFontSize(Number(e.target.value))}
                             fullWidth
                             margin="normal"
-                            inputProps={{min: 1}}
-                            variant="outlined"
-                        />
-                    </Paper>
-
-                    <Paper elevation={12} sx={{ mb: 3, p: 3, bgcolor: 'background.paper', backdropFilter: 'blur(10px)', border: '1px solid rgba(255, 255, 255, 0.1)' }}>
-                        <Typography variant="h6" gutterBottom>視聴者向け概要メッセージ</Typography>
-                        <Box sx={{ borderBottom: 1, borderColor: 'divider', mb: 2 }}>
-                            <Tabs
-                                value={activePresetName}
-                                onChange={(e, newValue) => setActivePresetName(newValue)}
+                                                    inputProps={{min: 1}}
+                                                    variant="outlined"
+                                                />
+                                            </Paper>
+                            
+                                            <Paper elevation={12} sx={{ mb: 3, p: 3, bgcolor: 'background.paper', backdropFilter: 'blur(10px)', border: '1px solid rgba(255, 255, 255, 0.1)' }}>
+                                                <Typography variant="h6" gutterBottom>演出効果</Typography>
+                                                <Box sx={{ display: 'flex', gap: 2, alignItems: 'center' }}>
+                                                    <Button
+                                                        variant="contained"
+                                                        color="primary"
+                                                        onClick={() => handleTriggerEffect('LOVE')}
+                                                        disabled={effectStatus === 'loading'}
+                                                    >
+                                                        💖 LOVE
+                                                    </Button>
+                                                    {effectStatus === 'success' && (<Typography color="success.main" variant="body2">エフェクトを送信しました！</Typography>)}
+                                                    {effectStatus === 'error' && (<Typography color="error.main" variant="body2">送信に失敗しました。</Typography>)}
+                                                </Box>
+                                            </Paper>
+                            
+                                            <Paper elevation={12} sx={{ mb: 3, p: 3, bgcolor: 'background.paper', backdropFilter: 'blur(10px)', border: '1px solid rgba(255, 255, 255, 0.1)' }}>
+                                                <Typography variant="h6" gutterBottom>視聴者向け概要メッセージ</Typography>
+                                                <Box sx={{ borderBottom: 1, borderColor: 'divider', mb: 2 }}>
+                                                    <Tabs
+                                                        value={activePresetName}                                onChange={(e, newValue) => setActivePresetName(newValue)}
                                 variant="scrollable"
                                 scrollButtons="auto"
                                 aria-label="メッセージプリセット"
