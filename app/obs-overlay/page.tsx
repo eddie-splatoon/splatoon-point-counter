@@ -1,9 +1,10 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import axios from 'axios'; // axiosをインポート
+import axios from 'axios';
 import ScoreDisplay from '../../components/ScoreDisplay';
 import MessageScroller from '../../components/MessageScroller';
+import RandomTipScroller from '../../components/RandomTipScroller'; // 新しいコンポーネントをインポート
 import { StreamData } from '../api/stream-data/route';
 
 const POLLING_INTERVAL = 2000; // 2秒
@@ -14,7 +15,6 @@ const ObsOverlayPage: React.FC = () => {
     useEffect(() => {
         const fetchDataInternal = async () => {
             try {
-                // axios.getを使用してデータを取得し、キャッシュを無効化
                 const res = await axios.get<StreamData>('/api/stream-data', {
                     headers: {
                         'Cache-Control': 'no-cache',
@@ -33,22 +33,21 @@ const ObsOverlayPage: React.FC = () => {
 
         fetchDataInternal().catch(error => {
             console.error("Initial data fetch error:", error);
-        }); // 初回データ取得とエラーハンドリング
-        const interval = setInterval(fetchDataInternal, POLLING_INTERVAL); // 以降のポーリング
+        });
+        const interval = setInterval(fetchDataInternal, POLLING_INTERVAL);
         return () => clearInterval(interval);
     }, []);
 
     if (!data) {
-        return <div className="w-[1450px] h-[140px] bg-black/70 flex items-center justify-center text-white">Loading Overlay...</div>;
+        return <div className="w-[1450px] h-[200px] bg-black/70 flex items-center justify-center text-white">Loading Overlay...</div>;
     }
 
-    // アクティブなプリセットのメッセージを取得
     const activePreset = data.messagePresets.find(p => p.name === data.activePresetName);
     const activeMessages = activePreset ? activePreset.messages : [];
 
     return (
         <div
-            className="w-[1450px] h-[140px] flex items-center justify-between px-6"
+            className="w-[1450px] h-[200px] flex items-center justify-between px-6" // 高さを200pxに変更
             style={{
                 backgroundColor: 'transparent',
                 fontFamily: data.fontFamily || 'sans-serif',
@@ -56,12 +55,17 @@ const ObsOverlayPage: React.FC = () => {
         >
             <ScoreDisplay scoreLabel={data.scoreLabel} scoreValue={data.scoreValue} fontSize={data.fontSize} />
 
-            <div className="flex-grow flex items-center justify-end h-full w-full max-w-[1000px]">
+            {/* 右側のコンテナを縦並び（flex-col）に変更 */}
+            <div className="flex flex-col justify-center h-full w-full max-w-[1000px]">
                 <MessageScroller
                     messages={activeMessages}
                     transitionEffect={data.transitionEffect}
                     transitionDuration={data.transitionDuration}
                     fontSize={data.fontSize}
+                />
+                <RandomTipScroller
+                    fontSize={18}
+                    intervalSeconds={15}
                 />
             </div>
         </div>
