@@ -328,6 +328,14 @@ const ControlPanelPage: React.FC = () => {
                                                     >
                                                         ✨ SPARKLE
                                                     </Button>
+                                                    <Button
+                                                        variant="contained"
+                                                        color="secondary"
+                                                        onClick={() => handleTriggerEffect('BUBBLE')}
+                                                        disabled={effectStatus === 'loading'}
+                                                    >
+                                                        🫧 BUBBLE
+                                                    </Button>
                                                     {effectStatus === 'success' && (<Typography color="success.main" variant="body2">エフェクトを送信しました！</Typography>)}
                                                     {effectStatus === 'error' && (<Typography color="error.main" variant="body2">送信に失敗しました。</Typography>)}
                                                 </Box>

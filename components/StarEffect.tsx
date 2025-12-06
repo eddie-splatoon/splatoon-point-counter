@@ -42,7 +42,7 @@ const StarEffect: React.FC<StarEffectProps> = ({ trigger }) => {
                     y: 110,
                     size: Math.random() * 25 + 15, // 15pxから40px
                     color: starColors[Math.floor(Math.random() * starColors.length)],
-                    duration: Math.random() * 3 + 4,
+                    duration: Math.random() * 3 + 9, // 9秒から12秒でアニメーション (+5秒)
                 });
             }
             setStars(prevStars => [...prevStars, ...newStars]);

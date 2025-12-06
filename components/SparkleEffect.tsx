@@ -41,7 +41,7 @@ const SparkleEffect: React.FC<SparkleEffectProps> = ({ trigger }) => {
                     y: `${Math.random() * 100}vh`,
                     size: Math.random() * 15 + 8, // 8pxから23px
                     color: sparkleColors[Math.floor(Math.random() * sparkleColors.length)],
-                    duration: Math.random() * 3 + 4, // 4秒から7秒でアニメーション (他のエフェクトと同様)
+                    duration: Math.random() * 3 + 9, // 9秒から12秒でアニメーション (+5秒)
                     initialRotation: Math.random() * 90,
                 });
             }

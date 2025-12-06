@@ -43,7 +43,7 @@ const HeartEffect: React.FC<HeartEffectProps> = ({ trigger }) => {
                     y: 110, // 画面の下からスタート
                     size: Math.random() * 30 + 20, // 20pxから50pxのサイズ
                     color: heartColors[Math.floor(Math.random() * heartColors.length)],
-                    duration: Math.random() * 3 + 4, // 4秒から7秒でアニメーション
+                    duration: Math.random() * 3 + 9, // 9秒から12秒でアニメーション (+5秒)
                 });
             }
             setHearts(prevHearts => [...prevHearts, ...newHearts]);
