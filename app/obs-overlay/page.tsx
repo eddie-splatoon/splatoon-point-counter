@@ -42,6 +42,10 @@ const ObsOverlayPage: React.FC = () => {
         return <div className="w-[1450px] h-[140px] bg-black/70 flex items-center justify-center text-white">Loading Overlay...</div>;
     }
 
+    // アクティブなプリセットのメッセージを取得
+    const activePreset = data.messagePresets.find(p => p.name === data.activePresetName);
+    const activeMessages = activePreset ? activePreset.messages : [];
+
     return (
         <div
             className="w-[1450px] h-[140px] flex items-center justify-between px-6"
@@ -54,7 +58,7 @@ const ObsOverlayPage: React.FC = () => {
 
             <div className="flex-grow flex items-center justify-end h-full w-full max-w-[1000px]">
                 <MessageScroller
-                    messages={data.messages}
+                    messages={activeMessages}
                     transitionEffect={data.transitionEffect}
                     transitionDuration={data.transitionDuration}
                     fontSize={data.fontSize}

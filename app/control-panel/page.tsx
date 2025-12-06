@@ -2,7 +2,7 @@
 
 import React, {useState, useEffect} from 'react';
 import axios from 'axios'; // axiosをインポート
-import {StreamData} from '../api/stream-data/route';
+import {StreamData, MessagePreset} from '../api/stream-data/route';
 import {
     TextField,
     Button,
@@ -13,7 +13,9 @@ import {
     Box,
     Paper,
     Typography,
-    IconButton
+    IconButton,
+    Tabs,
+    Tab,
 } from '@mui/material';
 import RemoveCircleIcon from '@mui/icons-material/RemoveCircle';
 
@@ -26,81 +28,188 @@ const ControlPanelPage: React.FC = () => {
     // ... (state declarations are the same)
     const [scoreLabel, setScoreLabel] = useState<string>('');
     const [scoreValue, setScoreValue] = useState<number>(0);
-    const [messages, setMessages] = useState<MessageItem[]>([]);
     const [currentMessage, setCurrentMessage] = useState<string>('');
     const [transitionEffect, setTransitionEffect] = useState<string>('fade');
     const [transitionDuration, setTransitionDuration] = useState<number>(2);
     const [fontFamily, setFontFamily] = useState<string>('');
     const [fontSize, setFontSize] = useState<number>(54);
+    
+    // 新しいState
+    const [messagePresets, setMessagePresets] = useState<MessagePreset[]>([]);
+    const [activePresetName, setActivePresetName] = useState<string>('');
+
     const [status, setStatus] = useState<'idle' | 'loading' | 'success' | 'error'>('idle');
     const [origin, setOrigin] = useState<string>('');
 
-    // 初期データをAPIから取得
-    useEffect(() => {
-        if (typeof window !== 'undefined') {
-            setOrigin(window.location.origin);
-        }
+        // 初期データをAPIから取得
 
-        const fetchInitialData = async () => {
-            try {
-                // axios.getを使用してデータを取得
-                const res = await axios.get<StreamData>('/api/stream-data');
-                if (res.status === 200) {
-                    const initialData = res.data;
-                    setScoreLabel(initialData.scoreLabel);
-                    setScoreValue(initialData.scoreValue);
-                    setMessages(initialData.messages);
-                    setTransitionEffect(initialData.transitionEffect);
-                    setTransitionDuration(initialData.transitionDuration);
-                    setFontFamily(initialData.fontFamily);
-                    setFontSize(initialData.fontSize);
+        useEffect(() => {
+
+            if (typeof window !== 'undefined') {
+
+                setOrigin(window.location.origin);
+
+            }
+
+    
+
+            const fetchInitialData = async () => {
+
+                try {
+
+                    const res = await axios.get<StreamData>('/api/stream-data');
+
+                    if (res.status === 200) {
+
+                        const initialData = res.data;
+
+                        setScoreLabel(initialData.scoreLabel);
+
+                        setScoreValue(initialData.scoreValue);
+
+                        setTransitionEffect(initialData.transitionEffect);
+
+                        setTransitionDuration(initialData.transitionDuration);
+
+                        setFontFamily(initialData.fontFamily);
+
+                        setFontSize(initialData.fontSize);
+
+                        // プリセットとアクティブなプリセット名を設定
+
+                        setMessagePresets(initialData.messagePresets);
+
+                        setActivePresetName(initialData.activePresetName);
+
+                    }
+
+                } catch (e) {
+
+                    console.error("Failed to fetch initial data", e);
+
                 }
-            } catch (e) {
-                console.error("Failed to fetch initial data", e);
-            }
-        };
-        fetchInitialData();
-    }, []);
 
-    const handleAddMessage = () => {
-        if (currentMessage.trim() !== '') {
-            setMessages([...messages, {id: Date.now(), text: currentMessage.trim()}]);
-            setCurrentMessage('');
-        }
-    };
-
-    const handleRemoveMessage = (id: number) => {
-        setMessages(messages.filter(msg => msg.id !== id));
-    };
-
-    // データ更新の処理
-    const handleSubmit = async () => {
-        setStatus('loading');
-        try {
-            // axios.postを使用してデータを送信
-            const payload = {
-                scoreLabel: scoreLabel,
-                scoreValue: Number(scoreValue),
-                messages: messages,
-                transitionEffect: transitionEffect,
-                transitionDuration: Number(transitionDuration),
-                fontFamily: fontFamily,
-                fontSize: Number(fontSize),
             };
-            const res = await axios.post('/api/stream-data', payload);
 
-            if (res.status === 200) {
-                setStatus('success');
-            } else {
-                setStatus('error');
+            fetchInitialData();
+
+        }, []);
+
+    
+
+        // アクティブなプリセットのメッセージリストを更新する
+
+        const updateActiveMessages = (updatedMessages: MessageItem[]) => {
+
+            const updatedPresets = messagePresets.map(preset =>
+
+                preset.name === activePresetName
+
+                    ? { ...preset, messages: updatedMessages }
+
+                    : preset
+
+            );
+
+            setMessagePresets(updatedPresets);
+
+        };
+
+        
+
+        const handleAddMessage = () => {
+
+            if (currentMessage.trim() !== '') {
+
+                const activePreset = messagePresets.find(p => p.name === activePresetName);
+
+                if (!activePreset) return;
+
+    
+
+                const updatedMessages = [...activePreset.messages, { id: Date.now(), text: currentMessage.trim() }];
+
+                updateActiveMessages(updatedMessages);
+
+                setCurrentMessage('');
+
             }
-            // eslint-disable-next-line @typescript-eslint/no-unused-vars
-        } catch (error) {
-            setStatus('error');
-        } finally {
-            setTimeout(() => setStatus('idle'), 3000);
-        }
-    };
+
+        };
+
+    
+
+        const handleRemoveMessage = (id: number) => {
+
+            const activePreset = messagePresets.find(p => p.name === activePresetName);
+
+            if (!activePreset) return;
+
+    
+
+            const updatedMessages = activePreset.messages.filter(msg => msg.id !== id);
+
+            updateActiveMessages(updatedMessages);
+
+        };
+
+    
+
+        // データ更新の処理
+
+        const handleSubmit = async () => {
+
+            setStatus('loading');
+
+            try {
+
+                const payload = {
+
+                    scoreLabel,
+
+                    scoreValue: Number(scoreValue),
+
+                    transitionEffect,
+
+                    transitionDuration: Number(transitionDuration),
+
+                    fontFamily,
+
+                    fontSize: Number(fontSize),
+
+                    messagePresets, // すべてのプリセットを送信
+
+                    activePresetName, // アクティブなプリセット名を送信
+
+                };
+
+                const res = await axios.post('/api/stream-data', payload);
+
+    
+
+                if (res.status === 200) {
+
+                    setStatus('success');
+
+                } else {
+
+                    setStatus('error');
+
+                }
+
+                // eslint-disable-next-line @typescript-eslint/no-unused-vars
+
+            } catch (error) {
+
+                setStatus('error');
+
+            } finally {
+
+                setTimeout(() => setStatus('idle'), 3000);
+
+            }
+
+        };
 
     return (
         <Box sx={{p: 4, maxWidth: 700, margin: 'auto'}}>
@@ -142,8 +251,23 @@ const ControlPanelPage: React.FC = () => {
             </Paper>
 
             <Paper elevation={3} sx={{p: 3, mb: 3}}>
-                {/* ... (メッセージ設定UI) ... */}
                 <Typography variant="h6" gutterBottom>視聴者向け概要メッセージ</Typography>
+
+                <Box sx={{ borderBottom: 1, borderColor: 'divider', mb: 2 }}>
+                    <Tabs
+                        value={activePresetName}
+                        onChange={(e, newValue) => setActivePresetName(newValue)}
+                        variant="scrollable"
+                        scrollButtons="auto"
+                        aria-label="メッセージプリセット"
+                    >
+                        {messagePresets.map(preset => (
+                            <Tab key={preset.name} label={preset.name} value={preset.name} />
+                        ))}
+                    </Tabs>
+                </Box>
+
+                {/* 現在アクティブなプリセットのメッセージリストを表示 */}
                 <Box sx={{
                     my: 2,
                     maxHeight: 150,
@@ -152,9 +276,10 @@ const ControlPanelPage: React.FC = () => {
                     borderRadius: '4px',
                     p: 1
                 }}>
-                    {messages.length === 0 ? (<Typography variant="body2" color="textSecondary"
-                                                          sx={{p: 1}}>メッセージがありません</Typography>) : (
-                        messages.map((msg) => (
+                    {messagePresets.find(p => p.name === activePresetName)?.messages.length === 0 ? (
+                        <Typography variant="body2" color="textSecondary" sx={{p: 1}}>メッセージがありません</Typography>
+                    ) : (
+                        messagePresets.find(p => p.name === activePresetName)?.messages.map((msg) => (
                             <Box key={msg.id} sx={{
                                 display: 'flex',
                                 justifyContent: 'space-between',
