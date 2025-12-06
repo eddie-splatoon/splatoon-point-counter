@@ -312,6 +312,22 @@ const ControlPanelPage: React.FC = () => {
                                                     >
                                                         💖 LOVE
                                                     </Button>
+                                                    <Button
+                                                        variant="contained"
+                                                        color="secondary"
+                                                        onClick={() => handleTriggerEffect('STAR')}
+                                                        disabled={effectStatus === 'loading'}
+                                                    >
+                                                        ⭐ STAR
+                                                    </Button>
+                                                    <Button
+                                                        variant="contained"
+                                                        color="secondary"
+                                                        onClick={() => handleTriggerEffect('SPARKLE')}
+                                                        disabled={effectStatus === 'loading'}
+                                                    >
+                                                        ✨ SPARKLE
+                                                    </Button>
                                                     {effectStatus === 'success' && (<Typography color="success.main" variant="body2">エフェクトを送信しました！</Typography>)}
                                                     {effectStatus === 'error' && (<Typography color="error.main" variant="body2">送信に失敗しました。</Typography>)}
                                                 </Box>

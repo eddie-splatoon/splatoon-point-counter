@@ -5,7 +5,9 @@ import axios from 'axios';
 import ScoreDisplay from '../../components/ScoreDisplay';
 import MessageScroller from '../../components/MessageScroller';
 import RandomTipScroller from '../../components/RandomTipScroller';
-import HeartEffect from '../../components/HeartEffect'; // HeartEffectをインポート
+import HeartEffect from '../../components/HeartEffect';
+import StarEffect from '../../components/StarEffect';
+import SparkleEffect from '../../components/SparkleEffect';
 import { StreamData } from '../api/stream-data/route';
 
 const POLLING_INTERVAL = 2000; // 2秒
@@ -55,7 +57,10 @@ const ObsOverlayPage: React.FC = () => {
                 position: 'relative', // エフェクトの親要素として機能させる
             }}
         >
+            {/* Effect Components */}
             <HeartEffect trigger={data.lastEvent?.name === 'LOVE' ? data.lastEvent.timestamp : undefined} />
+            <StarEffect trigger={data.lastEvent?.name === 'STAR' ? data.lastEvent.timestamp : undefined} />
+            <SparkleEffect trigger={data.lastEvent?.name === 'SPARKLE' ? data.lastEvent.timestamp : undefined} />
 
             <ScoreDisplay scoreLabel={data.scoreLabel} scoreValue={data.scoreValue} fontSize={data.fontSize} />
             
