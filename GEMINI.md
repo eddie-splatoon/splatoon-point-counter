@@ -16,6 +16,27 @@ The system appears to have three main parts:
 -   **Styling**: Tailwind CSS (inferred from `postcss.config.mjs` and `globals.css`)
 -   **Linting**: ESLint
 
+## Data Model
+
+The core data structure for this application is defined in `/app/api/stream-data/route.ts`. This object, `StreamData`, represents all the information that is displayed on the OBS overlay.
+
+```typescript
+export interface StreamData {
+    scoreLabel: string;
+    scoreValue: string; // Can be a number or a string like "300+"
+    transitionEffect: string;
+    transitionDuration: number;
+    fontFamily: string;
+    fontSize: number;
+    messagePresets: MessagePreset[];
+    activePresetName: string;
+    lastEvent: {
+        name: string;
+        timestamp: number;
+    } | null;
+}
+```
+
 ## Key Directories and Files
 
 ### `/app`
@@ -26,19 +47,19 @@ This directory contains the application's routes and core logic, following the N
 -   `globals.css`: Global stylesheets, likely including Tailwind CSS base styles.
 
 #### `/app/control-panel/page.tsx`
--   **Purpose**: This is the user interface for the streamer. From here, they can likely control the information displayed on the overlay, such as team scores, player names, or game status.
+-   **Purpose**: This is the user interface for the streamer. It provides input fields to modify the `StreamData` object, including the score's label and value, fonts, and messages. The `scoreLabel` field is a two-row text area, and `scoreValue` accepts strings (e.g., "300+"). When the streamer submits the form, it sends a `POST` request to the backend API.
 
 #### `/app/obs-overlay/page.tsx`
 -   **Purpose**: This page is designed to be used as a browser source in OBS or similar streaming software. It listens for real-time updates from the server and displays them visually. It likely contains the `ScoreDisplay` component.
 
 #### `/app/api/stream-data/route.ts`
--   **Purpose**: This is a server-side API route. The name `stream-data` strongly suggests it implements a streaming connection, most likely using [Server-Sent Events (SSE)](https://developer.mozilla.org/en-US/docs/Web/API/Server-sent_events). The Control Panel sends updates to this endpoint, which then pushes them to any connected clients (i.e., the OBS Overlay page).
+-   **Purpose**: This is a server-side API route that manages the state of the `StreamData` object. It handles `GET` requests to provide the current data to clients (like the OBS overlay) and `POST` requests from the Control Panel to update the data.
 
 ### `/components`
 This directory holds the reusable React components used across the application.
 
--   `ScoreDisplay.tsx`: A React component responsible for the visual presentation of the score data. This is likely a key component on the `obs-overlay` page.
--   `MessageScroller.tsx`: A component that probably displays a scrolling list of messages, announcements, or events.
+-   `ScoreDisplay.tsx`: A React component responsible for the visual presentation of the score data. This is a key component on the `obs-overlay` page.
+-   `MessageScroller.tsx`: A component that displays a scrolling list of messages, announcements, or events.
 
 ### `/public`
 This directory contains static assets that are served publicly. The current files (`next.svg`, `vercel.svg`, etc.) are default assets from a standard Next.js installation.

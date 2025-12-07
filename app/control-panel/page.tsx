@@ -128,7 +128,7 @@ const darkTheme = createTheme({
 
 const ControlPanelPage: React.FC = () => {
     const [scoreLabel, setScoreLabel] = useState<string>('');
-    const [scoreValue, setScoreValue] = useState<number>(0);
+    const [scoreValue, setScoreValue] = useState<string>('0');
     const [currentMessage, setCurrentMessage] = useState<string>('');
     const [transitionEffect, setTransitionEffect] = useState<string>('fade');
     const [transitionDuration, setTransitionDuration] = useState<number>(2);
@@ -197,7 +197,7 @@ const ControlPanelPage: React.FC = () => {
             const payload = {
                 // 現在のすべてのstateを一緒に送信して、サーバーの状態を上書きする
                 scoreLabel,
-                scoreValue: Number(scoreValue),
+                scoreValue,
                 transitionEffect,
                 transitionDuration: Number(transitionDuration),
                 fontFamily,
@@ -226,7 +226,7 @@ const ControlPanelPage: React.FC = () => {
         try {
             const payload = {
                 scoreLabel,
-                scoreValue: Number(scoreValue),
+                scoreValue,
                 transitionEffect,
                 transitionDuration: Number(transitionDuration),
                 fontFamily,
@@ -262,7 +262,7 @@ const ControlPanelPage: React.FC = () => {
                 <Box sx={{ position: 'absolute', top: '-200px', left: '-200px', width: '500px', height: '500px', bgcolor: 'primary.main', borderRadius: '50%', filter: 'blur(150px)', opacity: 0.3 }} />
                 <Box sx={{ position: 'absolute', bottom: '-250px', right: '-250px', width: '600px', height: '600px', bgcolor: 'secondary.main', borderRadius: '50%', filter: 'blur(150px)', opacity: 0.3 }} />
                 
-                <Box sx={{p: 4, maxWidth: 700, margin: 'auto', position: 'relative', zIndex: 1}}>
+                <Box sx={{p: 4, maxWidth: 700, margin: 'auto', position: 'relative', zIndex: 1, pb: '120px'}}>
                     <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 2 }}>
                         <Image src="/favicon.svg" alt="icon" width={40} height={40} />
                         <Typography variant="h4" component="h1" gutterBottom sx={{ mb: 0, color: 'text.primary' }}>
@@ -272,8 +272,8 @@ const ControlPanelPage: React.FC = () => {
 
                     <Paper elevation={12} sx={{ mb: 3, p: 3, bgcolor: 'background.paper', backdropFilter: 'blur(10px)', border: '1px solid rgba(255, 255, 255, 0.1)' }}>
                         <Typography variant="h6" gutterBottom>スコア設定</Typography>
-                        <TextField label="フィールド名" value={scoreLabel} onChange={(e) => setScoreLabel(e.target.value)} fullWidth margin="normal" variant="outlined" />
-                        <TextField label="値" type="number" value={scoreValue} onChange={(e) => setScoreValue(Number(e.target.value))} fullWidth margin="normal" variant="outlined" />
+                        <TextField label="フィールド名" value={scoreLabel} onChange={(e) => setScoreLabel(e.target.value)} fullWidth margin="normal" variant="outlined" multiline rows={2} />
+                        <TextField label="値" value={scoreValue} onChange={(e) => setScoreValue(e.target.value)} fullWidth margin="normal" variant="outlined" />
                     </Paper>
                     
                     <Paper elevation={12} sx={{ mb: 3, p: 3, bgcolor: 'background.paper', backdropFilter: 'blur(10px)', border: '1px solid rgba(255, 255, 255, 0.1)' }}>
@@ -381,18 +381,22 @@ const ControlPanelPage: React.FC = () => {
                         <TextField label="表示秒数 (秒)" type="number" value={transitionDuration} onChange={(e) => setTransitionDuration(Number(e.target.value))} fullWidth margin="normal" inputProps={{min: 1}} variant="outlined"/>
                     </Paper>
 
-                    <Button variant="contained" color="primary" onClick={handleSubmit} disabled={status === 'loading'} fullWidth size="large" sx={{ mt: 2, p: 1.5, fontSize: '1rem' }}>
-                        {status === 'loading' ? '更新中...' : 'OBSに反映 (データ送信)'}
-                    </Button>
-
-                    {status === 'success' && (<Typography color="success.main" align="center" sx={{mt: 2}}>✅ データを更新しました！OBS画面に反映されます。</Typography>)}
-                    {status === 'error' && (<Typography color="error.main" align="center" sx={{mt: 2}}>❌ 更新に失敗しました。サーバー/APIを確認してください。</Typography>)}
-
                     <Box sx={{ mt: 4, p: 2, border: '1px dashed grey', borderRadius: '4px', bgcolor: 'rgba(255, 255, 255, 0.05)' }}>
                         <Typography variant="body2" fontWeight="bold">OBSブラウザソース設定</Typography>
                                         <Typography variant="body2">URL: <code style={{ backgroundColor: '#333', padding: '2px 4px', borderRadius: '4px', color: 'text.primary' }}>{origin}/obs-overlay</code></Typography>
                                         <Typography variant="body2">幅: 1450, 高さ: 160</Typography>
-                                    </Box>                </Box>
+                                    </Box>
+                </Box>
+                
+                <Paper elevation={16} sx={{ position: 'fixed', bottom: 0, left: 0, right: 0, p: 2, zIndex: 10, bgcolor: 'rgba(18, 18, 18, 0.9)', backdropFilter: 'blur(10px)', borderTop: '1px solid rgba(255, 255, 255, 0.1)'}}>
+                    <Box sx={{ maxWidth: 700, margin: 'auto' }}>
+                        <Button variant="contained" color="primary" onClick={handleSubmit} disabled={status === 'loading'} fullWidth size="large" sx={{ p: 1.5, fontSize: '1rem' }}>
+                            {status === 'loading' ? '更新中...' : 'OBSに反映 (データ送信)'}
+                        </Button>
+                        {status === 'success' && (<Typography color="success.main" align="center" sx={{mt: 1}}>✅ データを更新しました！OBS画面に反映されます。</Typography>)}
+                        {status === 'error' && (<Typography color="error.main" align="center" sx={{mt: 1}}>❌ 更新に失敗しました。サーバー/APIを確認してください。</Typography>)}
+                    </Box>
+                </Paper>
             </Box>
         </ThemeProvider>
     );

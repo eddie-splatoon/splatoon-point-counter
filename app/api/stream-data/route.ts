@@ -8,7 +8,7 @@ export interface MessagePreset {
 
 export interface StreamData {
     scoreLabel: string;
-    scoreValue: number;
+    scoreValue: string;
     transitionEffect: string;
     transitionDuration: number;
     fontFamily: string;
@@ -25,7 +25,7 @@ export interface StreamData {
 // データを一時的にインメモリで保持するストア (本番ではDBが必要です)
 let streamData: StreamData = {
     scoreLabel: '現在の評価',
-    scoreValue: 580,
+    scoreValue: '400+',
     transitionEffect: 'fade',
     transitionDuration: 2,
     fontFamily: 'FOT-Kurokane Std',
@@ -71,7 +71,7 @@ export async function POST(request: Request) {
         } = body;
 
         // データ検証
-        if (typeof scoreLabel !== 'string' || typeof scoreValue !== 'number' || typeof transitionDuration !== 'number' || typeof fontFamily !== 'string' || typeof fontSize !== 'number' || typeof activePresetName !== 'string' || !Array.isArray(messagePresets)) {
+        if (typeof scoreLabel !== 'string' || typeof scoreValue !== 'string' || typeof transitionDuration !== 'number' || typeof fontFamily !== 'string' || typeof fontSize !== 'number' || typeof activePresetName !== 'string' || !Array.isArray(messagePresets)) {
             return NextResponse.json({message: 'Invalid data format.'}, {status: 400});
         }
 
