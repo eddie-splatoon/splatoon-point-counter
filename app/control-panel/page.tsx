@@ -3,7 +3,7 @@
 import React, {useState, useEffect} from 'react';
 import axios from 'axios';
 import Image from 'next/image';
-import {StreamData, MessagePreset} from '../api/stream-data/route';
+import {StreamData, MessagePreset, BurndownData} from '../api/stream-data/route';
 import {
     TextField,
     Button,
@@ -19,93 +19,92 @@ import {
     Tab,
 } from '@mui/material';
 import RemoveCircleIcon from '@mui/icons-material/RemoveCircle';
-import {createTheme, ThemeProvider} from '@mui/material/styles'; // ThemeProviderを追加
+import {createTheme, ThemeProvider} from '@mui/material/styles';
 
 interface MessageItem {
     id: number;
     text: string;
 }
 
-// カスタムダークテーマの定義
 const darkTheme = createTheme({
     palette: {
         mode: 'dark',
         primary: {
-            main: '#FF40A0', // Splatoonっぽいピンク
+            main: '#FF40A0',
         },
         secondary: {
-            main: '#32E675', // Splatoonっぽい緑
+            main: '#32E675',
         },
         text: {
-            primary: '#FFFFFF', // デフォルトのテキスト色を白に
-            secondary: 'rgba(255, 255, 255, 0.7)', // 薄い白
+            primary: '#FFFFFF',
+            secondary: 'rgba(255, 255, 255, 0.7)',
         },
         background: {
-            paper: 'rgba(255, 255, 255, 0.05)', // Paperの背景色を半透明に
+            paper: 'rgba(255, 255, 255, 0.05)',
             default: '#121212',
         },
     },
     components: {
-        MuiOutlinedInput: { // TextFieldのinput部分のスタイル
+        MuiOutlinedInput: {
             styleOverrides: {
                 root: {
                     '& .MuiOutlinedInput-notchedOutline': {
-                        borderColor: 'rgba(255, 255, 255, 0.2)', // アウトラインのボーダー色
+                        borderColor: 'rgba(255, 255, 255, 0.2)',
                     },
                     '&:hover .MuiOutlinedInput-notchedOutline': {
                         borderColor: 'rgba(255, 255, 255, 0.5)',
                     },
                     '&.Mui-focused .MuiOutlinedInput-notchedOutline': {
-                        borderColor: '#FF40A0', // フォーカス時のボーダー色
+                        borderColor: '#FF40A0',
                     },
                     '& .MuiInputBase-input': {
-                        color: '#FFFFFF', // 入力テキストの色
+                        color: '#FFFFFF',
                     },
                 },
             },
         },
-        MuiInputLabel: { // ラベルのスタイル
+        MuiInputLabel: {
             styleOverrides: {
                 root: {
-                    color: 'rgba(255, 255, 255, 0.7)', // ラベル色
+                    color: 'rgba(255, 255, 255, 0.7)',
                     '&.Mui-focused': {
-                        color: '#FF40A0', // フォーカス時のラベル色
+                        color: '#FF40A0',
                     },
                 },
             },
         },
-        MuiFormHelperText: { // ヘルパーテキストのスタイル
+        MuiFormHelperText: {
             styleOverrides: {
                 root: {
                     color: 'rgba(255, 255, 255, 0.5)',
                 },
             },
         },
-        MuiSelect: { // Selectコンポーネントのスタイル
+        MuiSelect: {
             styleOverrides: {
                 icon: {
-                    color: '#FFFFFF', // ドロップダウンアイコンの色
+                    color: '#FFFFFF',
                 },
             },
         },
-        MuiPaper: { // Paperコンポーネントの背景透過度を調整
+        MuiPaper: {
             styleOverrides: {
                 root: {
                     backgroundColor: 'rgba(255, 255, 255, 0.05)',
                 },
             },
         },
-        MuiTab: { // タブのスタイル
+        MuiTab: {
             styleOverrides: {
                 root: {
-                    color: 'rgba(255, 255, 255, 0.7)', // タブのテキスト色
+                    color: 'rgba(255, 255, 255, 0.7)',
                     '&.Mui-selected': {
-                        color: '#FF40A0', // 選択されたタブのテキスト色
+                        color: '#FF40A0',
                     },
                 },
             },
         },
-        MuiTabs: { // タブインジケーターの色
+        MuiTabs: {
             styleOverrides: {
                 indicator: {
                     backgroundColor: '#FF40A0',
@@ -115,7 +114,7 @@ const darkTheme = createTheme({
         MuiButton: {
             styleOverrides: {
                 containedPrimary: {
-                    color: '#FFFFFF', // プライマリボタンのテキスト色
+                    color: '#FFFFFF',
                     backgroundColor: '#FF40A0',
                     '&:hover': {
                         backgroundColor: '#E6398D',
@@ -127,18 +126,31 @@ const darkTheme = createTheme({
 });
 
 const ControlPanelPage: React.FC = () => {
+    // General state
+    const [status, setStatus] = useState<'idle' | 'loading' | 'success' | 'error'>('idle');
+    const [effectStatus, setEffectStatus] = useState<'idle' | 'loading' | 'success' | 'error'>('idle');
+    const [origin, setOrigin] = useState<string>('');
+    const [activeTab, setActiveTab] = useState('score');
+
+    // Score display state
     const [scoreLabel, setScoreLabel] = useState<string>('');
     const [scoreValue, setScoreValue] = useState<string>('0');
+    
+    // Burndown chart state
+    const [burndownLabel, setBurndownLabel] = useState('');
+    const [burndownTargetValue, setBurndownTargetValue] = useState(50000);
+    const [burndownEntriesText, setBurndownEntriesText] = useState('');
+
+    // Common state
+    const [fontFamily, setFontFamily] = useState<string>('');
+    const [fontSize, setFontSize] = useState<number>(54);
+
+    // Message scroller state
     const [currentMessage, setCurrentMessage] = useState<string>('');
     const [transitionEffect, setTransitionEffect] = useState<string>('fade');
     const [transitionDuration, setTransitionDuration] = useState<number>(2);
-    const [fontFamily, setFontFamily] = useState<string>('');
-    const [fontSize, setFontSize] = useState<number>(54);
     const [messagePresets, setMessagePresets] = useState<MessagePreset[]>([]);
     const [activePresetName, setActivePresetName] = useState<string>('');
-    const [status, setStatus] = useState<'idle' | 'loading' | 'success' | 'error'>('idle');
-    const [effectStatus, setEffectStatus] = useState<'idle' | 'loading' | 'success' | 'error'>('idle'); // エフェクトボタン用のState
-    const [origin, setOrigin] = useState<string>('');
 
     useEffect(() => {
         if (typeof window !== 'undefined') {
@@ -157,6 +169,12 @@ const ControlPanelPage: React.FC = () => {
                     setFontSize(initialData.fontSize);
                     setMessagePresets(initialData.messagePresets);
                     setActivePresetName(initialData.activePresetName);
+                    
+                    if (initialData.burndown) {
+                        setBurndownLabel(initialData.burndown.label);
+                        setBurndownTargetValue(initialData.burndown.targetValue);
+                        setBurndownEntriesText(initialData.burndown.entries.join('\n'));
+                    }
                 }
             } catch (e) {
                 console.error("Failed to fetch initial data", e);
@@ -167,9 +185,7 @@ const ControlPanelPage: React.FC = () => {
 
     const updateActiveMessages = (updatedMessages: MessageItem[]) => {
         const updatedPresets = messagePresets.map(preset =>
-            preset.name === activePresetName
-                ? {...preset, messages: updatedMessages}
-                : preset
+            preset.name === activePresetName ? {...preset, messages: updatedMessages} : preset
         );
         setMessagePresets(updatedPresets);
     };
@@ -190,58 +206,53 @@ const ControlPanelPage: React.FC = () => {
         const updatedMessages = activePreset.messages.filter(msg => msg.id !== id);
         updateActiveMessages(updatedMessages);
     };
+    
+    const getPayload = () => {
+        const burndownEntries = burndownEntriesText.split('\n').map(s => Number(s.trim())).filter(n => !isNaN(n) && n > 0);
+        return {
+            scoreLabel,
+            scoreValue,
+            transitionEffect,
+            transitionDuration: Number(transitionDuration),
+            fontFamily,
+            fontSize: Number(fontSize),
+            messagePresets,
+            activePresetName,
+            burndown: {
+                label: burndownLabel,
+                targetValue: Number(burndownTargetValue),
+                entries: burndownEntries,
+            }
+        };
+    };
 
     const handleTriggerEffect = async (effectName: string) => {
         setEffectStatus('loading');
         try {
             const payload = {
-                // 現在のすべてのstateを一緒に送信して、サーバーの状態を上書きする
-                scoreLabel,
-                scoreValue,
-                transitionEffect,
-                transitionDuration: Number(transitionDuration),
-                fontFamily,
-                fontSize: Number(fontSize),
-                messagePresets,
-                activePresetName,
-                // 今回トリガーするイベント情報を付与
-                lastEvent: { name: effectName, timestamp: Date.now() },
+                ...getPayload(),
+                lastEvent: {name: effectName, timestamp: Date.now()},
             };
             const res = await axios.post('/api/stream-data', payload);
-            if (res.status === 200) {
-                setEffectStatus('success');
-            } else {
-                setEffectStatus('error');
-            }
+            if (res.status === 200) setEffectStatus('success');
+            else setEffectStatus('error');
         } catch (error) {
             setEffectStatus('error');
         } finally {
             setTimeout(() => setEffectStatus('idle'), 2000);
         }
     };
-    
-    // データ更新の処理
+
     const handleSubmit = async () => {
         setStatus('loading');
         try {
             const payload = {
-                scoreLabel,
-                scoreValue,
-                transitionEffect,
-                transitionDuration: Number(transitionDuration),
-                fontFamily,
-                fontSize: Number(fontSize),
-                messagePresets,
-                activePresetName,
-                lastEvent: null, // 通常の更新ではイベントをnull化する
+                ...getPayload(),
+                lastEvent: null,
             };
             const res = await axios.post('/api/stream-data', payload);
-
-            if (res.status === 200) {
-                setStatus('success');
-            } else {
-                setStatus('error');
-            }
+            if (res.status === 200) setStatus('success');
+            else setStatus('error');
         } catch (error) {
             setStatus('error');
         } finally {
@@ -251,141 +262,105 @@ const ControlPanelPage: React.FC = () => {
 
     return (
         <ThemeProvider theme={darkTheme}>
-            <Box sx={{
-                minHeight: '100vh',
-                bgcolor: 'background.default',
-                color: 'text.primary',
-                position: 'relative',
-                overflow: 'hidden'
-            }}>
-                {/* インク風の背景装飾 */}
-                <Box sx={{ position: 'absolute', top: '-200px', left: '-200px', width: '500px', height: '500px', bgcolor: 'primary.main', borderRadius: '50%', filter: 'blur(150px)', opacity: 0.3 }} />
-                <Box sx={{ position: 'absolute', bottom: '-250px', right: '-250px', width: '600px', height: '600px', bgcolor: 'secondary.main', borderRadius: '50%', filter: 'blur(150px)', opacity: 0.3 }} />
+            <Box sx={{minHeight: '100vh', bgcolor: 'background.default', color: 'text.primary', position: 'relative', overflow: 'hidden'}}>
+                <Box sx={{position: 'absolute', top: '-200px', left: '-200px', width: '500px', height: '500px', bgcolor: 'primary.main', borderRadius: '50%', filter: 'blur(150px)', opacity: 0.3}}/>
+                <Box sx={{position: 'absolute', bottom: '-250px', right: '-250px', width: '600px', height: '600px', bgcolor: 'secondary.main', borderRadius: '50%', filter: 'blur(150px)', opacity: 0.3}}/>
                 
                 <Box sx={{p: 4, maxWidth: 700, margin: 'auto', position: 'relative', zIndex: 1, pb: '120px'}}>
-                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 2 }}>
-                        <Image src="/favicon.svg" alt="icon" width={40} height={40} />
-                        <Typography variant="h4" component="h1" gutterBottom sx={{ mb: 0, color: 'text.primary' }}>
+                    <Box sx={{display: 'flex', alignItems: 'center', gap: 2, mb: 2}}>
+                        <Image src="/favicon.svg" alt="icon" width={40} height={40}/>
+                        <Typography variant="h4" component="h1" gutterBottom sx={{mb: 0, color: 'text.primary'}}>
                             配信オーバーレイ設定パネル
                         </Typography>
                     </Box>
 
-                    <Paper elevation={12} sx={{ mb: 3, p: 3, bgcolor: 'background.paper', backdropFilter: 'blur(10px)', border: '1px solid rgba(255, 255, 255, 0.1)' }}>
-                        <Typography variant="h6" gutterBottom>スコア設定</Typography>
-                        <TextField label="フィールド名" value={scoreLabel} onChange={(e) => setScoreLabel(e.target.value)} fullWidth margin="normal" variant="outlined" multiline rows={2} />
-                        <TextField label="値" value={scoreValue} onChange={(e) => setScoreValue(e.target.value)} fullWidth margin="normal" variant="outlined" />
-                    </Paper>
-                    
-                    <Paper elevation={12} sx={{ mb: 3, p: 3, bgcolor: 'background.paper', backdropFilter: 'blur(10px)', border: '1px solid rgba(255, 255, 255, 0.1)' }}>
-                        <Typography variant="h6" gutterBottom>
-                            🎨 フォント設定
-                        </Typography>
-                        <TextField
-                            label="フォント名 (CSS font-family)"
-                            value={fontFamily}
-                            onChange={(e) => setFontFamily(e.target.value)}
-                            fullWidth
-                            margin="normal"
-                            helperText="システムフォントや、OBS側でカスタムフォントがインストールされているフォント名を入力"
-                            variant="outlined"
-                        />
-                        <TextField
-                            label="フォントサイズ (px)"
-                            type="number"
-                            value={fontSize}
-                            onChange={(e) => setFontSize(Number(e.target.value))}
-                            fullWidth
-                            margin="normal"
-                                                    inputProps={{min: 1}}
-                                                    variant="outlined"
-                                                />
-                                            </Paper>
-                            
-                                            <Paper elevation={12} sx={{ mb: 3, p: 3, bgcolor: 'background.paper', backdropFilter: 'blur(10px)', border: '1px solid rgba(255, 255, 255, 0.1)' }}>
-                                                <Typography variant="h6" gutterBottom>演出効果</Typography>
-                                                <Box sx={{ display: 'flex', gap: 2, alignItems: 'center' }}>
-                                                    <Button
-                                                        variant="contained"
-                                                        color="primary"
-                                                        onClick={() => handleTriggerEffect('LOVE')}
-                                                        disabled={effectStatus === 'loading'}
-                                                    >
-                                                        💖 LOVE
-                                                    </Button>
-                                                    <Button
-                                                        variant="contained"
-                                                        color="secondary"
-                                                        onClick={() => handleTriggerEffect('STAR')}
-                                                        disabled={effectStatus === 'loading'}
-                                                    >
-                                                        ⭐ STAR
-                                                    </Button>
-                                                    <Button
-                                                        variant="contained"
-                                                        color="secondary"
-                                                        onClick={() => handleTriggerEffect('SPARKLE')}
-                                                        disabled={effectStatus === 'loading'}
-                                                    >
-                                                        ✨ SPARKLE
-                                                    </Button>
-                                                    <Button
-                                                        variant="contained"
-                                                        color="secondary"
-                                                        onClick={() => handleTriggerEffect('BUBBLE')}
-                                                        disabled={effectStatus === 'loading'}
-                                                    >
-                                                        🫧 BUBBLE
-                                                    </Button>
-                                                    {effectStatus === 'success' && (<Typography color="success.main" variant="body2">エフェクトを送信しました！</Typography>)}
-                                                    {effectStatus === 'error' && (<Typography color="error.main" variant="body2">送信に失敗しました。</Typography>)}
-                                                </Box>
-                                            </Paper>
-                            
-                                            <Paper elevation={12} sx={{ mb: 3, p: 3, bgcolor: 'background.paper', backdropFilter: 'blur(10px)', border: '1px solid rgba(255, 255, 255, 0.1)' }}>
-                                                <Typography variant="h6" gutterBottom>視聴者向け概要メッセージ</Typography>
-                                                <Box sx={{ borderBottom: 1, borderColor: 'divider', mb: 2 }}>
-                                                    <Tabs
-                                                        value={activePresetName}                                onChange={(e, newValue) => setActivePresetName(newValue)}
-                                variant="scrollable"
-                                scrollButtons="auto"
-                                aria-label="メッセージプリセット"
-                            >
-                                {messagePresets.map(preset => (
-                                    <Tab key={preset.name} label={preset.name} value={preset.name} />
-                                ))}
-                            </Tabs>
-                        </Box>
-                        <Box sx={{ my: 2, maxHeight: 150, overflowY: 'auto', p: 1, bgcolor: 'rgba(255, 255, 255, 0.03)', borderRadius: '4px' }}>
-                            {messagePresets.find(p => p.name === activePresetName)?.messages.length === 0 ? (
-                                <Typography variant="body2" color="text.secondary" sx={{ p: 1 }}>メッセージがありません</Typography>
-                            ) : (
-                                messagePresets.find(p => p.name === activePresetName)?.messages.map((msg) => (
-                                    <Box key={msg.id} sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', p: 0.5, borderBottom: '1px dotted rgba(255,255,255,0.2)' }}>
-                                        <Typography variant="body1">{msg.text}</Typography>
-                                        <IconButton size="small" color="error" onClick={() => handleRemoveMessage(msg.id)}><RemoveCircleIcon fontSize="small" /></IconButton>
-                                    </Box>
-                                ))
-                            )}
-                        </Box>
-                        <Box sx={{display: 'flex', gap: 1, alignItems: 'center', mb: 2}}>
-                            <TextField label="新しいメッセージ" value={currentMessage} onChange={(e) => setCurrentMessage(e.target.value)} fullWidth variant="outlined"/>
-                            <Button variant="contained" onClick={handleAddMessage} disabled={currentMessage.trim() === ''} sx={{minWidth: '100px'}}>追加</Button>
-                        </Box>
-                        <FormControl fullWidth margin="normal">
-                            <InputLabel>切り替えエフェクト</InputLabel>
-                            <Select value={transitionEffect} label="切り替えエフェクト" onChange={(e) => setTransitionEffect(e.target.value)} >
-                                <MenuItem value={'fade'}>フェード</MenuItem>
-                                <MenuItem value={'slide'}>スライド</MenuItem>
-                            </Select>
-                        </FormControl>
-                        <TextField label="表示秒数 (秒)" type="number" value={transitionDuration} onChange={(e) => setTransitionDuration(Number(e.target.value))} fullWidth margin="normal" inputProps={{min: 1}} variant="outlined"/>
-                    </Paper>
+                    <Tabs value={activeTab} onChange={(e, newValue) => setActiveTab(newValue)} centered sx={{mb: 3}}>
+                        <Tab label="スコア表示" value="score"/>
+                        <Tab label="バーンダウン" value="burndown"/>
+                        <Tab label="メッセージ" value="message"/>
+                        <Tab label="共通設定" value="common"/>
+                    </Tabs>
+
+                    {activeTab === 'score' && (
+                        <Paper elevation={12} sx={{p: 3, bgcolor: 'background.paper', backdropFilter: 'blur(10px)', border: '1px solid rgba(255, 255, 255, 0.1)'}}>
+                            <Typography variant="h6" gutterBottom>スコア設定</Typography>
+                            <TextField label="フィールド名" value={scoreLabel} onChange={(e) => setScoreLabel(e.target.value)} fullWidth margin="normal" variant="outlined" multiline rows={2}/>
+                            <TextField label="値" value={scoreValue} onChange={(e) => setScoreValue(e.target.value)} fullWidth margin="normal" variant="outlined"/>
+                        </Paper>
+                    )}
+
+                    {activeTab === 'burndown' && (
+                        <Paper elevation={12} sx={{p: 3, bgcolor: 'background.paper', backdropFilter: 'blur(10px)', border: '1px solid rgba(255, 255, 255, 0.1)'}}>
+                            <Typography variant="h6" gutterBottom>バーンダウンチャート設定</Typography>
+                            <TextField label="フィールド名" value={burndownLabel} onChange={(e) => setBurndownLabel(e.target.value)} fullWidth margin="normal" variant="outlined" multiline rows={2} />
+                            <TextField label="目標値" type="number" value={burndownTargetValue} onChange={(e) => setBurndownTargetValue(Number(e.target.value))} fullWidth margin="normal" variant="outlined" />
+                            <TextField label="獲得ポイント履歴 (1行に1つ)" multiline rows={10} value={burndownEntriesText} onChange={(e) => setBurndownEntriesText(e.target.value)} fullWidth margin="normal" variant="outlined" helperText="試合で獲得したポイントを改行区切りで入力します。" />
+                        </Paper>
+                    )}
+
+                    {activeTab === 'message' && (
+                        <Paper elevation={12} sx={{p: 3, bgcolor: 'background.paper', backdropFilter: 'blur(10px)', border: '1px solid rgba(255, 255, 255, 0.1)'}}>
+                            <Typography variant="h6" gutterBottom>視聴者向け概要メッセージ</Typography>
+                            <Box sx={{borderBottom: 1, borderColor: 'divider', mb: 2}}>
+                                <Tabs value={activePresetName} onChange={(e, newValue) => setActivePresetName(newValue)} variant="scrollable" scrollButtons="auto" aria-label="メッセージプリセット">
+                                    {messagePresets.map(preset => (<Tab key={preset.name} label={preset.name} value={preset.name}/>))}
+                                </Tabs>
+                            </Box>
+                            <Box sx={{my: 2, maxHeight: 150, overflowY: 'auto', p: 1, bgcolor: 'rgba(255, 255, 255, 0.03)', borderRadius: '4px'}}>
+                                {messagePresets.find(p => p.name === activePresetName)?.messages.length === 0 ? (
+                                    <Typography variant="body2" color="text.secondary" sx={{p: 1}}>メッセージがありません</Typography>
+                                ) : (
+                                    messagePresets.find(p => p.name === activePresetName)?.messages.map((msg) => (
+                                        <Box key={msg.id} sx={{display: 'flex', justifyContent: 'space-between', alignItems: 'center', p: 0.5, borderBottom: '1px dotted rgba(255,255,255,0.2)'}}>
+                                            <Typography variant="body1">{msg.text}</Typography>
+                                            <IconButton size="small" color="error" onClick={() => handleRemoveMessage(msg.id)}><RemoveCircleIcon fontSize="small"/></IconButton>
+                                        </Box>
+                                    ))
+                                )}
+                            </Box>
+                            <Box sx={{display: 'flex', gap: 1, alignItems: 'center', mb: 2}}>
+                                <TextField label="新しいメッセージ" value={currentMessage} onChange={(e) => setCurrentMessage(e.target.value)} fullWidth variant="outlined"/>
+                                <Button variant="contained" onClick={handleAddMessage} disabled={currentMessage.trim() === ''} sx={{minWidth: '100px'}}>追加</Button>
+                            </Box>
+                            <FormControl fullWidth margin="normal">
+                                <InputLabel>切り替えエフェクト</InputLabel>
+                                <Select value={transitionEffect} label="切り替えエフェクト" onChange={(e) => setTransitionEffect(e.target.value)}>
+                                    <MenuItem value={'fade'}>フェード</MenuItem>
+                                    <MenuItem value={'slide'}>スライド</MenuItem>
+                                </Select>
+                            </FormControl>
+                            <TextField label="表示秒数 (秒)" type="number" value={transitionDuration} onChange={(e) => setTransitionDuration(Number(e.target.value))} fullWidth margin="normal" inputProps={{min: 1}} variant="outlined"/>
+                        </Paper>
+                    )}
+
+                    {activeTab === 'common' && (
+                        <>
+                            <Paper elevation={12} sx={{ mb: 3, p: 3, bgcolor: 'background.paper', backdropFilter: 'blur(10px)', border: '1px solid rgba(255, 255, 255, 0.1)' }}>
+                                <Typography variant="h6" gutterBottom>🎨 フォント設定</Typography>
+                                <TextField label="フォント名 (CSS font-family)" value={fontFamily} onChange={(e) => setFontFamily(e.target.value)} fullWidth margin="normal" helperText="システムフォントや、OBS側でカスタムフォントがインストールされているフォント名を入力" variant="outlined"/>
+                                <TextField label="フォントサイズ (px)" type="number" value={fontSize} onChange={(e) => setFontSize(Number(e.target.value))} fullWidth margin="normal" inputProps={{min: 1}} variant="outlined"/>
+                            </Paper>
+                            <Paper elevation={12} sx={{p: 3, bgcolor: 'background.paper', backdropFilter: 'blur(10px)', border: '1px solid rgba(255, 255, 255, 0.1)'}}>
+                                <Typography variant="h6" gutterBottom>演出効果</Typography>
+                                <Box sx={{display: 'flex', gap: 2, alignItems: 'center', flexWrap: 'wrap'}}>
+                                    <Button variant="contained" color="primary" onClick={() => handleTriggerEffect('LOVE')} disabled={effectStatus === 'loading'}>💖 LOVE</Button>
+                                    <Button variant="contained" color="secondary" onClick={() => handleTriggerEffect('STAR')} disabled={effectStatus === 'loading'}>⭐ STAR</Button>
+                                    <Button variant="contained" color="secondary" onClick={() => handleTriggerEffect('SPARKLE')} disabled={effectStatus === 'loading'}>✨ SPARKLE</Button>
+                                    <Button variant="contained" color="secondary" onClick={() => handleTriggerEffect('BUBBLE')} disabled={effectStatus === 'loading'}>🫧 BUBBLE</Button>
+                                    {effectStatus === 'success' && (<Typography color="success.main" variant="body2">送信完了</Typography>)}
+                                    {effectStatus === 'error' && (<Typography color="error.main" variant="body2">送信失敗</Typography>)}
+                                </Box>
+                            </Paper>
+                        </>
+                    )}
 
                     <Box sx={{ mt: 4, p: 2, border: '1px dashed grey', borderRadius: '4px', bgcolor: 'rgba(255, 255, 255, 0.05)' }}>
                         <Typography variant="body2" fontWeight="bold">OBSブラウザソース設定</Typography>
-                                        <Typography variant="body2">URL: <code style={{ backgroundColor: '#333', padding: '2px 4px', borderRadius: '4px', color: 'text.primary' }}>{origin}/obs-overlay</code></Typography>
-                                        <Typography variant="body2">幅: 1450, 高さ: 160</Typography>
-                                    </Box>
+                        <Typography variant="body2">スコア表示URL: <code style={{ backgroundColor: '#333', padding: '2px 4px', borderRadius: '4px', color: 'text.primary' }}>{origin}/obs-overlay</code></Typography>
+                        <Typography variant="body2">バーンダウン表示URL: <code style={{ backgroundColor: '#333', padding: '2px 4px', borderRadius: '4px', color: 'text.primary' }}>{origin}/burndown-overlay</code></Typography>
+                        <Typography variant="body2">幅: 1450, 高さ: 160 (スコア表示)</Typography>
+                        <Typography variant="body2">幅: 250, 高さ: 584 (バーンダウン表示)</Typography>
+                    </Box>
                 </Box>
                 
                 <Paper elevation={16} sx={{ position: 'fixed', bottom: 0, left: 0, right: 0, p: 2, zIndex: 10, bgcolor: 'rgba(18, 18, 18, 0.9)', backdropFilter: 'blur(10px)', borderTop: '1px solid rgba(255, 255, 255, 0.1)'}}>
