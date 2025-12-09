@@ -1,7 +1,7 @@
 'use client';
 
-import React, { useState, useEffect, useRef } from 'react';
-import { motion } from 'framer-motion';
+import {motion} from 'framer-motion';
+import React, {useState, useEffect, useRef} from 'react';
 
 interface Sparkle {
     id: number;
@@ -24,7 +24,7 @@ const sparkleColors = [
     '#87CEFA', // LightSkyBlue
 ];
 
-const SparkleEffect: React.FC<SparkleEffectProps> = ({ trigger }) => {
+const SparkleEffect: React.FC<SparkleEffectProps> = ({trigger}) => {
     const [sparkles, setSparkles] = useState<Sparkle[]>([]);
     const lastTriggerRef = useRef(trigger);
 
@@ -48,7 +48,7 @@ const SparkleEffect: React.FC<SparkleEffectProps> = ({ trigger }) => {
             setSparkles(newSparkles);
         }
     }, [trigger]);
-    
+
     return (
         <div className="absolute top-0 left-0 w-full h-full pointer-events-none overflow-hidden">
             {sparkles.map((sparkle) => (
@@ -82,7 +82,7 @@ const SparkleEffect: React.FC<SparkleEffectProps> = ({ trigger }) => {
                 >
                     {/* 4-Point Star SVG */}
                     <svg viewBox="0 0 24 24" fill="currentColor">
-                        <path d="M12 0 L15.27 8.73 L24 12 L15.27 15.27 L12 24 L8.73 15.27 L0 12 L8.73 8.73 Z" />
+                        <path d="M12 0 L15.27 8.73 L24 12 L15.27 15.27 L12 24 L8.73 15.27 L0 12 L8.73 8.73 Z"/>
                     </svg>
                 </motion.div>
             ))}

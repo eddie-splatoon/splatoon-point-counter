@@ -1,7 +1,7 @@
 'use client';
 
-import React, { useState, useEffect, useRef } from 'react';
-import { motion } from 'framer-motion';
+import {motion} from 'framer-motion';
+import React, {useState, useEffect, useRef} from 'react';
 
 // スターの型定義
 interface Star {
@@ -25,7 +25,7 @@ const starColors = [
     '#FFFFFF', // White
 ];
 
-const StarEffect: React.FC<StarEffectProps> = ({ trigger }) => {
+const StarEffect: React.FC<StarEffectProps> = ({trigger}) => {
     const [stars, setStars] = useState<Star[]>([]);
     const lastTriggerRef = useRef(trigger);
 
@@ -84,7 +84,8 @@ const StarEffect: React.FC<StarEffectProps> = ({ trigger }) => {
                 >
                     {/* SVG Star */}
                     <svg viewBox="0 0 24 24" fill="currentColor">
-                        <path d="M12 17.27L18.18 21l-1.64-7.03L22 9.24l-7.19-.61L12 2 9.19 8.63 2 9.24l5.46 4.73L5.82 21z"/>
+                        <path
+                            d="M12 17.27L18.18 21l-1.64-7.03L22 9.24l-7.19-.61L12 2 9.19 8.63 2 9.24l5.46 4.73L5.82 21z"/>
                     </svg>
                 </motion.div>
             ))}

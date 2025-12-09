@@ -27,9 +27,6 @@ interface MessageItem {
     text: string;
 }
 
-// @ts-ignore
-const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
-
 const darkTheme = createTheme({
     palette: {
         mode: 'dark',
@@ -197,8 +194,11 @@ const ControlPanelPage: React.FC = () => {
 
     // Speech Recognition Effect
     useEffect(() => {
+        // @ts-ignore
+        const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
         if (!SpeechRecognition) {
             console.warn("Speech Recognition API is not supported in this browser.");
+            setRecognitionError("音声認識はこのブラウザではサポートされていません。");
             return;
         }
 
