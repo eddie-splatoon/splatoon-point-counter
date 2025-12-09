@@ -1,6 +1,6 @@
 'use client';
 
-import React, {useState, useEffect} from 'react';
+import React, {useState, useEffect, useRef} from 'react';
 import axios from 'axios';
 import Image from 'next/image';
 import {StreamData, MessagePreset, BurndownData} from '../api/stream-data/route';
@@ -17,6 +17,7 @@ import {
     IconButton,
     Tabs,
     Tab,
+    Chip,
 } from '@mui/material';
 import RemoveCircleIcon from '@mui/icons-material/RemoveCircle';
 import {createTheme, ThemeProvider} from '@mui/material/styles';
@@ -25,6 +26,9 @@ interface MessageItem {
     id: number;
     text: string;
 }
+
+// @ts-ignore
+const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
 
 const darkTheme = createTheme({
     palette: {
@@ -141,6 +145,11 @@ const ControlPanelPage: React.FC = () => {
     const [burndownTargetValue, setBurndownTargetValue] = useState(50000);
     const [burndownEntriesText, setBurndownEntriesText] = useState('');
 
+    // Voice recognition state
+    const [isListening, setIsListening] = useState(false);
+    const [transcript, setTranscript] = useState('');
+    const recognitionRef = useRef<any>(null);
+
     // Common state
     const [fontFamily, setFontFamily] = useState<string>('');
     const [fontSize, setFontSize] = useState<number>(54);
@@ -152,6 +161,7 @@ const ControlPanelPage: React.FC = () => {
     const [messagePresets, setMessagePresets] = useState<MessagePreset[]>([]);
     const [activePresetName, setActivePresetName] = useState<string>('');
 
+    // --- Effects ---
     useEffect(() => {
         if (typeof window !== 'undefined') {
             setOrigin(window.location.origin);
@@ -183,6 +193,41 @@ const ControlPanelPage: React.FC = () => {
         fetchInitialData();
     }, []);
 
+    // Speech Recognition Effect
+    useEffect(() => {
+        if (!SpeechRecognition) {
+            console.warn("Speech Recognition API is not supported in this browser.");
+            return;
+        }
+
+        const recognition = new SpeechRecognition();
+        recognition.continuous = true;
+        recognition.lang = 'ja-JP';
+        recognition.interimResults = false;
+
+        recognition.onresult = (event: any) => {
+            const lastResult = event.results[event.results.length - 1];
+            if (lastResult.isFinal) {
+                const text = lastResult[0].transcript.trim();
+                setTranscript(text);
+                handleVoiceCommand(text);
+            }
+        };
+        
+        recognition.onend = () => {
+            if (isListening) {
+                recognition.start(); // Restart if it was manually stopped
+            }
+        };
+
+        recognitionRef.current = recognition;
+
+        return () => {
+            recognition.stop();
+        };
+    }, [isListening]); // Rerun this effect if isListening changes, to handle onend logic properly
+
+    // --- Handlers ---
     const updateActiveMessages = (updatedMessages: MessageItem[]) => {
         const updatedPresets = messagePresets.map(preset =>
             preset.name === activePresetName ? {...preset, messages: updatedMessages} : preset
@@ -227,6 +272,7 @@ const ControlPanelPage: React.FC = () => {
     };
 
     const handleTriggerEffect = async (effectName: string) => {
+        if (effectStatus === 'loading') return; // Prevent spamming
         setEffectStatus('loading');
         try {
             const payload = {
@@ -257,6 +303,27 @@ const ControlPanelPage: React.FC = () => {
             setStatus('error');
         } finally {
             setTimeout(() => setStatus('idle'), 3000);
+        }
+    };
+
+    const handleToggleListening = () => {
+        if (isListening) {
+            recognitionRef.current?.stop();
+        } else {
+            recognitionRef.current?.start();
+        }
+        setIsListening(!isListening);
+    };
+
+    const handleVoiceCommand = (text: string) => {
+        if (text.includes('ナイス')) {
+            handleTriggerEffect('STAR');
+        } else if (text.includes('ありがとう')) {
+            handleTriggerEffect('LOVE');
+        } else if (text.includes('よっしゃ')) {
+            handleTriggerEffect('SPARKLE');
+        } else if (text.includes('やべぇ') || text.includes('やばい')) {
+            handleTriggerEffect('BUBBLE');
         }
     };
 
@@ -335,6 +402,21 @@ const ControlPanelPage: React.FC = () => {
 
                     {activeTab === 'common' && (
                         <>
+                             <Paper elevation={12} sx={{ mb: 3, p: 3, bgcolor: 'background.paper', backdropFilter: 'blur(10px)', border: '1px solid rgba(255, 255, 255, 0.1)' }}>
+                                <Typography variant="h6" gutterBottom>📣 音声認識エフェクト</Typography>
+                                <Box sx={{display: 'flex', alignItems: 'center', gap: 2}}>
+                                    <Button variant="contained" color={isListening ? 'error' : 'secondary'} onClick={handleToggleListening}>
+                                        {isListening ? '音声認識を停止' : '音声認識を開始'}
+                                    </Button>
+                                    {isListening && <Chip label="音声認識中..." color="secondary" />}
+                                </Box>
+                                <Typography variant="body2" sx={{mt: 2, color: 'text.secondary'}}>
+                                    最終認識テキスト: {transcript || '...'}
+                                </Typography>
+                                <Typography variant="caption" display="block" sx={{mt: 1, color: 'text.secondary'}}>
+                                    「ナイス」→ ⭐, 「ありがとう」→ 💖, 「よっしゃ」→ ✨, 「やべぇ」→ 🫧
+                                </Typography>
+                            </Paper>
                             <Paper elevation={12} sx={{ mb: 3, p: 3, bgcolor: 'background.paper', backdropFilter: 'blur(10px)', border: '1px solid rgba(255, 255, 255, 0.1)' }}>
                                 <Typography variant="h6" gutterBottom>🎨 フォント設定</Typography>
                                 <TextField label="フォント名 (CSS font-family)" value={fontFamily} onChange={(e) => setFontFamily(e.target.value)} fullWidth margin="normal" helperText="システムフォントや、OBS側でカスタムフォントがインストールされているフォント名を入力" variant="outlined"/>
