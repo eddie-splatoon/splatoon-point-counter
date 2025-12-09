@@ -35,7 +35,7 @@ let streamData: StreamData = {
         {
             name: '通常', messages: [
                 {id: 1, text: 'チャンネル登録・高評価お願いします！'},
-                {id: 2, text: 'コメントや質問もお待ちしてます！'},
+                {id: 2, text: '応援のコメントお待ちしてます！'},
             ]
         },
         {
@@ -44,7 +44,13 @@ let streamData: StreamData = {
                 {id: 2, text: '大会参加中！応援してね！'},
             ]
         },
-        {name: 'ビッグラン', messages: [{id: 1, text: 'チャンネル登録・高評価お願いします！'},]},
+        {
+            name: 'ビッグラン', messages: [
+                {id: 1, text: 'チャンネル登録・高評価お願いします！'},
+                {id: 2, text: 'ハイスコア出せるWAVE引きたい'},
+                {id: 3, text: '応援のコメントお待ちしてます！'},
+            ]
+        },
         {name: 'バチコン', messages: [{id: 1, text: 'チャンネル登録・高評価お願いします！'},]},
         {name: 'その他', messages: [{id: 1, text: 'チャンネル登録・高評価お願いします！'},]},
     ],
