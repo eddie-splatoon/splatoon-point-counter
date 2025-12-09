@@ -149,6 +149,7 @@ const ControlPanelPage: React.FC = () => {
     const [isListening, setIsListening] = useState(false);
     const [transcript, setTranscript] = useState('');
     const [interimTranscript, setInterimTranscript] = useState(''); // New state for interim results
+    const [recognitionError, setRecognitionError] = useState(''); // New state for errors
     const recognitionRef = useRef<any>(null);
 
     // Common state
@@ -206,6 +207,11 @@ const ControlPanelPage: React.FC = () => {
         recognition.lang = 'ja-JP';
         recognition.interimResults = true; // Enable interim results
 
+        recognition.onstart = () => {
+            console.log('Speech recognition started.');
+            setRecognitionError('');
+        };
+
         recognition.onresult = (event: any) => {
             let currentInterimTranscript = '';
             let finalTranscript = '';
@@ -224,10 +230,16 @@ const ControlPanelPage: React.FC = () => {
                 handleVoiceCommand(finalTranscript.trim());
             }
         };
+
+        recognition.onerror = (event: any) => {
+            console.error('Speech recognition error:', event.error);
+            setRecognitionError(`エラー: ${event.error}`);
+        };
         
         recognition.onend = () => {
+            console.log('Speech recognition ended.');
             if (isListening) {
-                recognition.start(); // Restart if it was manually stopped
+                recognition.start(); // Restart if it was intended to be listening
             }
         };
 
@@ -430,6 +442,7 @@ const ControlPanelPage: React.FC = () => {
                                 <Typography variant="caption" display="block" sx={{mt: 1, color: 'text.secondary'}}>
                                     「ナイス」→ ⭐, 「ありがとう」→ 💖, 「よっしゃ」→ ✨, 「やべぇ」→ 🫧
                                 </Typography>
+                                {recognitionError && <Typography variant="body2" color="error" sx={{mt: 1}}>音声認識エラー: {recognitionError}</Typography>}
                             </Paper>
                             <Paper elevation={12} sx={{ mb: 3, p: 3, bgcolor: 'background.paper', backdropFilter: 'blur(10px)', border: '1px solid rgba(255, 255, 255, 0.1)' }}>
                                 <Typography variant="h6" gutterBottom>🎨 フォント設定</Typography>
