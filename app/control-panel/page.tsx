@@ -148,6 +148,7 @@ const ControlPanelPage: React.FC = () => {
     // Voice recognition state
     const [isListening, setIsListening] = useState(false);
     const [transcript, setTranscript] = useState('');
+    const [interimTranscript, setInterimTranscript] = useState(''); // New state for interim results
     const recognitionRef = useRef<any>(null);
 
     // Common state
@@ -203,14 +204,24 @@ const ControlPanelPage: React.FC = () => {
         const recognition = new SpeechRecognition();
         recognition.continuous = true;
         recognition.lang = 'ja-JP';
-        recognition.interimResults = false;
+        recognition.interimResults = true; // Enable interim results
 
         recognition.onresult = (event: any) => {
-            const lastResult = event.results[event.results.length - 1];
-            if (lastResult.isFinal) {
-                const text = lastResult[0].transcript.trim();
-                setTranscript(text);
-                handleVoiceCommand(text);
+            let currentInterimTranscript = '';
+            let finalTranscript = '';
+
+            for (let i = event.resultIndex; i < event.results.length; i++) {
+                const transcriptPart = event.results[i][0].transcript;
+                if (event.results[i].isFinal) {
+                    finalTranscript += transcriptPart;
+                } else {
+                    currentInterimTranscript += transcriptPart;
+                }
+            }
+            setInterimTranscript(currentInterimTranscript);
+            if (finalTranscript) {
+                setTranscript(finalTranscript.trim());
+                handleVoiceCommand(finalTranscript.trim());
             }
         };
         
@@ -411,6 +422,9 @@ const ControlPanelPage: React.FC = () => {
                                     {isListening && <Chip label="音声認識中..." color="secondary" />}
                                 </Box>
                                 <Typography variant="body2" sx={{mt: 2, color: 'text.secondary'}}>
+                                    認識中: {interimTranscript || '...'}
+                                </Typography>
+                                <Typography variant="body2" sx={{mt: 1, color: 'text.secondary'}}>
                                     最終認識テキスト: {transcript || '...'}
                                 </Typography>
                                 <Typography variant="caption" display="block" sx={{mt: 1, color: 'text.secondary'}}>
