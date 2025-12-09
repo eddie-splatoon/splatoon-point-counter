@@ -1,46 +1,31 @@
 'use client';
 
-import React, { useState, useEffect, useRef } from 'react';
+import React from 'react';
 
 interface ScoreDisplayProps {
     scoreLabel: string;
-    scoreValue: number;
+    scoreValue: string; // number から string へ変更
     fontSize: number;
 }
 
 const ScoreDisplay: React.FC<ScoreDisplayProps> = ({ scoreLabel, scoreValue, fontSize }) => {
-    // ... (コードは前回提示したものと変更なし)
-    const [displayValue, setDisplayValue] = useState(scoreValue);
-    const [isAnimating, setIsAnimating] = useState(false);
-    const prevValueRef = useRef(scoreValue);
-
-    useEffect(() => {
-        if (prevValueRef.current !== scoreValue) {
-            setIsAnimating(true);
-            setDisplayValue(scoreValue);
-            const timer = setTimeout(() => { setIsAnimating(false); }, 500);
-            prevValueRef.current = scoreValue;
-            return () => clearTimeout(timer);
-        }
-    }, [scoreValue]);
-
     return (
-        <div className="flex items-center space-x-4 bg-gray-900/50 p-2 rounded-lg shadow-lg">
-            <span 
-                className="font-bold text-yellow-300 drop-shadow-md"
-                style={{ fontSize: `${fontSize * 0.7}px` }}
+        <div className="flex items-center space-x-4 bg-black/80 p-3 rounded-2xl shadow-2xl border-2 border-white/20 min-w-[400px]">
+            <span
+                className="font-bold text-yellow-300 drop-shadow-[0_2px_2px_rgba(0,0,0,0.8)] w-[150px] text-center"
+                style={{
+                    fontSize: `${fontSize * 0.6}px`,
+                    whiteSpace: 'pre-wrap', // 改行を有効にする
+                    lineHeight: 1.2,
+                }}
             >
                 {scoreLabel}
             </span>
             <span
-                className={`font-extrabold transition-all duration-500 ease-out ${
-                    isAnimating
-                        ? 'text-red-400 scale-125 drop-shadow-2xl'
-                        : 'text-white scale-100'
-                }`}
+                className="font-extrabold text-white drop-shadow-[0_2px_2px_rgba(0,0,0,0.8)]"
                 style={{ fontSize: `${fontSize}px` }}
             >
-                {displayValue.toLocaleString()}
+                {scoreValue}
             </span>
         </div>
     );
