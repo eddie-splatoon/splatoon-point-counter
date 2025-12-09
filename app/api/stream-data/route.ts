@@ -6,6 +6,13 @@ export interface MessagePreset {
     messages: { id: number; text: string }[];
 }
 
+// バーンダウンチャート用のデータ型
+export interface BurndownData {
+    label: string;
+    targetValue: number;
+    entries: number[]; // ポイントの履歴
+}
+
 export interface StreamData {
     scoreLabel: string;
     scoreValue: string;
@@ -20,6 +27,7 @@ export interface StreamData {
         name: string;
         timestamp: number;
     } | null;
+    burndown: BurndownData; // バーンダウンチャートのデータを追加
 }
 
 // データを一時的にインメモリで保持するストア (本番ではDBが必要です)
@@ -55,6 +63,11 @@ let streamData: StreamData = {
         {name: 'その他', messages: [{id: 1, text: 'チャンネル登録・高評価お願いします！'},]},
     ],
     lastEvent: null, // 初期値はnull
+    burndown: {
+        label: '目標まであと',
+        targetValue: 50000,
+        entries: [],
+    },
 };
 
 export async function GET() {
@@ -74,12 +87,19 @@ export async function POST(request: Request) {
             messagePresets,
             activePresetName,
             lastEvent, // lastEventを受け取る
+            burndown, // burndownを受け取る
         } = body;
 
-        // データ検証
+        // データ検証（簡易版）
         if (typeof scoreLabel !== 'string' || typeof scoreValue !== 'string' || typeof transitionDuration !== 'number' || typeof fontFamily !== 'string' || typeof fontSize !== 'number' || typeof activePresetName !== 'string' || !Array.isArray(messagePresets)) {
-            return NextResponse.json({message: 'Invalid data format.'}, {status: 400});
+            return NextResponse.json({message: 'Invalid data format for core data.'}, {status: 400});
         }
+        if (burndown) {
+            if (typeof burndown.label !== 'string' || typeof burndown.targetValue !== 'number' || !Array.isArray(burndown.entries)) {
+                return NextResponse.json({message: 'Invalid data format for burndown data.'}, {status: 400});
+            }
+        }
+
 
         // データを更新
         streamData = {
@@ -93,6 +113,7 @@ export async function POST(request: Request) {
             activePresetName: activePresetName ?? streamData.activePresetName,
             // lastEventがbodyに含まれていれば更新、そうでなければ元の値を維持
             lastEvent: 'lastEvent' in body ? lastEvent : streamData.lastEvent,
+            burndown: burndown ?? streamData.burndown,
         };
 
         return NextResponse.json(streamData);

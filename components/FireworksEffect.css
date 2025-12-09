@@ -1,0 +1,68 @@
+.fireworks {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    overflow: hidden;
+    z-index: 100;
+}
+
+.firework {
+    --color1: #ff40a0; /* Pink */
+    --color2: #32e675; /* Green */
+    --color3: #00aaff; /* Blue */
+    --color4: #ffcc00; /* Yellow */
+    --color5: #e06cfc; /* Purple - New color for variety */
+    --particle-size: 10px; /* Increased from 8px */
+    --particle-count: 15;
+    position: absolute;
+    width: var(--particle-size);
+    height: var(--particle-size);
+    border-radius: 50%;
+    opacity: 0;
+    animation: launch 5s ease-out forwards;
+    box-shadow: 
+        0 0 10px var(--color1), /* Adjusted for new particle size */
+        0 0 20px var(--color1); /* Adjusted */
+}
+
+@keyframes launch {
+    0% {
+        opacity: 0;
+        transform: translateY(100vh) scale(0.5);
+    }
+    50% {
+        opacity: 1;
+        transform: translateY(20vh) scale(1);
+    }
+    100% {
+        opacity: 0.6; /* Changed from 0.3 to 0.6 to further reduce transparency */
+        transform: translateY(10vh) scale(1.2);
+        box-shadow: 
+            /* Explosion particles - increased blur for prominence */
+            -100px 0 15px var(--color1), 100px 0 15px var(--color1),
+            0 -100px 15px var(--color1), 0 100px 15px var(--color1),
+            -70px -70px 15px var(--color2), 70px -70px 15px var(--color2),
+            -70px 70px 15px var(--color2), 70px 70px 15px var(--color2),
+            -120px 30px 15px var(--color3), 120px -30px 15px var(--color3),
+            -30px -120px 15px var(--color4), 30px 120px 15px var(--color4),
+            60px 90px 15px var(--color5), -90px -60px 15px var(--color5); /* Added new color particle */
+        width: calc(var(--particle-size) * 0.8); /* slightly larger burst particles */
+        height: calc(var(--particle-size) * 0.8);
+    }
+}
+
+/* Adjusted animation delays for 12 fireworks over 20 seconds */
+.firework:nth-child(1) { left: 20%; top: 50%; animation-delay: 0s; --color1: #ff40a0; --color2: #fff; }
+.firework:nth-child(2) { left: 80%; top: 40%; animation-delay: 1.5s; --color1: #32e675; --color2: #ffcc00; }
+.firework:nth-child(3) { left: 50%; top: 60%; animation-delay: 3s; --color1: #00aaff; --color2: #ff40a0; }
+.firework:nth-child(4) { left: 30%; top: 30%; animation-delay: 4.5s; --color1: #ffcc00; --color2: #32e675; }
+.firework:nth-child(5) { left: 70%; top: 70%; animation-delay: 6s; --color1: #fff; --color2: #00aaff; }
+.firework:nth-child(6) { left: 50%; top: 20%; animation-delay: 7.5s; --color1: #ff40a0; --color2: #32e675; }
+.firework:nth-child(7) { left: 15%; top: 65%; animation-delay: 9s; --color1: #00aaff; --color2: #ffcc00; }
+.firework:nth-child(8) { left: 85%; top: 55%; animation-delay: 10.5s; --color1: #32e675; --color2: #fff; }
+.firework:nth-child(9) { left: 40%; top: 35%; animation-delay: 12s; --color1: #ffcc00; --color2: #ff40a0; }
+.firework:nth-child(10) { left: 60%; top: 75%; animation-delay: 13.5s; --color1: #fff; --color2: #32e675; }
+.firework:nth-child(11) { left: 25%; top: 25%; animation-delay: 15s; --color1: #ff40a0; --color2: #00aaff; }
+.firework:nth-child(12) { left: 75%; top: 45%; animation-delay: 16.5s; --color1: #00aaff; --color2: #ffcc00; }
