@@ -1,0 +1,21 @@
+version: '3.8'
+
+services:
+  nextjs-app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "3000:3000"
+    volumes:
+      # Mount the current directory into the container for development,
+      # but exclude node_modules and .next to prevent overwriting
+      - .:/app
+      - /app/node_modules
+      - /app/.next
+    environment:
+      # Set NODE_ENV to production for a smaller and faster build in production environments
+      # You might want to remove this or set it to 'development' for local development if needed
+      - NODE_ENV=production
+    # If you want to automatically restart the container on failure
+    # restart: unless-stopped
