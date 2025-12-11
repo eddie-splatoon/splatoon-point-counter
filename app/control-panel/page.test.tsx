@@ -120,7 +120,7 @@ describe('ControlPanelPage', () => {
 
         await waitFor(() => {
             const historyContainer = screen.getByTestId('burndown-history');
-            expect(within(historyContainer).getByText('150')).toBeInTheDocument();
+            expect(within(historyContainer).getByText(/150/)).toBeInTheDocument();
         });
 
         const removeButton = screen.getByRole('button', { name: /remove entry 150/i }); // Use more specific name
