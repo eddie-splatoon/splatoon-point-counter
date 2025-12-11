@@ -122,8 +122,11 @@ const BurndownChart: React.FC<BurndownChartProps> = ({data}) => {
                     {label}
                 </p>
                 <p
-                   className={`${zeroStateColor}`} // Apply zero state color via tailwind
-                   style={{...baseRemainingStyle, ...animatedRemainingStyle}} // Apply base and animated styles
+                   style={{
+                       ...baseRemainingStyle,
+                       ...(hasReachedZero && !isAnimating ? { color: '#4CAF50' } : {}), // Tailwind 'text-green-400'
+                       ...animatedRemainingStyle,
+                   }}
                 >
                     {displayRemaining.toLocaleString()}
                 </p>
