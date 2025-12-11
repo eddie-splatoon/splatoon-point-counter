@@ -31,18 +31,24 @@
 export interface BurndownData {
     label: string;
     targetValue: number;
-    entries: number[]; // Point history
+    entries: {score: number; timestamp: number}[]; // ポイントの履歴
 }
 
 export interface StreamData {
     scoreLabel: string;
     scoreValue: string;
-    // ... other properties for fonts, messages, etc.
+    transitionEffect: string;
+    transitionDuration: number;
+    fontFamily: string;
+    fontSize: number;
+    messagePresets: MessagePreset[];
+    activePresetName: string;
     lastEvent: {
         name: string;
         timestamp: number;
     } | null;
-    burndown: BurndownData; // Data for the burndown chart
+    burndown: BurndownData; // バーンダウンチャートのデータを追加
+    revision: number; // For forcing re-renders in clients
 }
 ```
 

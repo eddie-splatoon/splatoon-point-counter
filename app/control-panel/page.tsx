@@ -501,10 +501,9 @@ const ControlPanelPage: React.FC = () => {
                                 {formData.burndown.entries.length === 0 ? (
                                     <Typography variant="body2" color="text.secondary" sx={{p: 1}}>履歴がありません</Typography>
                                 ) : (
-                                    formData.burndown.entries.map((entry) => (
+                                    formData.burndown.entries.map((entry, index) => (
                                         <Box key={entry.timestamp} sx={{display: 'flex', justifyContent: 'space-between', alignItems: 'center', p: 0.5, borderBottom: '1px dotted rgba(255,255,255,0.2)'}}>
-                                            <Typography variant="body1">{entry.score}</Typography>
-                                            <Typography variant="caption" color="text.secondary">{new Date(entry.timestamp).toLocaleString()}</Typography>
+                                            <Typography variant="body1">{index + 1} | {entry.score} | {new Date(entry.timestamp).toLocaleString('ja-JP', {year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false}).replace(/\//g, '/')}</Typography>
                                             <IconButton size="small" color="error" onClick={() => handleRemoveBurndownEntry(entry.timestamp)} aria-label={`remove entry ${entry.score}`}><RemoveCircleIcon fontSize="small"/></IconButton>
                                         </Box>
                                     ))
