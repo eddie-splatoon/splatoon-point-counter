@@ -81,7 +81,7 @@ describe('BurndownChart', () => {
     
     const remainingElement = screen.getByText('0');
     expect(remainingElement).toBeInTheDocument();
-    expect(remainingElement.className).toContain('text-green-400');
+    expect(remainingElement).toHaveStyle('color: rgb(76, 175, 80)'); // Check for the green color
     
     expect(screen.getByText('100%')).toBeInTheDocument();
   });
