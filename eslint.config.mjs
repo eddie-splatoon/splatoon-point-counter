@@ -51,6 +51,11 @@ const eslintConfig = defineConfig([
                     },
                 },
             ],
+            // インポート文を含む全ての波括弧 {} の内側にスペースを強制
+            "object-curly-spacing": [
+                "error",
+                "always" // { motion, AnimatePresence } のようにスペースを強制
+            ],
             // ... その他の import ルール ...
         },
     },
