@@ -91,7 +91,9 @@ const BurndownChart: React.FC<BurndownChartProps> = ({data}) => {
         fontSize: '58px',
         fontWeight: 'extrabold', // Added for consistency
         transition: 'all 0.3s ease-out',
-        textShadow: '0 0 2px rgba(0,0,0,0.8)' // Default subtle shadow
+        textShadow: '0 0 2px rgba(0,0,0,0.8)', // Default subtle shadow
+        opacity: 1, // Explicitly set initial opacity
+        color: 'white' // Explicitly set initial color to white
     };
     const animatedRemainingStyle = isAnimating ? {
         transform: 'scale(1.2)',
