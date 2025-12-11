@@ -1,6 +1,7 @@
-import { describe, it, expect, beforeEach } from 'vitest';
-import { GET, POST, getInitialStreamData, __TEST_ONLY_setStreamData, StreamData } from './route';
 import { NextRequest } from 'next/server';
+import { describe, it, expect, beforeEach } from 'vitest';
+
+import { GET, POST, getInitialStreamData, __TEST_ONLY_setStreamData, StreamData } from './route';
 
 // Reset the stream data before each test
 beforeEach(() => {

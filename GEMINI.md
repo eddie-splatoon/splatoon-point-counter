@@ -1,26 +1,28 @@
-# GEMINI Project Analysis: Splatoon Point Counter
+# GEMINI プロジェクト分析: スプラトゥーンポイントカウンター
 
-## Project Overview
+## プロジェクト概要
 
-This is a [Next.js](https://nextjs.org/) application built with TypeScript and the App Router. Its primary purpose is to function as a real-time data overlay system for live streaming, designed for use with software like OBS.
+このプロジェクトは、TypeScriptとApp Routerで構築された[Next.js](https://nextjs.org/)アプリケーションです。OBSのようなソフトウェアで使用するための、ライブストリーミング向けのリアルタイムデータオーバーレイシステムとして機能することを主な目的としています。
 
-The system has four main parts:
-1.  A **Control Panel** for the streamer to update scores and other data in real-time.
-2.  A **Score and Message Overlay** (`/obs-overlay`) that displays general scores and scrolling messages.
-3.  A **Burndown Chart Overlay** (`/burndown-overlay`) that displays progress towards a specific numerical goal.
-4.  A **Backend API** that manages a central data object and pushes updates to the overlays.
+システムは主に4つの部分で構成されています。
+1.  **コントロールパネル**: ストリーマーがリアルタイムでスコアやその他のデータを更新するためのUI。
+2.  **スコア＆メッセージオーバーレイ** (`/obs-overlay`): 一般的なスコアとスクロールメッセージを表示するオーバーレイ。
+3.  **バーンダウンチャートオーバーレイ** (`/burndown-overlay`): 特定の数値目標に対する進捗状況を表示するオーバーレイ。
+4.  **バックエンドAPI**: 中央のデータオブジェクトを管理し、オーバーレイに更新をプッシュします。
 
-## Core Technologies
+## コアテクノロジー
 
--   **Framework**: Next.js 14+ (App Router)
--   **Language**: TypeScript
--   **UI/Styling**: Material-UI (MUI) and Tailwind CSS.
--   **Real-time Communication**: The backend uses a simple in-memory store, updated via REST API calls from the control panel. The overlays poll the backend periodically to fetch the latest data.
--   **Browser APIs**: The [Web Speech API](https://developer.mozilla.org/en-US/docs/Web/API/Web_Speech_API) is used for the voice-to-effect feature.
+-   **フレームワーク**: Next.js 14+ (App Router)
+-   **言語**: TypeScript
+-   **UI/スタイリング**: Material-UI (MUI) と Tailwind CSS。
+-   **リアルタイム通信**: バックエンドはREST APIコールを通じてコントロールパネルから更新されるシンプルなインメモリストアを使用します。オーバーレイは定期的にバックエンドをポーリングして最新のデータを取得します。
+-   **ブラウザAPI**: [Web Speech API](https://developer.mozilla.org/en-US/docs/Web/API/Web_Speech_API) は、音声認識によるエフェクト機能に使用されます。
+-   **テスト**: Vitest と React Testing Library (RTL) が単体テストおよびコンポーネントテストに使用されます。
+-   **CI/CD**: GitHub Actions が Lint およびテストを実行する継続的インテグレーション（CI）ワークフローとして導入されています。
 
-## Data Model
+## データモデル
 
-The core data structure, `StreamData`, is defined in `/app/api/stream-data/route.ts`. It represents all information shared between the control panel and the overlays.
+コアデータ構造である `StreamData` は `/app/api/stream-data/route.ts` で定義されています。これはコントロールパネルとオーバーレイ間で共有されるすべての情報を表します。
 
 ```typescript
 // From /app/api/stream-data/route.ts
@@ -43,35 +45,82 @@ export interface StreamData {
 }
 ```
 
-## Key Directories and Files
+## 主要ディレクトリとファイル
 
 ### `/app`
-This directory contains the application's routes and core logic.
+このディレクトリには、アプリケーションのルートとコアロジックが含まれています。
 
 #### `/app/control-panel/page.tsx`
--   **Purpose**: The main UI for the streamer. It features a tabbed interface to manage different parts of the overlays.
-    -   **Score Display Tab**: For updating the main score label and value.
-    -   **Burndown Tab**: For managing the burndown chart's label, target value, and point history.
-    -   **Message Tab**: For controlling the scrolling messages on the main overlay.
-    -   **Common Settings Tab**: For global settings like font and font size, as well as enabling the **Voice-to-Effect** feature. This feature uses the Web Speech API to listen for keywords ("ナイス", "ありがとう", etc.) and trigger visual effects automatically.
+-   **目的**: ストリーマー向けの主要なUI。タブ形式のインターフェースで、オーバーレイのさまざまな部分を管理します。
+    -   **スコア表示タブ**: メインスコアのラベルと値を更新するため。
+    -   **バーンダウンタブ**: バーンダウンチャートのラベル、目標値、ポイント履歴を管理するため。
+    -   **メッセージタブ**: メインオーバーレイのスクロールメッセージを制御するため。
+    -   **共通設定タブ**: フォントやフォントサイズなどのグローバル設定、および**音声認識エフェクト**機能を有効にするため。この機能はWeb Speech APIを使用してキーワード（「ナイス」、「ありがとう」など）をリ聞き取り、視覚効果を自動的にトリガーします。
 
 #### `/app/obs-overlay/page.tsx`
--   **Purpose**: The main overlay for OBS. It displays the primary score and scrolling messages by fetching data from the backend. It also renders visual effects (`Heart`, `Star`, etc.) when triggered.
+-   **目的**: OBS向けの主要なオーバーレイ。バックエンドからデータをフェッチして、主要なスコアとスクロールメッセージを表示します。また、トリガーされたときに視覚効果（`Heart`、`Star`など）をレンダリングします。
 
 #### `/app/burndown-overlay/page.tsx`
--   **Purpose**: A dedicated overlay for the burndown chart. It has a 250x584 resolution and displays the progress towards a target, including a line chart and a progress bar.
--   **Features**: It triggers a `FireworksEffect` when the goal is reached (remaining points <= 0).
+-   **目的**: バーンダウンチャート専用のオーバーレイ。250x584の解像度で、目標に対する進捗状況を、折れ線グラフとプログレスバーを含めて表示します。
+-   **機能**: 目標達成時（残りポイントが0以下）に `FireworksEffect` をトリガーします。
 
 #### `/app/api/stream-data/route.ts`
--   **Purpose**: A server-side API route that manages the state of the `StreamData` object. It handles `GET` requests from the overlays and `POST` requests from the Control Panel.
+-   **目的**: `StreamData` オブジェクトの状態を管理するサーバーサイドAPIルート。オーバーレイからの `GET` リクエストとコントロールパネルからの `POST` リクエストを処理します。テストを容易にするために、初期データ (`getInitialStreamData`) とテスト用のデータ設定関数 (`__TEST_ONLY_setStreamData`) がエクスポートされています。
 
 ### `/components`
-This directory holds reusable React components.
+このディレクトリには、再利用可能なReactコンポーネントが格納されています。
 
--   `ScoreDisplay.tsx`: Renders the main score and label. Includes an animation when the score value changes.
--   `BurndownChart.tsx`: Renders the burndown chart, including the target, remaining value, a line chart visualization, and a burn-up progress bar.
--   `MessageScroller.tsx` / `RandomTipScroller.tsx`: Components for displaying scrolling text.
--   **Effect Components** (`HeartEffect.tsx`, `StarEffect.tsx`, `FireworksEffect.tsx`, etc.): Components responsible for rendering the visual effects on the overlays.
+-   `ScoreDisplay.tsx`: メインスコアとラベルをレンダリングします。スコア値が変更されたときにアニメーションを含みます。
+-   `BurndownChart.tsx`: 目標、残り値、折れ線グラフの可視化、バーンアッププログレスバーを含むバーンダウンチャートをレンダリングします。
+-   `MessageScroller.tsx` / `RandomTipScroller.tsx`: スクロールするテキストを表示するためのコンポーネント。
+-   **エフェクトコンポーネント** (`HeartEffect.tsx`、`StarEffect.tsx`、`FireworksEffect.tsx`など): オーバーレイで視覚効果をレンダリングする責任を負うコンポーネント。
+
+### テスト関連ファイル
+-   `vite.config.ts`: Vitestの設定ファイル。Reactプラグイン、JSDOM環境、テストファイルパターン、カバレッジプロバイダーなどを定義します。
+-   `vitest.setup.ts`: テスト実行前のセットアップファイル。`@testing-library/jest-dom`のインポート、`whatwg-fetch`の有効化、`next/navigation`のモックを行います。
+-   `**/*.test.{ts,tsx}`: コンポーネントやAPIルートのテストファイル。対象ファイルと同じディレクトリに配置されます。
+
+### CI/CD関連ファイル
+-   `.github/workflows/ci.yml`: GitHub ActionsのCI/Testワークフロー定義ファイル。`main`ブランチへのプッシュ、および`main`または`staging`ブランチをターゲットとするプルリクエスト時に、Lintとテストを実行します。
 
 ### `/public`
-This directory contains static assets, including images and the `tips.tsv` file used by the `RandomTipScroller`.
+このディレクトリには、画像や `RandomTipScroller` で使用される `tips.tsv` ファイルを含む静的アセットが含まれています。
+
+## 開発ワークフロー
+
+### テストコードの作成
+新機能の開発やバグ修正を行う際は、対象となる機能やコンポーネントに対応するテストコードを**常に一緒に作成**してください。
+テストコードは、コンポーネントと同じディレクトリに `[ComponentName].test.tsx` または `[route].test.ts` の形式で配置してください。
+これにより、コードの品質と信頼性を維持し、将来的な変更に対する安全性を高めます。
+
+## ESLintの規約とトラブルシューティング
+
+本プロジェクトでは、ESLintとTypeScript ESLintを使用してコードの品質と一貫性を保っています。開発中に遭遇する可能性のある一般的なESLintエラーと、それらへの対応方法を以下に示します。問題発生時の参考にしてください。
+
+### 共通のトラブルシューティング
+-   ESLintエラーが発生した場合は、まず `npm run lint -- --fix` を実行して自動修正を試みてください。多くの `import/order` や未使用変数などの問題はこれで解決します。
+
+### よくあるESLintエラーとその対応
+
+1.  **`import/order`**: インポート文の順序やグループに関するエラー。
+    -   **原因**: インポート文が定義された順序規則（builtin, external, internalなど）に従っていない、またはグループ間に空行がない場合に発生します。
+    -   **対応**: `npm run lint -- --fix` で自動修正されます。手動で修正する場合は、ESLintの設定（`eslint.config.mjs`）で定義されているグループ分けと改行規則に従ってください。
+
+2.  **`react-hooks/exhaustive-deps`**: `useEffect`、`useCallback`、`useMemo`などの依存関係配列に不足があるエラー。
+    -   **原因**: フック内で使用されている関数や変数が依存関係配列に含まれていないため、古い値がキャプチャされたり、不要な再実行が発生する可能性を示唆します。
+    -   **対応**:
+        -   原則として、ESLintの提案に従い、不足している依存関係を追加してください。
+        -   関数が依存関係に含まれる場合、その関数を `useCallback` でラップし、その `useCallback` の依存関係も正しく定義することで安定させます。本プロジェクトの `ControlPanelPage.tsx` における `getPayload`, `handleTriggerEffect`, `handleVoiceCommand` の修正がこれにあたります。
+        -   解決が難しい場合や、特定のパターンでパフォーマンス上の理由などから警告を抑制したい場合は、`// eslint-disable-next-line react-hooks/exhaustive-deps` を使用して無効化することができます。ただし、その理由をコメントで明確に記述してください。
+
+3.  **`react-hooks/set-state-in-effect`**: `useEffect`内で同期的に `setState` を呼び出しているエラー。
+    -   **原因**: `useEffect`内で直接 `setState` を呼び出すと、コンポーネントのレンダリングが連鎖的に発生し、パフォーマンスが低下する可能性があります。Reactのドキュメントでは、このようなパターンを避けることを推奨しています。
+    -   **対応**: 本プロジェクトでは、プロパティの変更に基づいてアニメーションを開始するなど、特定のUI動作のためにこのパターンを使用している箇所があります（例: `ScoreDisplay.tsx`, `BurndownChart.tsx`, 各種エフェクトコンポーネント）。このような正当なケースにおいては、`// eslint-disable-next-line react-hooks/set-state-in-effect` を使用して警告を抑制しています。抑制する場合は、その意図をコメントで明確に記述してください。
+
+4.  **`react-hooks/purity`**: `Math.random()` のような副作用のある関数をレンダリング中に呼び出しているエラー。
+    -   **原因**: レンダー関数は純粋であるべきであり、`Math.random()`のような関数を直接呼び出すと、予測不可能な再レンダリングや結果の不一致を引き起こす可能性があります。
+    -   **対応**: ランダムな値が必要な場合は、コンポーネントの初期化時、または`useEffect`内で一度だけ計算し、その値を状態やRefに保持して使用するようにコードをリファクタリングしてください。本プロジェクトでは、エフェクトコンポーネント（例: `BubbleEffect.tsx`, `HeartEffect.tsx`, `StarEffect.tsx`）の`motion.div` `animate`プロパティ内で発生し、アニメーションの初期化時にランダム値を決定するよう修正しました。
+
+5.  **`@typescript-eslint/ban-ts-comment`**: `@ts-ignore` の使用に関するエラー（または推奨事項）。
+    -   **原因**: `tsconfig.json`またはESLintの設定で、`@ts-ignore`の使用が制限されています。代わりに `@ts-expect-error` の使用が推奨されます。本プロジェクトでは、このルールが設定ファイル自体で構成上の問題を引き起こしたため、`eslint.config.mjs` で一時的に無効化しています。
+    -   **対応**: `@ts-ignore` を `@ts-expect-error` に置き換えてください。ブラウザAPIのモックなど、特定のテスト環境においてTypescriptの型推論が困難な場合に、一時的に `// @ts-expect-error` を使用することがあります。

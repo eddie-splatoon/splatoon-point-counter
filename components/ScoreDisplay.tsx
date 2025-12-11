@@ -1,6 +1,6 @@
 'use client';
 
-import React, {useState, useEffect, useRef} from 'react';
+import React, {useState, useEffect} from 'react';
 
 interface ScoreDisplayProps {
     scoreLabel: string;
@@ -11,19 +11,22 @@ interface ScoreDisplayProps {
 const ScoreDisplay: React.FC<ScoreDisplayProps> = ({scoreLabel, scoreValue, fontSize}) => {
     const [displayValue, setDisplayValue] = useState(scoreValue);
     const [isAnimating, setIsAnimating] = useState(false);
-    const prevValueRef = useRef(scoreValue);
 
     useEffect(() => {
-        if (prevValueRef.current !== scoreValue) {
+        // If the incoming prop is different from what's displayed, trigger animation.
+        if (scoreValue !== displayValue) {
+            // eslint-disable-next-line react-hooks/set-state-in-effect
             setIsAnimating(true);
+            // After the animation duration, update the display value to the new prop value
+            // and turn off the animation.
             const timer = setTimeout(() => {
-                setIsAnimating(false);
                 setDisplayValue(scoreValue);
+                setIsAnimating(false);
             }, 500); // Animation duration
-            prevValueRef.current = scoreValue;
+
             return () => clearTimeout(timer);
         }
-    }, [scoreValue]);
+    }, [scoreValue, displayValue]);
 
     const baseClasses = "font-extrabold drop-shadow-[0_2px_2px_rgba(0,0,0,0.8)] transition-all duration-500 ease-out";
     const animationClasses = isAnimating ? 'scale-125 text-red-400' : 'scale-100 text-white';
@@ -45,7 +48,9 @@ const ScoreDisplay: React.FC<ScoreDisplayProps> = ({scoreLabel, scoreValue, font
                 className={`${baseClasses} ${animationClasses}`}
                 style={{fontSize: `${fontSize}px`}}
             >
-                {isAnimating ? prevValueRef.current : displayValue}
+                {/* During animation, we show the old value (which is still in displayValue) */}
+                {/* After animation, displayValue is updated to the new scoreValue */}
+                {displayValue}
             </span>
         </div>
     );

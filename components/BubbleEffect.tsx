@@ -11,6 +11,7 @@ interface Bubble {
     size: number;
     duration: number;
     color: string; // 色を追加
+    finalX: number; // Add finalX for pure animation
 }
 
 interface BubbleEffectProps {
@@ -37,15 +38,18 @@ const BubbleEffect: React.FC<BubbleEffectProps> = ({trigger}) => {
             const count = 40;
 
             for (let i = 0; i < count; i++) {
+                const x = Math.random() * 100;
                 newBubbles.push({
                     id: Math.random(),
-                    x: Math.random() * 100,
+                    x: x,
                     y: 110, // 画面下からスタート
                     size: Math.random() * 40 + 20, // 20pxから60px
                     duration: Math.random() * 5 + 7, // 7秒から12秒
                     color: bubbleColors[Math.floor(Math.random() * bubbleColors.length)], // ランダムな色を割り当て
+                    finalX: x + (Math.random() - 0.5) * 30,
                 });
             }
+            // eslint-disable-next-line react-hooks/set-state-in-effect
             setBubbles(prev => [...prev, ...newBubbles]);
         }
     }, [trigger]);
@@ -66,7 +70,7 @@ const BubbleEffect: React.FC<BubbleEffectProps> = ({trigger}) => {
                     }}
                     animate={{
                         y: '-20vh',
-                        x: `${bubble.x + (Math.random() - 0.5) * 30}vw`, // 横に揺れる
+                        x: `${bubble.finalX}vw`, // 横に揺れる
                         opacity: 0,
                     }}
                     transition={{

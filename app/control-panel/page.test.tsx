@@ -1,8 +1,11 @@
 import { render, screen, waitFor, fireEvent, act } from '@testing-library/react';
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import axios from 'axios';
-import ControlPanelPage from './page';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+
 import { getInitialStreamData, StreamData } from '../api/stream-data/route';
+
+import ControlPanelPage from './page';
+
 
 // Mock axios
 vi.mock('axios');
@@ -20,15 +23,18 @@ class MockSpeechRecognition {
     lang = '';
     interimResults = false;
 }
-// @ts-ignore
+// @ts-expect-error Mocking browser-specific API for jsdom
 window.SpeechRecognition = MockSpeechRecognition;
-// @ts-ignore
+// @ts-expect-error Mocking browser-specific API for jsdom
 window.webkitSpeechRecognition = MockSpeechRecognition;
 
 
 // Mock next/image
 vi.mock('next/image', () => ({
-    default: (props) => <img {...props} alt={props.alt} />
+    default: (props) => (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img {...props} alt={props.alt} />
+    )
 }));
 
 

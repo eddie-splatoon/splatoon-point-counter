@@ -12,6 +12,7 @@ const FireworksEffect: React.FC<FireworksEffectProps> = ({trigger}) => {
 
     useEffect(() => {
         if (trigger) {
+            // eslint-disable-next-line react-hooks/set-state-in-effect
             setIsActive(true);
             const timer = setTimeout(() => setIsActive(false), 20000); // Animation duration to match CSS
             return () => clearTimeout(timer);

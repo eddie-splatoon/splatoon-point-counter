@@ -1,7 +1,9 @@
 import { render, screen, act } from '@testing-library/react';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import BurndownChart from './BurndownChart';
+
 import { BurndownData } from '@/app/api/stream-data/route';
+
+import BurndownChart from './BurndownChart';
 
 describe('BurndownChart', () => {
   beforeEach(() => {
@@ -78,10 +80,8 @@ describe('BurndownChart', () => {
     const newData: BurndownData = { ...baseData, entries: [...baseData.entries, 20000] };
     rerender(<BurndownChart data={newData} />);
     
-    // The component has a similar animation behavior to ScoreDisplay,
-    // it shows the *new* remaining value during animation.
-    const newRemaining = 50000 - 35000;
-    remainingElement = screen.getByText(newRemaining.toLocaleString());
+    // The OLD remaining value should be shown with animation
+    remainingElement = screen.getByText(initialRemaining.toLocaleString());
     expect(remainingElement.className).toContain('scale-125');
 
     // Fast-forward time
@@ -89,8 +89,11 @@ describe('BurndownChart', () => {
       vi.advanceTimersByTime(500);
     });
 
-    remainingElement = screen.getByText(newRemaining.toLocaleString());
-    expect(remainingElement.className).not.toContain('scale-125');
+    // The NEW value is now displayed, without animation
+    const newRemaining = 50000 - 35000;
+    const newRemainingElement = screen.getByText(newRemaining.toLocaleString());
+    expect(newRemainingElement.className).not.toContain('scale-125');
+    expect(screen.queryByText(initialRemaining.toLocaleString())).not.toBeInTheDocument();
   });
 
   it('renders an SVG chart with a path', () => {

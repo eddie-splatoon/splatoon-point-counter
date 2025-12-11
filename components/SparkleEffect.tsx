@@ -45,6 +45,7 @@ const SparkleEffect: React.FC<SparkleEffectProps> = ({trigger}) => {
                     initialRotation: Math.random() * 90,
                 });
             }
+            // eslint-disable-next-line react-hooks/set-state-in-effect
             setSparkles(newSparkles);
         }
     }, [trigger]);
