@@ -19,7 +19,7 @@ import {
 import {createTheme, ThemeProvider} from '@mui/material/styles';
 import axios from 'axios';
 import Image from 'next/image';
-import React, {useState, useEffect, useRef} from 'react';
+import React, {useState, useEffect, useRef, useMemo} from 'react';
 
 import {StreamData, MessagePreset} from '../api/stream-data/route';
 
@@ -187,6 +187,15 @@ const ControlPanelPage: React.FC = () => {
     const [messagePresets, setMessagePresets] = useState<MessagePreset[]>([]);
     const [activePresetName, setActivePresetName] = useState<string>('');
 
+    // Helper to parse burndown entries and calculate total
+    const { parsedEntries, totalEntries } = useMemo(() => {
+        const entries = burndownEntriesText.split('\n')
+                                         .map(line => Number(line.trim()))
+                                         .filter(n => !isNaN(n) && n > 0);
+        const total = entries.reduce((sum, current) => sum + current, 0);
+        return { parsedEntries: entries, totalEntries: total };
+    }, [burndownEntriesText]);
+
     // --- Effects ---
     useEffect(() => {
         if (typeof window !== 'undefined') {
@@ -304,7 +313,7 @@ const ControlPanelPage: React.FC = () => {
     };
     
     const getPayload = () => {
-        const burndownEntries = burndownEntriesText.split('\n').map(s => Number(s.trim())).filter(n => !isNaN(n) && n > 0);
+        const burndownEntries = parsedEntries;
         return {
             scoreLabel,
             scoreValue,
@@ -413,6 +422,24 @@ const ControlPanelPage: React.FC = () => {
                             <TextField label="フィールド名" value={burndownLabel} onChange={(e) => setBurndownLabel(e.target.value)} fullWidth margin="normal" variant="outlined" multiline rows={2} />
                             <TextField label="目標値" type="number" value={burndownTargetValue} onChange={(e) => setBurndownTargetValue(Number(e.target.value))} fullWidth margin="normal" variant="outlined" />
                             <TextField label="獲得ポイント履歴 (1行に1つ)" multiline rows={10} value={burndownEntriesText} onChange={(e) => setBurndownEntriesText(e.target.value)} fullWidth margin="normal" variant="outlined" helperText="試合で獲得したポイントを改行区切りで入力します。" />
+                            
+                            {/* New: Display line-by-line values and total */}
+                            <Box sx={{mt: 2, display: 'flex', gap: 2}}>
+                                <Box sx={{flex: 1, maxHeight: 200, overflowY: 'auto', p: 1, bgcolor: 'rgba(255, 255, 255, 0.03)', borderRadius: '4px'}}>
+                                    <Typography variant="body2" color="text.secondary" gutterBottom>入力値の詳細:</Typography>
+                                    {parsedEntries.map((value, index) => (
+                                        <Typography key={index} variant="body2">
+                                            {index + 1}: {value}
+                                        </Typography>
+                                    ))}
+                                </Box>
+                                <Box sx={{flex: 1, display: 'flex', flexDirection: 'column', justifyContent: 'center', alignItems: 'center', bgcolor: 'rgba(255, 255, 255, 0.03)', borderRadius: '4px', p: 1}}>
+                                    <Typography variant="h6" color="primary">合計</Typography>
+                                    <Typography variant="h4" color="text.primary" fontWeight="bold">
+                                        {totalEntries.toLocaleString()}
+                                    </Typography>
+                                </Box>
+                            </Box>
                         </Paper>
                     )}
 

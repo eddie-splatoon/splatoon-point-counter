@@ -16,6 +16,7 @@
 -   **言語**: TypeScript
 -   **UI/スタイリング**: Material-UI (MUI) と Tailwind CSS。
 -   **リアルタイム通信**: バックエンドはREST APIコールを通じてコントロールパネルから更新されるシンプルなインメモリストアを使用します。オーバーレイは定期的にバックエンドをポーリングして最新のデータを取得します。
+-   **MCPサーバー**: GitHubの公式MCPサーバーが利用されており、Geminiはこれと連携して機能を活用できます。
 -   **ブラウザAPI**: [Web Speech API](https://developer.mozilla.org/en-US/docs/Web/API/Web_Speech_API) は、音声認識によるエフェクト機能に使用されます。
 -   **テスト**: Vitest と React Testing Library (RTL) が単体テストおよびコンポーネントテストに使用されます。
 -   **CI/CD**: GitHub Actions が Lint およびテストを実行する継続的インテグレーション（CI）ワークフローとして導入されています。
