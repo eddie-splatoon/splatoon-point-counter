@@ -1,6 +1,6 @@
 import { render, screen, act } from '@testing-library/react';
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { format } from 'date-fns';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 
 import { BurndownData } from '@/app/api/stream-data/route';
 
