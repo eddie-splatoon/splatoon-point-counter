@@ -1,6 +1,6 @@
 import { render, screen, waitFor, fireEvent, act } from '@testing-library/react';
 import axios from 'axios';
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterAll, beforeAll } from 'vitest';
 
 import { getInitialStreamData, StreamData } from '../api/stream-data/route';
 
@@ -23,7 +23,7 @@ class MockSpeechRecognition {
     lang = '';
     interimResults = false;
 }
-    // @ts-expect-error: Cannot assign to 'location' because it is a read-only property in JSDOM.: SpeechRecognition is a browser-specific API not available in JSDOM.
+// @ts-expect-error: SpeechRecognition is a browser-specific API not available in JSDOM.
 window.SpeechRecognition = MockSpeechRecognition;
 // @ts-expect-error: SpeechRecognition is a browser-specific API not available in JSDOM.
 window.webkitSpeechRecognition = MockSpeechRecognition;
@@ -40,7 +40,7 @@ vi.mock('next/image', () => ({
 // Mock window.location.reload
 const originalLocation = window.location;
 beforeAll(() => {
-    // @ts-expect-error
+    // @ts-expect-error: Cannot assign to 'location' because it is a read-only property in JSDOM.
     delete window.location;
     window.location = { ...originalLocation, reload: vi.fn() };
 });

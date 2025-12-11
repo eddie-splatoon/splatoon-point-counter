@@ -27,7 +27,6 @@ import {getItem, setItem, removeItem} from '../../lib/localStorage';
 import {StreamData, MessagePreset} from '../api/stream-data/route';
 
 
-
 // --- Speech API Type Definitions ---
 interface SpeechRecognitionEvent {
     resultIndex: number;
@@ -193,7 +192,56 @@ const ControlPanelPage: React.FC = () => {
     // Message scroller temporary state
     const [currentMessage, setCurrentMessage] = useState<string>('');
 
-    // --- Initialization Effect ---
+    // Helper to parse burndown entries and calculate total
+    const {parsedEntries, totalEntries} = useMemo(() => {
+        const text = formData?.burndownEntriesText || '';
+        const entries = text.split('\n')
+            .map(line => Number(line.trim()))
+            .filter(n => !isNaN(n) && n > 0);
+        const total = entries.reduce((sum, current) => sum + current, 0);
+        return {parsedEntries: entries, totalEntries: total};
+    }, [formData?.burndownEntriesText]);
+    
+    const getPayload = useCallback(() => {
+        if (!formData) return {};
+        const burndownEntries = parsedEntries;
+        return {
+            scoreLabel: formData.scoreLabel,
+            scoreValue: formData.scoreValue,
+            transitionEffect: formData.transitionEffect,
+            transitionDuration: Number(formData.transitionDuration),
+            fontFamily: formData.fontFamily,
+            fontSize: Number(formData.fontSize),
+            messagePresets: formData.messagePresets,
+            activePresetName: formData.activePresetName,
+            burndown: {
+                label: formData.burndownLabel,
+                targetValue: Number(formData.burndownTargetValue),
+                entries: burndownEntries,
+            }
+        };
+    }, [formData, parsedEntries]);
+
+    const handleTriggerEffect = useCallback(async (effectName: string) => {
+        if (effectStatus === 'loading') return; // Prevent spamming
+        setEffectStatus('loading');
+        try {
+            const payload = {
+                ...getPayload(),
+                lastEvent: {name: effectName, timestamp: Date.now()},
+            };
+            const res = await axios.post('/api/stream-data', payload);
+            if (res.status === 200) setEffectStatus('success');
+            else setEffectStatus('error');
+        } catch {
+            setEffectStatus('error');
+        } finally {
+            setTimeout(() => setEffectStatus('idle'), 2000);
+        }
+    }, [effectStatus, getPayload]);
+    
+    // --- Effects ---
+    // Initialization Effect
     useEffect(() => {
         if (typeof window !== 'undefined') {
             setOrigin(window.location.origin);
@@ -232,36 +280,24 @@ const ControlPanelPage: React.FC = () => {
         }
     }, []);
 
-    // --- State Persistence Effect ---
+    // State Persistence Effect
     useEffect(() => {
         if (isInitialized && formData && !storageError) {
             setItem(LOCAL_STORAGE_KEY, formData);
         }
     }, [formData, isInitialized, storageError]);
 
-    // Helper to parse burndown entries and calculate total
-    const {parsedEntries, totalEntries} = useMemo(() => {
-        const text = formData?.burndownEntriesText || '';
-        const entries = text.split('\n')
-            .map(line => Number(line.trim()))
-            .filter(n => !isNaN(n) && n > 0);
-        const total = entries.reduce((sum, current) => sum + current, 0);
-        return {parsedEntries: entries, totalEntries: total};
-    }, [formData?.burndownEntriesText]);
-
-
     // Speech Recognition Effect
-    const handleVoiceCommand = useCallback(async (text: string) => {
+     const handleVoiceCommand = useCallback(async (text: string) => {
         const trigger = (effect: string) => handleTriggerEffect(effect);
         if (text.includes('ナイス')) await trigger('STAR');
         else if (text.includes('ありがとう')) await trigger('LOVE');
         else if (text.includes('よっしゃ')) await trigger('SPARKLE');
         else if (text.includes('やべぇ') || text.includes('やばい')) await trigger('BUBBLE');
-    }, []);
-
-
+    }, [handleTriggerEffect]);
+    
     useEffect(() => {
-        // @ts-expect-error SpeechRecognition is a browser-specific API
+        // @ts-expect-error: SpeechRecognition is a browser-specific API
         const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
         if (!SpeechRecognition) {
             console.warn("Speech Recognition API is not supported in this browser.");
@@ -294,7 +330,6 @@ const ControlPanelPage: React.FC = () => {
             setInterimTranscript(currentInterimTranscript);
             if (finalTranscript) {
                 setTranscript(finalTranscript.trim());
-                // eslint-disable-next-line react-hooks/exhaustive-deps
                 handleVoiceCommand(finalTranscript.trim());
             }
         };
@@ -303,7 +338,7 @@ const ControlPanelPage: React.FC = () => {
             console.error('Speech recognition error:', event.error);
             setRecognitionError(`エラー: ${event.error}`);
         };
-
+        
         recognition.onend = () => {
             console.log('Speech recognition ended.');
             if (isListening) {
@@ -316,7 +351,7 @@ const ControlPanelPage: React.FC = () => {
         return () => {
             recognition.stop();
         };
-    }, [isListening, handleVoiceCommand]); // Rerun this effect if isListening or handleVoiceCommand changes, to handle onend logic properly
+    }, [isListening, handleVoiceCommand]);
 
     // --- Handlers ---
     const updateFormData = (delta: Partial<FormData>) => {
@@ -346,45 +381,6 @@ const ControlPanelPage: React.FC = () => {
         );
         updateFormData({messagePresets: updatedPresets});
     };
-    const getPayload = useCallback(() => {
-        if (!formData) return {};
-        const burndownEntries = parsedEntries;
-        return {
-            scoreLabel: formData.scoreLabel,
-            scoreValue: formData.scoreValue,
-            transitionEffect: formData.transitionEffect,
-            transitionDuration: Number(formData.transitionDuration),
-            fontFamily: formData.fontFamily,
-            fontSize: Number(formData.fontSize),
-            messagePresets: formData.messagePresets,
-            activePresetName: formData.activePresetName,
-            burndown: {
-                label: formData.burndownLabel,
-                targetValue: Number(formData.burndownTargetValue),
-                entries: burndownEntries,
-            }
-        };
-<<<<<<< HEAD
-    }, [formData, parsedEntries]);
-
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    const handleTriggerEffect = useCallback(async (effectName: string) => {
-        if (effectStatus === 'loading') return; // Prevent spamming
-        setEffectStatus('loading');
-        try {
-            const payload = {
-                ...getPayload(),
-                lastEvent: {name: effectName, timestamp: Date.now()},
-            };
-            const res = await axios.post('/api/stream-data', payload);
-            if (res.status === 200) setEffectStatus('success');
-            else setEffectStatus('error');
-        } catch {
-            setEffectStatus('error');
-        } finally {
-            setTimeout(() => setEffectStatus('idle'), 2000);
-        }
-    }, [effectStatus, getPayload]);
 
     const handleSubmit = async () => {
         setStatus('loading');
@@ -411,20 +407,11 @@ const ControlPanelPage: React.FC = () => {
         }
         setIsListening(!isListening);
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    const handleVoiceCommand = useCallback(async (text: string) => {
-        const trigger = (effect: string) => handleTriggerEffect(effect);
-        if (text.includes('ナイス')) await trigger('STAR');
-        else if (text.includes('ありがとう')) await trigger('LOVE');
-        else if (text.includes('よっしゃ')) await trigger('SPARKLE');
-        else if (text.includes('やべぇ') || text.includes('やばい')) await trigger('BUBBLE');
-    }, [handleTriggerEffect]);
     
     const handleClearCache = () => {
         removeItem(LOCAL_STORAGE_KEY);
         window.location.reload();
     };
-
 
     if (!isInitialized || !formData) {
         return (
@@ -594,7 +581,7 @@ const ControlPanelPage: React.FC = () => {
                     </Box>
                 </Box>
                 
-                <Paper elevation={16} sx={{ position: 'fixed', bottom: 0, left: 0, right: 0, p: 2, zIndex: 10, bgcolor: 'rgba(18, 18, 18, 0.9)', backdropFilter: 'blur(10px)', borderTop: '1px solid rgba(255, 255, 255, 0.1)'}}>
+                <Paper elevation={16} sx={{ position: 'fixed', bottom: 0, left: 0, right: 0, p: 2, zIndex: 10, bgcolor: 'rgba(18, 18, 18, 0.9)', backdropFilter: 'blur(10px)', borderTop: '1px solid rgba(255, 255, 255, 0.1)'}}> 
                     <Box sx={{ maxWidth: 700, margin: 'auto' }}>
                         <Button variant="contained" color="primary" onClick={handleSubmit} disabled={status === 'loading'} fullWidth size="large" sx={{ p: 1.5, fontSize: '1rem' }}>
                             {status === 'loading' ? '更新中...' : 'OBSに反映 (データ送信)'}
