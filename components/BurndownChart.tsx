@@ -83,8 +83,8 @@ const BurndownChart: React.FC<BurndownChartProps> = ({data}) => {
         ];
     };
 
-    const baseRemainingClasses = "font-extrabold tracking-tighter drop-shadow-[0_2px_2px_rgba(0,0,0,0.8)] transition-all duration-500 ease-out";
-    const animationClasses = isAnimating ? 'scale-125 text-red-400' : 'scale-100';
+    const baseRemainingClasses = "font-extrabold tracking-tighter transition-all duration-500 ease-out";
+    const animationClasses = isAnimating ? 'scale-125 text-pink-500 drop-shadow-[0_0_8px_rgba(255,64,160,0.7)] opacity-70' : 'scale-100 drop-shadow-[0_2px_2px_rgba(0,0,0,0.8)] opacity-100';
     const zeroStateClasses = hasReachedZero && !isAnimating ? 'text-green-400' : 'text-white';
 
 
