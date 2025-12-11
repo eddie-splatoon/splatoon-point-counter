@@ -96,6 +96,27 @@ export interface StreamData {
 ### CI/CD関連ファイル
 -   `.github/workflows/ci.yml`: GitHub ActionsのCI/Testワークフロー定義ファイル。`main`ブランチへのプッシュ、および`main`または`staging`ブランチをターゲットとするプルリクエスト時に、Lintとテストを実行します。
 
+### Dockerでの起動
+`docker-compose` を使用して、アプリケーションをコンテナ化された環境でビルドおよび実行できます。
+
+1.  **Dockerイメージのビルド**:
+    プロジェクトのルートディレクトリで以下のコマンドを実行します。
+    ```bash
+    docker-compose build
+    ```
+2.  **アプリケーションの起動**:
+    ビルド後、以下のコマンドでアプリケーションを起動できます。
+    ```bash
+    docker-compose up
+    ```
+    アプリケーションは `http://localhost:3000` で利用可能になります。
+
+3.  **停止とクリーンアップ**:
+    アプリケーションを停止し、コンテナを削除するには、`docker-compose down` コマンドを使用します。
+    ```bash
+    docker-compose down
+    ```
+
 ### `/public`
 このディレクトリには、画像や `RandomTipScroller` で使用される `tips.tsv` ファイルを含む静的アセットが含まれています。
 
