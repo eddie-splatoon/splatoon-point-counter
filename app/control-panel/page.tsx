@@ -24,10 +24,7 @@ import React, {useState, useEffect, useRef, useMemo} from 'react';
 import {StreamData, MessagePreset} from '../api/stream-data/route';
 
 
-interface MessageItem {
-    id: number;
-    text: string;
-}
+
 
 // --- Speech API Type Definitions ---
 interface SpeechRecognitionEvent {
@@ -226,7 +223,7 @@ const ControlPanelPage: React.FC = () => {
             }
         };
         fetchInitialData();
-    }, []);
+    }, [handleTriggerEffect]); // Include handleTriggerEffect in the dependency array
 
     // Speech Recognition Effect
      
@@ -285,7 +282,7 @@ const ControlPanelPage: React.FC = () => {
         return () => {
             recognition.stop();
         };
-    }, [isListening]); // Rerun this effect if isListening changes, to handle onend logic properly
+    }, [isListening, handleVoiceCommand]); // Rerun this effect if isListening or handleVoiceCommand changes, to handle onend logic properly
 
     // --- Handlers ---
     const updateActiveMessages = (updatedMessages: MessageItem[]) => {
@@ -312,7 +309,8 @@ const ControlPanelPage: React.FC = () => {
         updateActiveMessages(updatedMessages);
     };
     
-    const getPayload = () => {
+
+    const getPayload = useCallback(() => {
         const burndownEntries = parsedEntries;
         return {
             scoreLabel,
@@ -329,10 +327,12 @@ const ControlPanelPage: React.FC = () => {
                 entries: burndownEntries,
             }
         };
-    };
+    }, [scoreLabel, scoreValue, transitionEffect, transitionDuration, fontFamily, fontSize, messagePresets, activePresetName, burndownLabel, burndownTargetValue, parsedEntries]);
 
-    const handleTriggerEffect = async (effectName: string) => {
-        if (effectStatus === 'loading') return; // Prevent spamming
+
+
+    const handleTriggerEffect = useCallback(async (effectName: string) => {
+        if (effectStatus === 'loading') return;
         setEffectStatus('loading');
         try {
             const payload = {
@@ -347,7 +347,8 @@ const ControlPanelPage: React.FC = () => {
         } finally {
             setTimeout(() => setEffectStatus('idle'), 2000);
         }
-    };
+    }, [effectStatus, getPayload]);
+
 
     const handleSubmit = async () => {
         setStatus('loading');
@@ -375,17 +376,14 @@ const ControlPanelPage: React.FC = () => {
         setIsListening(!isListening);
     };
 
-    const handleVoiceCommand = (text: string) => {
-        if (text.includes('ナイス')) {
-            handleTriggerEffect('STAR');
-        } else if (text.includes('ありがとう')) {
-            handleTriggerEffect('LOVE');
-        } else if (text.includes('よっしゃ')) {
-            handleTriggerEffect('SPARKLE');
-        } else if (text.includes('やべぇ') || text.includes('やばい')) {
-            handleTriggerEffect('BUBBLE');
-        }
-    };
+
+    const handleVoiceCommand = useCallback(async (text: string) => {
+        const trigger = (effect: string) => handleTriggerEffect(effect);
+        if (text.includes('ナイス')) await trigger('STAR');
+        else if (text.includes('ありがとう')) await trigger('LOVE');
+        else if (text.includes('よっしゃ')) await trigger('SPARKLE');
+        else if (text.includes('やべぇ') || text.includes('やばい')) await trigger('BUBBLE');
+    }, [handleTriggerEffect]);
 
     return (
         <ThemeProvider theme={darkTheme}>
