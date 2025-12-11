@@ -1,15 +1,15 @@
 'use client';
 
-import React, { useEffect, useState } from 'react';
 import axios from 'axios';
-import { motion, AnimatePresence } from 'motion/react';
+import {motion, AnimatePresence} from 'motion/react';
+import React, {useEffect, useState} from 'react';
 
 interface RandomTipScrollerProps {
     fontSize: number;
     intervalSeconds: number;
 }
 
-const RandomTipScroller: React.FC<RandomTipScrollerProps> = ({ fontSize, intervalSeconds }) => {
+const RandomTipScroller: React.FC<RandomTipScrollerProps> = ({fontSize, intervalSeconds}) => {
     const [tips, setTips] = useState<string[]>([]);
     const [currentIndex, setCurrentIndex] = useState(0);
 
@@ -51,14 +51,15 @@ const RandomTipScroller: React.FC<RandomTipScrollerProps> = ({ fontSize, interva
     const currentTip = tips[currentIndex] ?? '';
 
     return (
-        <div className="relative overflow-hidden w-full flex items-center justify-center" style={{ height: `${fontSize * 1.5}px` }}>
+        <div className="relative overflow-hidden w-full flex items-center justify-center"
+             style={{height: `${fontSize * 1.5}px`}}>
             <AnimatePresence mode="wait">
                 <motion.p
                     key={currentIndex}
-                    initial={{ opacity: 0, y: 10 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    exit={{ opacity: 0, y: -10 }}
-                    transition={{ duration: 0.5, ease: 'easeInOut' }}
+                    initial={{opacity: 0, y: 10}}
+                    animate={{opacity: 1, y: 0}}
+                    exit={{opacity: 0, y: -10}}
+                    transition={{duration: 0.5, ease: 'easeInOut'}}
                     className="absolute font-medium text-white/80 drop-shadow-lg"
                     style={{
                         fontSize: `${fontSize}px`,

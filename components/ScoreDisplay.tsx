@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect, useRef } from 'react';
+import React, {useState, useEffect, useRef} from 'react';
 
 interface ScoreDisplayProps {
     scoreLabel: string;
@@ -8,7 +8,7 @@ interface ScoreDisplayProps {
     fontSize: number;
 }
 
-const ScoreDisplay: React.FC<ScoreDisplayProps> = ({ scoreLabel, scoreValue, fontSize }) => {
+const ScoreDisplay: React.FC<ScoreDisplayProps> = ({scoreLabel, scoreValue, fontSize}) => {
     const [displayValue, setDisplayValue] = useState(scoreValue);
     const [isAnimating, setIsAnimating] = useState(false);
     const prevValueRef = useRef(scoreValue);
@@ -24,12 +24,13 @@ const ScoreDisplay: React.FC<ScoreDisplayProps> = ({ scoreLabel, scoreValue, fon
             return () => clearTimeout(timer);
         }
     }, [scoreValue]);
-    
+
     const baseClasses = "font-extrabold drop-shadow-[0_2px_2px_rgba(0,0,0,0.8)] transition-all duration-500 ease-out";
     const animationClasses = isAnimating ? 'scale-125 text-red-400' : 'scale-100 text-white';
 
     return (
-        <div className="flex items-center space-x-4 bg-black/80 p-3 rounded-2xl shadow-2xl border-2 border-white/20 min-w-[400px]">
+        <div
+            className="flex items-center space-x-4 bg-black/80 p-3 rounded-2xl shadow-2xl border-2 border-white/20 min-w-[400px]">
             <span
                 className="font-bold text-yellow-300 drop-shadow-[0_2px_2px_rgba(0,0,0,0.8)] w-[150px] text-center"
                 style={{
@@ -42,7 +43,7 @@ const ScoreDisplay: React.FC<ScoreDisplayProps> = ({ scoreLabel, scoreValue, fon
             </span>
             <span
                 className={`${baseClasses} ${animationClasses}`}
-                style={{ fontSize: `${fontSize}px` }}
+                style={{fontSize: `${fontSize}px`}}
             >
                 {isAnimating ? prevValueRef.current : displayValue}
             </span>

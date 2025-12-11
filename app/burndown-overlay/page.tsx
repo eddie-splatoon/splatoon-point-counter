@@ -1,10 +1,11 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
 import axios from 'axios';
-import { StreamData } from '../api/stream-data/route';
+import React, { useState, useEffect } from 'react';
+
 import BurndownChart from '../../components/BurndownChart';
 import FireworksEffect from '../../components/FireworksEffect';
+import { StreamData } from '../api/stream-data/route';
 import '../../components/FireworksEffect.css';
 
 const POLLING_INTERVAL = 2000; // 2秒

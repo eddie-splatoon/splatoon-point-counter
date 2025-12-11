@@ -1,7 +1,7 @@
 'use client';
 
-import React, { useState, useEffect, useRef } from 'react';
-import { motion } from 'framer-motion';
+import {motion} from 'framer-motion';
+import React, {useState, useEffect, useRef} from 'react';
 
 // Bubbleの型定義に色を追加
 interface Bubble {
@@ -26,7 +26,7 @@ const bubbleColors = [
     'rgba(180, 200, 250, 0.6)', // Light Steel Blue
 ];
 
-const BubbleEffect: React.FC<BubbleEffectProps> = ({ trigger }) => {
+const BubbleEffect: React.FC<BubbleEffectProps> = ({trigger}) => {
     const [bubbles, setBubbles] = useState<Bubble[]>([]);
     const lastTriggerRef = useRef(trigger);
 

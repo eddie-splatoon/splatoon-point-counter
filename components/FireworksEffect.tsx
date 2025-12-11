@@ -1,13 +1,13 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, {useState, useEffect} from 'react';
 import './FireworksEffect.css';
 
 interface FireworksEffectProps {
     trigger: boolean;
 }
 
-const FireworksEffect: React.FC<FireworksEffectProps> = ({ trigger }) => {
+const FireworksEffect: React.FC<FireworksEffectProps> = ({trigger}) => {
     const [isActive, setIsActive] = useState(false);
 
     useEffect(() => {

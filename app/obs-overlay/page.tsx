@@ -1,15 +1,16 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
 import axios from 'axios';
-import ScoreDisplay from '../../components/ScoreDisplay';
+import React, {useState, useEffect} from 'react';
+
+import BubbleEffect from '../../components/BubbleEffect';
+import HeartEffect from '../../components/HeartEffect';
 import MessageScroller from '../../components/MessageScroller';
 import RandomTipScroller from '../../components/RandomTipScroller';
-import HeartEffect from '../../components/HeartEffect';
-import StarEffect from '../../components/StarEffect';
+import ScoreDisplay from '../../components/ScoreDisplay';
 import SparkleEffect from '../../components/SparkleEffect';
-import BubbleEffect from '../../components/BubbleEffect';
-import { StreamData } from '../api/stream-data/route';
+import StarEffect from '../../components/StarEffect';
+import {StreamData} from '../api/stream-data/route';
 
 const POLLING_INTERVAL = 2000; // 2秒
 
@@ -43,7 +44,8 @@ const ObsOverlayPage: React.FC = () => {
     }, []);
 
     if (!data) {
-        return <div className="w-[1450px] h-[160px] bg-black/70 flex items-center justify-center text-white">Loading Overlay...</div>;
+        return <div className="w-[1450px] h-[160px] bg-black/70 flex items-center justify-center text-white">Loading
+            Overlay...</div>;
     }
 
     const activePreset = data.messagePresets.find(p => p.name === data.activePresetName);
@@ -59,13 +61,13 @@ const ObsOverlayPage: React.FC = () => {
             }}
         >
             {/* Effect Components */}
-            <HeartEffect trigger={data.lastEvent?.name === 'LOVE' ? data.lastEvent.timestamp : undefined} />
-            <StarEffect trigger={data.lastEvent?.name === 'STAR' ? data.lastEvent.timestamp : undefined} />
-            <SparkleEffect trigger={data.lastEvent?.name === 'SPARKLE' ? data.lastEvent.timestamp : undefined} />
-            <BubbleEffect trigger={data.lastEvent?.name === 'BUBBLE' ? data.lastEvent.timestamp : undefined} />
+            <HeartEffect trigger={data.lastEvent?.name === 'LOVE' ? data.lastEvent.timestamp : undefined}/>
+            <StarEffect trigger={data.lastEvent?.name === 'STAR' ? data.lastEvent.timestamp : undefined}/>
+            <SparkleEffect trigger={data.lastEvent?.name === 'SPARKLE' ? data.lastEvent.timestamp : undefined}/>
+            <BubbleEffect trigger={data.lastEvent?.name === 'BUBBLE' ? data.lastEvent.timestamp : undefined}/>
 
-            <ScoreDisplay scoreLabel={data.scoreLabel} scoreValue={data.scoreValue} fontSize={data.fontSize} />
-            
+            <ScoreDisplay scoreLabel={data.scoreLabel} scoreValue={data.scoreValue} fontSize={data.fontSize}/>
+
             <div className="flex flex-col justify-center h-full w-full max-w-[1000px]">
                 <MessageScroller
                     messages={activeMessages}
