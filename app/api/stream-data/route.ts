@@ -77,6 +77,14 @@ export async function GET() {
 export async function POST(request: Request) {
     try {
         const body = await request.json();
+
+        // Handle specific actions first
+        if (body.action === 'reset_burndown_history') {
+            streamData.burndown.entries = [];
+            // Return the updated data immediately
+            return NextResponse.json(streamData);
+        }
+
         const {
             scoreLabel,
             scoreValue,

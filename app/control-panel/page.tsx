@@ -371,6 +371,27 @@ const ControlPanelPage: React.FC = () => {
             handleTriggerEffect('BUBBLE');
         }
     };
+
+    const handleResetBurndownHistory = async () => {
+        setStatus('loading');
+        try {
+            const res = await axios.post('/api/stream-data', {
+                action: 'reset_burndown_history',
+            });
+
+            if (res.status === 200) {
+                const updatedData = res.data as StreamData;
+                setBurndownEntriesText(updatedData.burndown.entries.join('\n'));
+                setStatus('success');
+            } else {
+                setStatus('error');
+            }
+        } catch (error) {
+            setStatus('error');
+        } finally {
+            setTimeout(() => setStatus('idle'), 2000);
+        }
+    };
     
     const StatusIndicator = () => {
         switch (status) {
@@ -421,6 +442,11 @@ const ControlPanelPage: React.FC = () => {
                             <TextField label="フィールド名" value={burndownLabel} onChange={(e) => setBurndownLabel(e.target.value)} fullWidth margin="normal" variant="outlined" multiline rows={2} />
                             <TextField label="目標値" type="number" value={burndownTargetValue} onChange={(e) => setBurndownTargetValue(Number(e.target.value))} fullWidth margin="normal" variant="outlined" />
                             <TextField label="獲得ポイント履歴 (1行に1つ)" multiline rows={10} value={burndownEntriesText} onChange={(e) => setBurndownEntriesText(e.target.value)} fullWidth margin="normal" variant="outlined" helperText="試合で獲得したポイントを改行区切りで入力します。" />
+                            <Box sx={{mt: 2, display: 'flex', justifyContent: 'flex-end'}}>
+                                <Button variant="outlined" color="error" onClick={handleResetBurndownHistory}>
+                                    履歴をリセット
+                                </Button>
+                            </Box>
                         </Paper>
                     )}
 
