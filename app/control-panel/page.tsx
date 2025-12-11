@@ -129,6 +129,7 @@ const darkTheme = createTheme({
 const ControlPanelPage: React.FC = () => {
     // General state
     const [status, setStatus] = useState<'idle' | 'loading' | 'success' | 'error'>('idle');
+    const [isInitialDataLoaded, setIsInitialDataLoaded] = useState(false);
     const [effectStatus, setEffectStatus] = useState<'idle' | 'loading' | 'success' | 'error'>('idle');
     const [origin, setOrigin] = useState<string>('');
     const [activeTab, setActiveTab] = useState('score');
@@ -187,10 +188,31 @@ const ControlPanelPage: React.FC = () => {
                 }
             } catch (e) {
                 console.error("Failed to fetch initial data", e);
+            } finally {
+                setIsInitialDataLoaded(true);
             }
         };
         fetchInitialData();
     }, []);
+
+    // Debounced auto-update effect
+    useEffect(() => {
+        if (!isInitialDataLoaded) {
+            return;
+        }
+
+        const handler = setTimeout(() => {
+            handleSubmit();
+        }, 500); // 500ms debounce
+
+        return () => {
+            clearTimeout(handler);
+        };
+    }, [
+        scoreLabel, scoreValue, burndownLabel, burndownTargetValue, 
+        burndownEntriesText, fontFamily, fontSize, messagePresets, 
+        activePresetName, transitionEffect, transitionDuration, isInitialDataLoaded
+    ]);
 
     // Speech Recognition Effect
     useEffect(() => {
@@ -325,7 +347,7 @@ const ControlPanelPage: React.FC = () => {
         } catch (error) {
             setStatus('error');
         } finally {
-            setTimeout(() => setStatus('idle'), 3000);
+            setTimeout(() => setStatus('idle'), 2000);
         }
     };
 
@@ -349,6 +371,19 @@ const ControlPanelPage: React.FC = () => {
             handleTriggerEffect('BUBBLE');
         }
     };
+    
+    const StatusIndicator = () => {
+        switch (status) {
+            case 'loading':
+                return <Chip label="保存中..." size="small" sx={{backgroundColor: 'rgba(255, 165, 0, 0.3)', color: 'white'}}/>;
+            case 'success':
+                return <Chip label="✓ 保存済み" size="small" sx={{backgroundColor: 'rgba(50, 230, 117, 0.3)', color: 'white'}}/>;
+            case 'error':
+                return <Chip label="✗ 保存エラー" size="small" color="error" variant="outlined"/>;
+            default:
+                return null;
+        }
+    };
 
     return (
         <ThemeProvider theme={darkTheme}>
@@ -356,12 +391,13 @@ const ControlPanelPage: React.FC = () => {
                 <Box sx={{position: 'absolute', top: '-200px', left: '-200px', width: '500px', height: '500px', bgcolor: 'primary.main', borderRadius: '50%', filter: 'blur(150px)', opacity: 0.3}}/>
                 <Box sx={{position: 'absolute', bottom: '-250px', right: '-250px', width: '600px', height: '600px', bgcolor: 'secondary.main', borderRadius: '50%', filter: 'blur(150px)', opacity: 0.3}}/>
                 
-                <Box sx={{p: 4, maxWidth: 700, margin: 'auto', position: 'relative', zIndex: 1, pb: '120px'}}>
+                <Box sx={{p: 4, maxWidth: 700, margin: 'auto', position: 'relative', zIndex: 1, pb: '60px'}}>
                     <Box sx={{display: 'flex', alignItems: 'center', gap: 2, mb: 2}}>
                         <Image src="/favicon.svg" alt="icon" width={40} height={40}/>
                         <Typography variant="h4" component="h1" gutterBottom sx={{mb: 0, color: 'text.primary'}}>
                             配信オーバーレイ設定パネル
                         </Typography>
+                        <StatusIndicator />
                     </Box>
 
                     <Tabs value={activeTab} onChange={(e, newValue) => setActiveTab(newValue)} centered sx={{mb: 3}}>
@@ -472,15 +508,6 @@ const ControlPanelPage: React.FC = () => {
                     </Box>
                 </Box>
                 
-                <Paper elevation={16} sx={{ position: 'fixed', bottom: 0, left: 0, right: 0, p: 2, zIndex: 10, bgcolor: 'rgba(18, 18, 18, 0.9)', backdropFilter: 'blur(10px)', borderTop: '1px solid rgba(255, 255, 255, 0.1)'}}>
-                    <Box sx={{ maxWidth: 700, margin: 'auto' }}>
-                        <Button variant="contained" color="primary" onClick={handleSubmit} disabled={status === 'loading'} fullWidth size="large" sx={{ p: 1.5, fontSize: '1rem' }}>
-                            {status === 'loading' ? '更新中...' : 'OBSに反映 (データ送信)'}
-                        </Button>
-                        {status === 'success' && (<Typography color="success.main" align="center" sx={{mt: 1}}>✅ データを更新しました！OBS画面に反映されます。</Typography>)}
-                        {status === 'error' && (<Typography color="error.main" align="center" sx={{mt: 1}}>❌ 更新に失敗しました。サーバー/APIを確認してください。</Typography>)}
-                    </Box>
-                </Paper>
             </Box>
         </ThemeProvider>
     );
