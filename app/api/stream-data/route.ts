@@ -31,7 +31,7 @@ export interface StreamData {
 }
 
 // データを一時的にインメモリで保持するストア (本番ではDBが必要です)
-let streamData: StreamData = {
+export const getInitialStreamData = (): StreamData => ({
     scoreLabel: '現在の評価',
     scoreValue: '400+',
     transitionEffect: 'fade',
@@ -68,7 +68,18 @@ let streamData: StreamData = {
         targetValue: 50000,
         entries: [],
     },
-};
+});
+
+let streamData: StreamData = getInitialStreamData();
+
+/**
+ * **FOR TESTING PURPOSES ONLY**
+ * Overwrites the current in-memory streamData object.
+ * @param data The data to set.
+ */
+export function __TEST_ONLY_setStreamData(data: StreamData) {
+    streamData = data;
+}
 
 export async function GET() {
     return NextResponse.json(streamData);
