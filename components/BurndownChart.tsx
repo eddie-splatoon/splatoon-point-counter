@@ -1,5 +1,6 @@
 'use client';
 
+import { format } from 'date-fns';
 import React, {useState, useEffect} from 'react';
 
 import {BurndownData} from '@/app/api/stream-data/route';
@@ -10,8 +11,11 @@ interface BurndownChartProps {
 
 const BurndownChart: React.FC<BurndownChartProps> = ({data}) => {
     const {label, targetValue, entries} = data;
+    
+    // Sort entries by timestamp to ensure chronological order
+    const sortedEntries = [...entries].sort((a, b) => a.timestamp - b.timestamp);
 
-    const totalEarned = entries.reduce((sum, current) => sum + current, 0);
+    const totalEarned = sortedEntries.reduce((sum, current) => sum + current.score, 0);
     let remaining = targetValue - totalEarned;
     if (remaining < 0) {
         remaining = 0;
@@ -22,50 +26,62 @@ const BurndownChart: React.FC<BurndownChartProps> = ({data}) => {
     const [isAnimating, setIsAnimating] = useState(false);
 
     useEffect(() => {
-        // If the incoming calculated value is different from what's displayed, trigger animation.
         if (remaining !== displayRemaining) {
             // eslint-disable-next-line react-hooks/set-state-in-effect
             setIsAnimating(true);
-            // After the animation duration, update the display value to the new calculated value
-            // and turn off the animation.
             const timer = setTimeout(() => {
                 setDisplayRemaining(remaining);
                 setIsAnimating(false);
-            }, 500); // Animation duration
+            }, 500); 
 
             return () => clearTimeout(timer);
         }
     }, [remaining, displayRemaining]);
 
-
-    // Burn-up percentage
     const earnedPercentage = targetValue > 0 ? (totalEarned / targetValue) * 100 : 100;
 
-    // SVG Line Chart Data Calculation
-    const chartWidth = 200;
-    const chartHeight = 100;
-    const points = [targetValue, ...entries].reduce((acc, entry, index) => {
-        if (index === 0) {
-            acc.push(targetValue);
-            return acc;
-        }
-        const lastValue = acc[acc.length - 1];
-        const nextValue = lastValue - entry;
+    // --- SVG Chart Calculations ---
+    const padding = { top: 5, right: 5, bottom: 20, left: 45 };
+    const chartWidth = 250 - padding.left - padding.right;
+    const chartHeight = 100 - padding.top - padding.bottom;
+    
+    const points = sortedEntries.reduce((acc, entry) => {
+        const lastValue = acc.length > 0 ? acc[acc.length - 1] : targetValue;
+        const nextValue = lastValue - entry.score;
         acc.push(nextValue < 0 ? 0 : nextValue);
         return acc;
-    }, [] as number[]);
+    }, [targetValue] as number[]);
 
     const maxDataPoints = Math.max(1, points.length - 1);
-    const pointToSvgPath = (points: number[]) => {
-        if (points.length === 0) return "M 0,0";
-        return points.map((point, index) => {
+    const pointToSvgPath = (p: number[]) => {
+        if (p.length === 0) return "M 0,0";
+        return p.map((point, index) => {
             const x = (index / maxDataPoints) * chartWidth;
             const y = chartHeight - (point / targetValue) * chartHeight;
             return `${index === 0 ? 'M' : 'L'} ${x},${y}`;
         }).join(' ');
     };
-
     const chartPath = pointToSvgPath(points);
+
+    // --- Axis Calculations ---
+    const yAxisLabels = [
+        { value: targetValue, y: 0 },
+        { value: targetValue / 2, y: chartHeight / 2 },
+        { value: 0, y: chartHeight },
+    ];
+
+    const xAxisLabels = () => {
+        if (sortedEntries.length < 2) return [];
+        const first = sortedEntries[0].timestamp;
+        const last = sortedEntries[sortedEntries.length - 1].timestamp;
+        const middle = first + (last - first) / 2;
+        
+        return [
+            { value: format(new Date(first), 'HH:mm:ss'), x: 0 },
+            { value: format(new Date(middle), 'HH:mm:ss'), x: chartWidth / 2 },
+            { value: format(new Date(last), 'HH:mm:ss'), x: chartWidth },
+        ];
+    };
 
     const baseRemainingClasses = "font-extrabold tracking-tighter drop-shadow-[0_2px_2px_rgba(0,0,0,0.8)] transition-all duration-500 ease-out";
     const animationClasses = isAnimating ? 'scale-125 text-red-400' : 'scale-100';
@@ -97,14 +113,24 @@ const BurndownChart: React.FC<BurndownChartProps> = ({data}) => {
 
             {/* Line Chart */}
             <div className="w-full p-2 rounded-lg mt-2"
-                 style={{height: chartHeight, backgroundColor: 'rgba(0, 0, 0, 0.5)'}}>
-                <svg viewBox={`0 0 ${chartWidth} ${chartHeight}`} width="100%" height="100%">
-                    <path d={chartPath} stroke="#32E675" strokeWidth="4" fill="none" strokeLinejoin="round"
-                          strokeLinecap="round"/>
-                    {/* Target line */}
-                    <line x1="0" y1="0" x2={chartWidth} y2="0" stroke="#FF40A0" strokeWidth="1" strokeDasharray="2,2"/>
-                    {/* Zero line */}
-                    <line x1="0" y1={chartHeight} x2={chartWidth} y2={chartHeight} stroke="white" strokeWidth="0.5"/>
+                 style={{height: chartHeight + padding.top + padding.bottom, backgroundColor: 'rgba(0, 0, 0, 0.5)'}}>
+                <svg viewBox={`0 0 ${chartWidth + padding.left + padding.right} ${chartHeight + padding.top + padding.bottom}`} width="100%" height="100%">
+                    <g transform={`translate(${padding.left}, ${padding.top})`}>
+                        {/* Y-Axis Labels and Lines */}
+                        {yAxisLabels.map(label => (
+                            <g key={label.value}>
+                                <text x={-10} y={label.y + 4} fill="white" fontSize="10" textAnchor="end">{label.value / 1000}k</text>
+                                <line x1="0" y1={label.y} x2={chartWidth} y2={label.y} stroke="white" strokeWidth="0.5" strokeOpacity="0.2" strokeDasharray="2,2" />
+                            </g>
+                        ))}
+                        {/* X-Axis Labels */}
+                        {xAxisLabels().map(label => (
+                             <text key={label.x} x={label.x} y={chartHeight + 15} fill="white" fontSize="10" textAnchor="middle">{label.value}</text>
+                        ))}
+
+                        <path d={chartPath} stroke="#32E675" strokeWidth="4" fill="none" strokeLinejoin="round"
+                              strokeLinecap="round"/>
+                    </g>
                 </svg>
             </div>
 

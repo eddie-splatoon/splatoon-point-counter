@@ -24,7 +24,7 @@ import Image from 'next/image';
 import React, {useState, useEffect, useRef, useMemo, useCallback} from 'react';
 
 import {getItem, setItem, removeItem} from '../../lib/localStorage';
-import {StreamData, MessagePreset} from '../api/stream-data/route';
+import {StreamData, MessagePreset, BurndownData} from '../api/stream-data/route';
 
 
 // --- Speech API Type Definitions ---
@@ -158,9 +158,7 @@ const LOCAL_STORAGE_KEY = 'control-panel-state';
 interface FormData {
     scoreLabel: string;
     scoreValue: string;
-    burndownLabel: string;
-    burndownTargetValue: number;
-    burndownEntriesText: string;
+    burndown: BurndownData;
     fontFamily: string;
     fontSize: number;
     transitionEffect: string;
@@ -183,6 +181,9 @@ const ControlPanelPage: React.FC = () => {
     // All form data in a single state object
     const [formData, setFormData] = useState<FormData | null>(null);
 
+    // Temp state for burndown new entry
+    const [newBurndownScore, setNewBurndownScore] = useState('');
+
     // Voice recognition state (non-persistent part)
     const [transcript, setTranscript] = useState('');
     const [interimTranscript, setInterimTranscript] = useState('');
@@ -193,18 +194,12 @@ const ControlPanelPage: React.FC = () => {
     const [currentMessage, setCurrentMessage] = useState<string>('');
 
     // Helper to parse burndown entries and calculate total
-    const {parsedEntries, totalEntries} = useMemo(() => {
-        const text = formData?.burndownEntriesText || '';
-        const entries = text.split('\n')
-            .map(line => Number(line.trim()))
-            .filter(n => !isNaN(n) && n > 0);
-        const total = entries.reduce((sum, current) => sum + current, 0);
-        return {parsedEntries: entries, totalEntries: total};
-    }, [formData?.burndownEntriesText]);
+    const totalEntries = useMemo(() => {
+        return formData?.burndown.entries.reduce((sum, current) => sum + current.score, 0) || 0;
+    }, [formData?.burndown.entries]);
     
     const getPayload = useCallback(() => {
         if (!formData) return {};
-        const burndownEntries = parsedEntries;
         return {
             scoreLabel: formData.scoreLabel,
             scoreValue: formData.scoreValue,
@@ -214,13 +209,9 @@ const ControlPanelPage: React.FC = () => {
             fontSize: Number(formData.fontSize),
             messagePresets: formData.messagePresets,
             activePresetName: formData.activePresetName,
-            burndown: {
-                label: formData.burndownLabel,
-                targetValue: Number(formData.burndownTargetValue),
-                entries: burndownEntries,
-            }
+            burndown: formData.burndown,
         };
-    }, [formData, parsedEntries]);
+    }, [formData]);
 
     const handleTriggerEffect = useCallback(async (effectName: string) => {
         if (effectStatus === 'loading') return; // Prevent spamming
@@ -244,6 +235,11 @@ const ControlPanelPage: React.FC = () => {
     const updateFormData = (delta: Partial<FormData>) => {
         setFormData(prev => prev ? {...prev, ...delta} : null);
     };
+
+    const updateBurndown = (delta: Partial<BurndownData>) => {
+        if (!formData) return;
+        updateFormData({ burndown: { ...formData.burndown, ...delta } });
+    }
     
     // --- Effects ---
     // Initialization Effect
@@ -254,7 +250,12 @@ const ControlPanelPage: React.FC = () => {
             try {
                 const savedState = getItem<FormData>(LOCAL_STORAGE_KEY);
                 if (savedState) {
-                    setFormData(savedState);
+                    // Quick validation for robustness
+                    if (savedState.burndown && Array.isArray(savedState.burndown.entries)) {
+                         setFormData(savedState);
+                    } else {
+                        throw new Error("Invalid burndown entries format in saved state.");
+                    }
                 } else {
                     // Fetch from API only if no local data exists
                     axios.get<StreamData>('/api/stream-data').then(res => {
@@ -269,9 +270,7 @@ const ControlPanelPage: React.FC = () => {
                                 fontSize: apiData.fontSize,
                                 messagePresets: apiData.messagePresets,
                                 activePresetName: apiData.activePresetName,
-                                burndownLabel: apiData.burndown.label,
-                                burndownTargetValue: apiData.burndown.targetValue,
-                                burndownEntriesText: apiData.burndown.entries.join('\n'),
+                                burndown: apiData.burndown,
                                 activeTab: 'score', // Add default
                                 isListening: false, // Add default
                             });
@@ -390,6 +389,19 @@ const ControlPanelPage: React.FC = () => {
         updateFormData({messagePresets: updatedPresets});
     };
 
+    const handleAddBurndownEntry = () => {
+        const score = Number(newBurndownScore);
+        if (isNaN(score) || score <= 0 || !formData) return;
+        const newEntry = { score, timestamp: Date.now() };
+        updateBurndown({ entries: [...formData.burndown.entries, newEntry] });
+        setNewBurndownScore('');
+    };
+
+    const handleRemoveBurndownEntry = (timestamp: number) => {
+        if (!formData) return;
+        updateBurndown({ entries: formData.burndown.entries.filter(e => e.timestamp !== timestamp) });
+    };
+
     const handleSubmit = async () => {
         setStatus('loading');
         try {
@@ -481,25 +493,41 @@ const ControlPanelPage: React.FC = () => {
                     {formData.activeTab === 'burndown' && (
                         <Paper elevation={12} sx={{p: 3, bgcolor: 'background.paper', backdropFilter: 'blur(10px)', border: '1px solid rgba(255, 255, 255, 0.1)'}}>
                             <Typography variant="h6" gutterBottom>バーンダウンチャート設定</Typography>
-                            <TextField label="フィールド名" value={formData.burndownLabel} onChange={(e) => updateFormData({burndownLabel: e.target.value})} fullWidth margin="normal" variant="outlined" multiline rows={2}/>
-                            <TextField label="目標値" type="number" value={formData.burndownTargetValue} onChange={(e) => updateFormData({burndownTargetValue: Number(e.target.value)})} fullWidth margin="normal" variant="outlined"/>
-                            <TextField label="獲得ポイント履歴 (1行に1つ)" multiline rows={10} value={formData.burndownEntriesText} onChange={(e) => updateFormData({burndownEntriesText: e.target.value})} fullWidth margin="normal" variant="outlined" helperText="試合で獲得したポイントを改行区切りで入力します。"/>
+                            <TextField label="フィールド名" value={formData.burndown.label} onChange={(e) => updateBurndown({ label: e.target.value })} fullWidth margin="normal" variant="outlined" multiline rows={2}/>
+                            <TextField label="目標値" type="number" value={formData.burndown.targetValue} onChange={(e) => updateBurndown({ targetValue: Number(e.target.value) })} fullWidth margin="normal" variant="outlined"/>
+
+                            <Typography variant="h6" gutterBottom sx={{ mt: 2 }}>ポイント履歴</Typography>
+                            <Box data-testid="burndown-history" sx={{my: 2, maxHeight: 200, overflowY: 'auto', p: 1, bgcolor: 'rgba(255, 255, 255, 0.03)', borderRadius: '4px'}}>
+                                {formData.burndown.entries.length === 0 ? (
+                                    <Typography variant="body2" color="text.secondary" sx={{p: 1}}>履歴がありません</Typography>
+                                ) : (
+                                    formData.burndown.entries.map((entry) => (
+                                        <Box key={entry.timestamp} sx={{display: 'flex', justifyContent: 'space-between', alignItems: 'center', p: 0.5, borderBottom: '1px dotted rgba(255,255,255,0.2)'}}>
+                                            <Typography variant="body1">{entry.score}</Typography>
+                                            <Typography variant="caption" color="text.secondary">{new Date(entry.timestamp).toLocaleString()}</Typography>
+                                            <IconButton size="small" color="error" onClick={() => handleRemoveBurndownEntry(entry.timestamp)} aria-label={`remove entry ${entry.score}`}><RemoveCircleIcon fontSize="small"/></IconButton>
+                                        </Box>
+                                    ))
+                                )}
+                            </Box>
+                             <Box sx={{display: 'flex', gap: 1, alignItems: 'center', mb: 2}}>
+                                <TextField 
+                                    label="新しいポイント" 
+                                    type="number"
+                                    value={newBurndownScore} 
+                                    onChange={(e) => setNewBurndownScore(e.target.value)}
+                                    onKeyDown={(e) => e.key === 'Enter' && handleAddBurndownEntry()}
+                                    fullWidth 
+                                    variant="outlined"
+                                />
+                                <Button variant="contained" onClick={handleAddBurndownEntry} disabled={newBurndownScore.trim() === ''} sx={{minWidth: '100px'}}>追加</Button>
+                            </Box>
                             
-                            <Box sx={{mt: 2, display: 'flex', gap: 2}}>
-                                <Box sx={{flex: 1, maxHeight: 200, overflowY: 'auto', p: 1, bgcolor: 'rgba(255, 255, 255, 0.03)', borderRadius: '4px'}}>
-                                    <Typography variant="body2" color="text.secondary" gutterBottom>入力値の詳細:</Typography>
-                                    {parsedEntries.map((value, index) => (
-                                        <Typography key={index} variant="body2">
-                                            {index + 1}: {value}
-                                        </Typography>
-                                    ))}
-                                </Box>
-                                <Box sx={{flex: 1, display: 'flex', flexDirection: 'column', justifyContent: 'center', alignItems: 'center', bgcolor: 'rgba(255, 255, 255, 0.03)', borderRadius: '4px', p: 1}}>
-                                    <Typography variant="h6" color="primary">合計</Typography>
-                                    <Typography variant="h4" color="text.primary" fontWeight="bold">
-                                        {totalEntries.toLocaleString()}
-                                    </Typography>
-                                </Box>
+                            <Box sx={{flex: 1, display: 'flex', flexDirection: 'column', justifyContent: 'center', alignItems: 'center', bgcolor: 'rgba(255, 255, 255, 0.03)', borderRadius: '4px', p: 1}}>
+                                <Typography variant="h6" color="primary">合計</Typography>
+                                <Typography variant="h4" color="text.primary" fontWeight="bold">
+                                    {totalEntries.toLocaleString()}
+                                </Typography>
                             </Box>
                         </Paper>
                     )}
@@ -585,7 +613,7 @@ const ControlPanelPage: React.FC = () => {
                     </Box>
                 </Box>
                 
-                <Paper elevation={16} sx={{ position: 'fixed', bottom: 0, left: 0, right: 0, p: 2, zIndex: 10, bgcolor: 'rgba(18, 18, 18, 0.9)', backdropFilter: 'blur(10px)', borderTop: '1px solid rgba(255, 255, 255, 0.1)'}}> 
+                <Paper elevation={16} sx={{ position: 'fixed', bottom: 0, left: 0, right: 0, p: 2, zIndex: 10, bgcolor: 'rgba(18, 18, 18, 0.9)', backdropFilter: 'blur(10px)', borderTop: '1px solid rgba(255, 255, 255, 0.1)'}}>
                     <Box sx={{ maxWidth: 700, margin: 'auto' }}>
                         <Button variant="contained" color="primary" onClick={handleSubmit} disabled={status === 'loading'} fullWidth size="large" sx={{ p: 1.5, fontSize: '1rem' }}>
                             {status === 'loading' ? '更新中...' : 'OBSに反映 (データ送信)'}
