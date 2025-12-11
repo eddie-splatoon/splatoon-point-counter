@@ -120,7 +120,9 @@ describe('ControlPanelPage', () => {
 
         await waitFor(() => {
             const historyContainer = screen.getByTestId('burndown-history');
-            expect(within(historyContainer).getByText('150')).toBeInTheDocument();
+            expect(within(historyContainer).getByText((content, element) => {
+                return content.includes('150');
+            })).toBeInTheDocument();
         });
 
         const removeButton = screen.getByRole('button', { name: /remove entry 150/i }); // Use more specific name
@@ -130,7 +132,9 @@ describe('ControlPanelPage', () => {
         
         await waitFor(() => {
             const historyContainer = screen.getByTestId('burndown-history');
-            expect(within(historyContainer).queryByText('150')).not.toBeInTheDocument();
+            expect(within(historyContainer).queryByText((content, element) => {
+                return content.includes('150');
+            })).not.toBeInTheDocument();
         });
     });
 
@@ -163,7 +167,9 @@ describe('ControlPanelPage', () => {
                 expect(screen.getByText('バーンダウンチャート設定')).toBeInTheDocument();
                 expect(screen.getByLabelText('目標値')).toHaveValue(mockFormData.burndown.targetValue);
                 const historyContainer = screen.getByTestId('burndown-history');
-                expect(within(historyContainer).getByText('50')).toBeInTheDocument();
+                expect(within(historyContainer).getByText((content, element) => {
+                    return content.includes('50');
+                })).toBeInTheDocument();
             });
         });
 

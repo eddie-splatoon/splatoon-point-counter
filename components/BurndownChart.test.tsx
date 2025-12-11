@@ -52,14 +52,11 @@ describe('BurndownChart', () => {
 
     // Y-Axis
     expect(screen.getByText('50k')).toBeInTheDocument();
-    expect(screen.getByText('25k')).toBeInTheDocument();
+    expect(screen.queryByText('25k')).not.toBeInTheDocument(); // Intermediate value is removed
     expect(screen.getByText('0k')).toBeInTheDocument();
 
     // X-Axis (formatted time)
-    // We expect 3 time labels. Need to find them by role, then check their content.
-    const timeLabels = screen.getAllByText(/[0-9]{2}:[0-9]{2}:[0-9]{2}/i); // Match HH:mm:ss pattern
-    expect(timeLabels.length).toBeGreaterThanOrEqual(3);
-
+    // We expect 3 time labels.
     const firstTime = format(new Date(dataWithMoreEntries.entries[0].timestamp), 'HH:mm:ss');
     const middleTime = format(new Date(dataWithMoreEntries.entries[0].timestamp + (dataWithMoreEntries.entries[2].timestamp - dataWithMoreEntries.entries[0].timestamp) / 2), 'HH:mm:ss');
     const lastTime = format(new Date(dataWithMoreEntries.entries[2].timestamp), 'HH:mm:ss');
@@ -93,21 +90,32 @@ describe('BurndownChart', () => {
     const { rerender } = render(<BurndownChart data={baseData} />);
     const initialRemaining = 50000 - 15000;
     let remainingElement = screen.getByText(initialRemaining.toLocaleString());
-    expect(remainingElement.className).not.toContain('scale-125');
+    
+    // Check initial state (no animation)
+    expect(remainingElement).not.toHaveStyle('transform: scale(1.2)');
+    expect(remainingElement).toHaveStyle('opacity: 1');
 
+    // Rerender with new data to trigger animation
     const newData: BurndownData = { ...baseData, entries: [...baseData.entries, { score: 20000, timestamp: now }] };
     rerender(<BurndownChart data={newData} />);
     
-    remainingElement = screen.getByText(initialRemaining.toLocaleString());
-    expect(remainingElement.className).toContain('scale-125');
+    // Check animating state
+    remainingElement = screen.getByText(initialRemaining.toLocaleString()); // Still displaying initial value
+    expect(remainingElement).toHaveStyle('transform: scale(1.2)');
+    expect(remainingElement).toHaveStyle('opacity: 0.7');
+    expect(remainingElement).toHaveStyle('color: #FF40A0'); // Check for the pink color
 
+    // Fast-forward time
     act(() => {
-      vi.advanceTimersByTime(500);
+      vi.advanceTimersByTime(300); // Duration matches useEffect setTimeout
     });
 
+    // Check final state (new value, no animation)
     const newRemaining = 50000 - 35000;
     const newRemainingElement = screen.getByText(newRemaining.toLocaleString());
-    expect(newRemainingElement.className).not.toContain('scale-125');
+    expect(newRemainingElement).not.toHaveStyle('transform: scale(1.2)');
+    expect(newRemainingElement).toHaveStyle('opacity: 1');
+    expect(newRemainingElement).toHaveStyle('color: rgb(255, 255, 255)'); // Default white color
   });
 
   it('renders an SVG chart with a path', () => {

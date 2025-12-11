@@ -32,7 +32,7 @@ const BurndownChart: React.FC<BurndownChartProps> = ({data}) => {
             const timer = setTimeout(() => {
                 setDisplayRemaining(remaining);
                 setIsAnimating(false);
-            }, 500); 
+            }, 300); // Animation duration
 
             return () => clearTimeout(timer);
         }
@@ -66,9 +66,13 @@ const BurndownChart: React.FC<BurndownChartProps> = ({data}) => {
     // --- Axis Calculations ---
     const yAxisLabels = [
         { value: targetValue, y: 0 },
-        { value: targetValue / 2, y: chartHeight / 2 },
         { value: 0, y: chartHeight },
     ];
+
+    const formatYAxisValue = (val: number) => {
+        if (targetValue < 100) return val.toLocaleString(undefined, { maximumFractionDigits: 2 });
+        return `${Math.round(val / 1000)}k`;
+    };
 
     const xAxisLabels = () => {
         if (sortedEntries.length < 2) return [];
@@ -83,9 +87,21 @@ const BurndownChart: React.FC<BurndownChartProps> = ({data}) => {
         ];
     };
 
-    const baseRemainingClasses = "font-extrabold tracking-tighter transition-all duration-500 ease-out";
-    const animationClasses = isAnimating ? 'scale-125 text-pink-500 drop-shadow-[0_0_8px_rgba(255,64,160,0.7)] opacity-70' : 'scale-100 drop-shadow-[0_2px_2px_rgba(0,0,0,0.8)] opacity-100';
-    const zeroStateClasses = hasReachedZero && !isAnimating ? 'text-green-400' : 'text-white';
+    const baseRemainingStyle = { // Inline style to precisely control animation
+        fontSize: '58px',
+        fontWeight: 'extrabold', // Added for consistency
+        transition: 'all 0.3s ease-out',
+        textShadow: '0 0 2px rgba(0,0,0,0.8)', // Default subtle shadow
+        opacity: 1, // Explicitly set initial opacity
+        color: 'white' // Explicitly set initial color to white
+    };
+    const animatedRemainingStyle = isAnimating ? {
+        transform: 'scale(1.2)',
+        opacity: 0.7,
+        textShadow: '0 0 8px rgba(255, 64, 160, 0.7)', // Pink glow
+        color: '#FF40A0' // Set explicit color for animation
+    } : {};
+    const zeroStateColor = hasReachedZero && !isAnimating ? 'text-green-400' : 'text-white'; // Tailwind for color
 
 
     return (
@@ -105,8 +121,10 @@ const BurndownChart: React.FC<BurndownChartProps> = ({data}) => {
                    style={{whiteSpace: 'pre-wrap', fontSize: '30px'}}>
                     {label}
                 </p>
-                <p className={`${baseRemainingClasses} ${isAnimating ? animationClasses : zeroStateClasses}`}
-                   style={{fontSize: '58px'}}>
+                <p
+                   className={`${zeroStateColor}`} // Apply zero state color via tailwind
+                   style={{...baseRemainingStyle, ...animatedRemainingStyle}} // Apply base and animated styles
+                >
                     {displayRemaining.toLocaleString()}
                 </p>
             </div>
@@ -119,10 +137,12 @@ const BurndownChart: React.FC<BurndownChartProps> = ({data}) => {
                         {/* Y-Axis Labels and Lines */}
                         {yAxisLabels.map(label => (
                             <g key={label.value}>
-                                <text x={-10} y={label.y + 4} fill="white" fontSize="10" textAnchor="end">{label.value / 1000}k</text>
+                                <text x={-10} y={label.y + 4} fill="white" fontSize="10" textAnchor="end">{formatYAxisValue(label.value)}</text>
                                 <line x1="0" y1={label.y} x2={chartWidth} y2={label.y} stroke="white" strokeWidth="0.5" strokeOpacity="0.2" strokeDasharray="2,2" />
                             </g>
                         ))}
+                        {/* Intermediate Line */}
+                        <line x1="0" y1={chartHeight / 2} x2={chartWidth} y2={chartHeight / 2} stroke="white" strokeWidth="0.5" strokeOpacity="0.2" strokeDasharray="2,2" />
                         {/* X-Axis Labels */}
                         {xAxisLabels().map(label => (
                              <text key={label.x} x={label.x} y={chartHeight + 15} fill="white" fontSize="10" textAnchor="middle">{label.value}</text>
