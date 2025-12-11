@@ -26,10 +26,7 @@ import React, {useState, useEffect, useRef, useMemo, useCallback} from 'react';
 import {getItem, setItem, removeItem} from '../../lib/localStorage';
 import {StreamData, MessagePreset} from '../api/stream-data/route';
 
-interface MessageItem {
-    id: number;
-    text: string;
-}
+
 
 // --- Speech API Type Definitions ---
 interface SpeechRecognitionEvent {
@@ -319,8 +316,7 @@ const ControlPanelPage: React.FC = () => {
         return () => {
             recognition.stop();
         };
-        // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [isListening]);
+    }, [isListening, handleVoiceCommand]); // Rerun this effect if isListening or handleVoiceCommand changes, to handle onend logic properly
 
     // --- Handlers ---
     const updateFormData = (delta: Partial<FormData>) => {
@@ -350,7 +346,6 @@ const ControlPanelPage: React.FC = () => {
         );
         updateFormData({messagePresets: updatedPresets});
     };
-
     const getPayload = useCallback(() => {
         if (!formData) return {};
         const burndownEntries = parsedEntries;
@@ -369,8 +364,10 @@ const ControlPanelPage: React.FC = () => {
                 entries: burndownEntries,
             }
         };
+<<<<<<< HEAD
     }, [formData, parsedEntries]);
 
+    // eslint-disable-next-line react-hooks/exhaustive-deps
     const handleTriggerEffect = useCallback(async (effectName: string) => {
         if (effectStatus === 'loading') return; // Prevent spamming
         setEffectStatus('loading');
@@ -414,11 +411,20 @@ const ControlPanelPage: React.FC = () => {
         }
         setIsListening(!isListening);
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    const handleVoiceCommand = useCallback(async (text: string) => {
+        const trigger = (effect: string) => handleTriggerEffect(effect);
+        if (text.includes('ナイス')) await trigger('STAR');
+        else if (text.includes('ありがとう')) await trigger('LOVE');
+        else if (text.includes('よっしゃ')) await trigger('SPARKLE');
+        else if (text.includes('やべぇ') || text.includes('やばい')) await trigger('BUBBLE');
+    }, [handleTriggerEffect]);
     
     const handleClearCache = () => {
         removeItem(LOCAL_STORAGE_KEY);
         window.location.reload();
     };
+
 
     if (!isInitialized || !formData) {
         return (

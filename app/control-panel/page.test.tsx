@@ -1,6 +1,6 @@
 import { render, screen, waitFor, fireEvent, act } from '@testing-library/react';
 import axios from 'axios';
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 import { getInitialStreamData, StreamData } from '../api/stream-data/route';
 
@@ -23,9 +23,9 @@ class MockSpeechRecognition {
     lang = '';
     interimResults = false;
 }
-// @ts-expect-error Mocking browser-specific API for jsdom
+    // @ts-expect-error: Cannot assign to 'location' because it is a read-only property in JSDOM.: SpeechRecognition is a browser-specific API not available in JSDOM.
 window.SpeechRecognition = MockSpeechRecognition;
-// @ts-expect-error Mocking browser-specific API for jsdom
+// @ts-expect-error: SpeechRecognition is a browser-specific API not available in JSDOM.
 window.webkitSpeechRecognition = MockSpeechRecognition;
 
 
