@@ -1,6 +1,6 @@
 'use client';
 
-import React, {useState, useEffect, useRef} from 'react';
+import React, {useState, useEffect} from 'react';
 
 import {BurndownData} from '@/app/api/stream-data/route';
 
@@ -20,19 +20,22 @@ const BurndownChart: React.FC<BurndownChartProps> = ({data}) => {
 
     const [displayRemaining, setDisplayRemaining] = useState(remaining);
     const [isAnimating, setIsAnimating] = useState(false);
-    const prevRemainingRef = useRef(remaining);
 
     useEffect(() => {
-        if (prevRemainingRef.current !== remaining) {
+        // If the incoming calculated value is different from what's displayed, trigger animation.
+        if (remaining !== displayRemaining) {
+            // eslint-disable-next-line react-hooks/set-state-in-effect
             setIsAnimating(true);
+            // After the animation duration, update the display value to the new calculated value
+            // and turn off the animation.
             const timer = setTimeout(() => {
-                setIsAnimating(false);
                 setDisplayRemaining(remaining);
+                setIsAnimating(false);
             }, 500); // Animation duration
-            prevRemainingRef.current = remaining;
+
             return () => clearTimeout(timer);
         }
-    }, [remaining]);
+    }, [remaining, displayRemaining]);
 
 
     // Burn-up percentage
@@ -88,7 +91,7 @@ const BurndownChart: React.FC<BurndownChartProps> = ({data}) => {
                 </p>
                 <p className={`${baseRemainingClasses} ${isAnimating ? animationClasses : zeroStateClasses}`}
                    style={{fontSize: '58px'}}>
-                    {isAnimating ? prevRemainingRef.current.toLocaleString() : displayRemaining.toLocaleString()}
+                    {displayRemaining.toLocaleString()}
                 </p>
             </div>
 

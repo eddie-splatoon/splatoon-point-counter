@@ -1,5 +1,6 @@
 import { render, screen, act } from '@testing-library/react';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+
 import ScoreDisplay from './ScoreDisplay';
 
 describe('ScoreDisplay', () => {
@@ -47,9 +48,8 @@ describe('ScoreDisplay', () => {
     // Rerender with new value
     rerender(<ScoreDisplay {...defaultProps} scoreValue="54321" />);
 
-    // After re-render, the component shows the *new* value with animation.
-    // This is because the prevValueRef is updated before the animation render.
-    value = screen.getByText('54321');
+    // Now, the OLD value should be shown, but with animation classes
+    value = screen.getByText('12345');
     expect(value.className).toContain('scale-125');
     expect(value.className).toContain('text-red-400');
 
@@ -58,10 +58,10 @@ describe('ScoreDisplay', () => {
       vi.advanceTimersByTime(500);
     });
     
-    // Re-query the element
-    value = screen.getByText('54321');
-
-    // Now the new value should be displayed, without animation classes
-    expect(value.className).not.toContain('scale-125');
+    // After the timeout, the NEW value is rendered, without animation
+    const newValue = screen.getByText('54321');
+    expect(newValue.className).not.toContain('scale-125');
+    // The old value should be gone
+    expect(screen.queryByText('12345')).not.toBeInTheDocument();
   });
 });

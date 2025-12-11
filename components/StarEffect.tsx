@@ -11,6 +11,7 @@ interface Star {
     size: number; // サイズ (px)
     color: string; // 色
     duration: number; // アニメーション時間 (秒)
+    finalX: number; // Add finalX for pure animation
 }
 
 interface StarEffectProps {
@@ -36,15 +37,18 @@ const StarEffect: React.FC<StarEffectProps> = ({trigger}) => {
             const starCount = 30;
 
             for (let i = 0; i < starCount; i++) {
+                const x = Math.random() * 100;
                 newStars.push({
                     id: Math.random(),
-                    x: Math.random() * 100,
+                    x: x,
                     y: 110,
                     size: Math.random() * 25 + 15, // 15pxから40px
                     color: starColors[Math.floor(Math.random() * starColors.length)],
                     duration: Math.random() * 3 + 9, // 9秒から12秒でアニメーション (+5秒)
+                    finalX: x + (Math.random() - 0.5) * 40,
                 });
             }
+            // eslint-disable-next-line react-hooks/set-state-in-effect
             setStars(prevStars => [...prevStars, ...newStars]);
         }
     }, [trigger]);
@@ -66,7 +70,7 @@ const StarEffect: React.FC<StarEffectProps> = ({trigger}) => {
                     }}
                     animate={{
                         y: '-20vh',
-                        x: `${star.x + (Math.random() - 0.5) * 40}vw`,
+                        x: `${star.finalX}vw`,
                         opacity: 0,
                         rotate: 360,
                     }}

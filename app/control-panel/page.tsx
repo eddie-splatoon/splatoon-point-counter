@@ -1,9 +1,6 @@
 'use client';
 
-import React, {useState, useEffect, useRef} from 'react';
-import axios from 'axios';
-import Image from 'next/image';
-import {StreamData, MessagePreset, BurndownData} from '../api/stream-data/route';
+import RemoveCircleIcon from '@mui/icons-material/RemoveCircle';
 import {
     TextField,
     Button,
@@ -19,12 +16,42 @@ import {
     Tab,
     Chip,
 } from '@mui/material';
-import RemoveCircleIcon from '@mui/icons-material/RemoveCircle';
 import {createTheme, ThemeProvider} from '@mui/material/styles';
+import axios from 'axios';
+import Image from 'next/image';
+import React, {useState, useEffect, useRef} from 'react';
+
+import {StreamData, MessagePreset} from '../api/stream-data/route';
+
 
 interface MessageItem {
     id: number;
     text: string;
+}
+
+// --- Speech API Type Definitions ---
+interface SpeechRecognitionEvent {
+    resultIndex: number;
+    results: {
+        isFinal: boolean;
+        [key: number]: {
+            transcript: string;
+        };
+    }[];
+}
+interface SpeechRecognitionErrorEvent {
+    error: string;
+}
+interface SpeechRecognition extends EventTarget {
+    continuous: boolean;
+    lang: string;
+    interimResults: boolean;
+    onstart: () => void;
+    onresult: (event: SpeechRecognitionEvent) => void;
+    onerror: (event: SpeechRecognitionErrorEvent) => void;
+    onend: () => void;
+    start: () => void;
+    stop: () => void;
 }
 
 const darkTheme = createTheme({
@@ -147,7 +174,7 @@ const ControlPanelPage: React.FC = () => {
     const [transcript, setTranscript] = useState('');
     const [interimTranscript, setInterimTranscript] = useState(''); // New state for interim results
     const [recognitionError, setRecognitionError] = useState(''); // New state for errors
-    const recognitionRef = useRef<any>(null);
+    const recognitionRef = useRef<SpeechRecognition | null>(null);
 
     // Common state
     const [fontFamily, setFontFamily] = useState<string>('');
@@ -193,8 +220,9 @@ const ControlPanelPage: React.FC = () => {
     }, []);
 
     // Speech Recognition Effect
+     
     useEffect(() => {
-        // @ts-ignore
+        // @ts-expect-error SpeechRecognition is a browser-specific API
         const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
         if (!SpeechRecognition) {
             console.warn("Speech Recognition API is not supported in this browser.");
@@ -202,7 +230,7 @@ const ControlPanelPage: React.FC = () => {
             return;
         }
 
-        const recognition = new SpeechRecognition();
+        const recognition: SpeechRecognition = new SpeechRecognition();
         recognition.continuous = true;
         recognition.lang = 'ja-JP';
         recognition.interimResults = true; // Enable interim results
@@ -212,7 +240,7 @@ const ControlPanelPage: React.FC = () => {
             setRecognitionError('');
         };
 
-        recognition.onresult = (event: any) => {
+        recognition.onresult = (event: SpeechRecognitionEvent) => {
             let currentInterimTranscript = '';
             let finalTranscript = '';
 
@@ -231,7 +259,7 @@ const ControlPanelPage: React.FC = () => {
             }
         };
 
-        recognition.onerror = (event: any) => {
+        recognition.onerror = (event: SpeechRecognitionErrorEvent) => {
             console.error('Speech recognition error:', event.error);
             setRecognitionError(`エラー: ${event.error}`);
         };
@@ -305,7 +333,7 @@ const ControlPanelPage: React.FC = () => {
             const res = await axios.post('/api/stream-data', payload);
             if (res.status === 200) setEffectStatus('success');
             else setEffectStatus('error');
-        } catch (error) {
+        } catch {
             setEffectStatus('error');
         } finally {
             setTimeout(() => setEffectStatus('idle'), 2000);
@@ -322,7 +350,7 @@ const ControlPanelPage: React.FC = () => {
             const res = await axios.post('/api/stream-data', payload);
             if (res.status === 200) setStatus('success');
             else setStatus('error');
-        } catch (error) {
+        } catch {
             setStatus('error');
         } finally {
             setTimeout(() => setStatus('idle'), 3000);

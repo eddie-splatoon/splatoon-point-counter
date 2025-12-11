@@ -11,6 +11,7 @@ interface Heart {
     size: number; // サイズ (px)
     color: string; // 色 (rgba)
     duration: number; // アニメーション時間 (秒)
+    finalX: number; // Add finalX for pure animation
 }
 
 interface HeartEffectProps {
@@ -37,15 +38,18 @@ const HeartEffect: React.FC<HeartEffectProps> = ({trigger}) => {
             const heartCount = 30; // 一度に生成するハートの数
 
             for (let i = 0; i < heartCount; i++) {
+                const x = Math.random() * 100;
                 newHearts.push({
                     id: Math.random(),
-                    x: Math.random() * 100, // 画面の幅の0%から100%
+                    x: x,
                     y: 110, // 画面の下からスタート
                     size: Math.random() * 30 + 20, // 20pxから50pxのサイズ
                     color: heartColors[Math.floor(Math.random() * heartColors.length)],
                     duration: Math.random() * 3 + 9, // 9秒から12秒でアニメーション (+5秒)
+                    finalX: x + (Math.random() - 0.5) * 40,
                 });
             }
+            // eslint-disable-next-line react-hooks/set-state-in-effect
             setHearts(prevHearts => [...prevHearts, ...newHearts]);
         }
     }, [trigger]);
@@ -66,7 +70,7 @@ const HeartEffect: React.FC<HeartEffectProps> = ({trigger}) => {
                     }}
                     animate={{
                         y: '-20vh', // 画面の上外へ
-                        x: `${heart.x + (Math.random() - 0.5) * 40}vw`, // 横に少し揺れながら
+                        x: `${heart.finalX}vw`, // 横に少し揺れながら
                         opacity: 0,
                     }}
                     transition={{

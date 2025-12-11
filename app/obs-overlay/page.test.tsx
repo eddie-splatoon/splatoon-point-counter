@@ -1,8 +1,11 @@
 import { render, screen, act, waitFor } from '@testing-library/react';
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import axios from 'axios';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+
+import { getInitialStreamData } from '../api/stream-data/route';
+
 import ObsOverlayPage from './page';
-import { getInitialStreamData, StreamData } from '../api/stream-data/route';
+
 
 // Mock child components
 vi.mock('../../components/ScoreDisplay', () => ({
