@@ -22,13 +22,13 @@ describe('Stream Data API', () => {
   describe('POST', () => {
     it('should update the stream data with a valid request body', async () => {
       const initialData = getInitialStreamData();
-      const newData: StreamData = {
+      const newData = {
         ...initialData,
         scoreLabel: 'New Score Label',
         scoreValue: '1000',
         burndown: {
           ...initialData.burndown,
-          entries: [100, 200],
+          entries: [{ score: 100, timestamp: 12345 }, { score: 200, timestamp: 67890 }],
         },
       };
 
@@ -43,7 +43,7 @@ describe('Stream Data API', () => {
       expect(response.status).toBe(200);
       expect(body.scoreLabel).toBe('New Score Label');
       expect(body.scoreValue).toBe('1000');
-      expect(body.burndown.entries).toEqual([100, 200]);
+      expect(body.burndown.entries).toEqual([{ score: 100, timestamp: 12345 }, { score: 200, timestamp: 67890 }]);
 
       // Verify that the data was actually updated in the module
       const getResponse = await GET();

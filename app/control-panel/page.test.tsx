@@ -1,4 +1,4 @@
-import { render, screen, waitFor, fireEvent, act } from '@testing-library/react';
+import { render, screen, waitFor, fireEvent, act, within } from '@testing-library/react';
 import axios from 'axios';
 import { describe, it, expect, vi, beforeEach, afterAll, beforeAll } from 'vitest';
 
@@ -103,14 +103,47 @@ describe('ControlPanelPage', () => {
         });
     });
 
+    it('adds and removes a burndown entry', async () => {
+        render(<ControlPanelPage />);
+        await waitFor(() => expect(screen.getByText('スコア設定')).toBeInTheDocument());
+
+        fireEvent.click(screen.getByRole('tab', { name: 'バーンダウン' }));
+        await waitFor(() => expect(screen.getByText('バーンダウンチャート設定')).toBeInTheDocument());
+        
+        const newScoreInput = screen.getByLabelText('新しいポイント');
+        const addButton = screen.getByRole('button', { name: '追加' });
+
+        await act(async () => {
+            fireEvent.change(newScoreInput, { target: { value: '150' } });
+            fireEvent.click(addButton);
+        });
+
+        await waitFor(() => {
+            const historyContainer = screen.getByTestId('burndown-history');
+            expect(within(historyContainer).getByText('150')).toBeInTheDocument();
+        });
+
+        const removeButton = screen.getByRole('button', { name: /remove entry 150/i }); // Use more specific name
+        await act(async () => {
+            fireEvent.click(removeButton);
+        });
+        
+        await waitFor(() => {
+            const historyContainer = screen.getByTestId('burndown-history');
+            expect(within(historyContainer).queryByText('150')).not.toBeInTheDocument();
+        });
+    });
+
     describe('Local Storage Persistence', () => {
         const localStorageKey = 'control-panel-state';
         const mockFormData = {
             scoreLabel: 'Local Score',
             scoreValue: '12345',
-            burndownLabel: 'Local Burndown',
-            burndownTargetValue: 100,
-            burndownEntriesText: '10\n20',
+            burndown: {
+                label: 'Local Burndown',
+                targetValue: 100,
+                entries: [{ score: 50, timestamp: Date.now() }],
+            },
             fontFamily: 'Arial',
             fontSize: 20,
             transitionEffect: 'slide',
@@ -128,7 +161,9 @@ describe('ControlPanelPage', () => {
             await waitFor(() => {
                 expect(mockedAxios.get).not.toHaveBeenCalled();
                 expect(screen.getByText('バーンダウンチャート設定')).toBeInTheDocument();
-                expect(screen.getByLabelText('目標値')).toHaveValue(mockFormData.burndownTargetValue);
+                expect(screen.getByLabelText('目標値')).toHaveValue(mockFormData.burndown.targetValue);
+                const historyContainer = screen.getByTestId('burndown-history');
+                expect(within(historyContainer).getByText('50')).toBeInTheDocument();
             });
         });
 

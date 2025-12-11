@@ -10,7 +10,7 @@ export interface MessagePreset {
 export interface BurndownData {
     label: string;
     targetValue: number;
-    entries: number[]; // ポイントの履歴
+    entries: {score: number; timestamp: number}[]; // ポイントの履歴
 }
 
 export interface StreamData {
@@ -110,6 +110,11 @@ export async function POST(request: Request) {
         if (burndown) {
             if (typeof burndown.label !== 'string' || typeof burndown.targetValue !== 'number' || !Array.isArray(burndown.entries)) {
                 return NextResponse.json({message: 'Invalid data format for burndown data.'}, {status: 400});
+            }
+            for (const entry of burndown.entries) {
+                if (typeof entry.score !== 'number' || typeof entry.timestamp !== 'number') {
+                    return NextResponse.json({message: 'Invalid data format for burndown entry.'}, {status: 400});
+                }
             }
         }
 
