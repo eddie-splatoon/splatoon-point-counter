@@ -167,6 +167,8 @@ interface FormData {
     transitionDuration: number;
     messagePresets: MessagePreset[];
     activePresetName: string;
+    activeTab: string;
+    isListening: boolean;
 }
 
 
@@ -175,15 +177,13 @@ const ControlPanelPage: React.FC = () => {
     const [status, setStatus] = useState<'idle' | 'loading' | 'success' | 'error'>('idle');
     const [effectStatus, setEffectStatus] = useState<'idle' | 'loading' | 'success' | 'error'>('idle');
     const [origin, setOrigin] = useState<string>('');
-    const [activeTab, setActiveTab] = useState('score');
     const [isInitialized, setIsInitialized] = useState(false);
     const [storageError, setStorageError] = useState(false);
 
     // All form data in a single state object
     const [formData, setFormData] = useState<FormData | null>(null);
 
-    // Voice recognition state
-    const [isListening, setIsListening] = useState(false);
+    // Voice recognition state (non-persistent part)
     const [transcript, setTranscript] = useState('');
     const [interimTranscript, setInterimTranscript] = useState('');
     const [recognitionError, setRecognitionError] = useState('');
@@ -240,6 +240,11 @@ const ControlPanelPage: React.FC = () => {
         }
     }, [effectStatus, getPayload]);
     
+    // --- Handlers ---
+    const updateFormData = (delta: Partial<FormData>) => {
+        setFormData(prev => prev ? {...prev, ...delta} : null);
+    };
+    
     // --- Effects ---
     // Initialization Effect
     useEffect(() => {
@@ -267,6 +272,8 @@ const ControlPanelPage: React.FC = () => {
                                 burndownLabel: apiData.burndown.label,
                                 burndownTargetValue: apiData.burndown.targetValue,
                                 burndownEntriesText: apiData.burndown.entries.join('\n'),
+                                activeTab: 'score', // Add default
+                                isListening: false, // Add default
                             });
                         }
                     }).catch(e => console.error("Failed to fetch initial data", e));
@@ -297,6 +304,11 @@ const ControlPanelPage: React.FC = () => {
     }, [handleTriggerEffect]);
     
     useEffect(() => {
+        if (!formData?.isListening) {
+            recognitionRef.current?.stop();
+            return;
+        }
+
         // @ts-expect-error: SpeechRecognition is a browser-specific API
         const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
         if (!SpeechRecognition) {
@@ -308,7 +320,7 @@ const ControlPanelPage: React.FC = () => {
         const recognition: SpeechRecognition = new SpeechRecognition();
         recognition.continuous = true;
         recognition.lang = 'ja-JP';
-        recognition.interimResults = true; // Enable interim results
+        recognition.interimResults = true;
 
         recognition.onstart = () => {
             console.log('Speech recognition started.');
@@ -341,22 +353,18 @@ const ControlPanelPage: React.FC = () => {
         
         recognition.onend = () => {
             console.log('Speech recognition ended.');
-            if (isListening) {
+            if (formData?.isListening) {
                 recognition.start(); // Restart if it was intended to be listening
             }
         };
 
         recognitionRef.current = recognition;
+        recognition.start();
 
         return () => {
             recognition.stop();
         };
-    }, [isListening, handleVoiceCommand]);
-
-    // --- Handlers ---
-    const updateFormData = (delta: Partial<FormData>) => {
-        setFormData(prev => prev ? {...prev, ...delta} : null);
-    };
+    }, [formData?.isListening, handleVoiceCommand]);
 
     const handleAddMessage = () => {
         if (currentMessage.trim() !== '' && formData) {
@@ -400,12 +408,8 @@ const ControlPanelPage: React.FC = () => {
     };
 
     const handleToggleListening = () => {
-        if (isListening) {
-            recognitionRef.current?.stop();
-        } else {
-            recognitionRef.current?.start();
-        }
-        setIsListening(!isListening);
+        if (!formData) return;
+        updateFormData({ isListening: !formData.isListening });
     };
     
     const handleClearCache = () => {
@@ -459,14 +463,14 @@ const ControlPanelPage: React.FC = () => {
                         </Typography>
                     </Box>
 
-                    <Tabs value={activeTab} onChange={(e, newValue) => setActiveTab(newValue)} centered sx={{mb: 3}}>
+                    <Tabs value={formData.activeTab} onChange={(e, newValue) => updateFormData({ activeTab: newValue })} centered sx={{mb: 3}}>
                         <Tab label="スコア表示" value="score"/>
                         <Tab label="バーンダウン" value="burndown"/>
                         <Tab label="メッセージ" value="message"/>
                         <Tab label="共通設定" value="common"/>
                     </Tabs>
 
-                    {activeTab === 'score' && (
+                    {formData.activeTab === 'score' && (
                         <Paper elevation={12} sx={{p: 3, bgcolor: 'background.paper', backdropFilter: 'blur(10px)', border: '1px solid rgba(255, 255, 255, 0.1)'}}>
                             <Typography variant="h6" gutterBottom>スコア設定</Typography>
                             <TextField label="フィールド名" value={formData.scoreLabel} onChange={(e) => updateFormData({scoreLabel: e.target.value})} fullWidth margin="normal" variant="outlined" multiline rows={2}/>
@@ -474,7 +478,7 @@ const ControlPanelPage: React.FC = () => {
                         </Paper>
                     )}
 
-                    {activeTab === 'burndown' && (
+                    {formData.activeTab === 'burndown' && (
                         <Paper elevation={12} sx={{p: 3, bgcolor: 'background.paper', backdropFilter: 'blur(10px)', border: '1px solid rgba(255, 255, 255, 0.1)'}}>
                             <Typography variant="h6" gutterBottom>バーンダウンチャート設定</Typography>
                             <TextField label="フィールド名" value={formData.burndownLabel} onChange={(e) => updateFormData({burndownLabel: e.target.value})} fullWidth margin="normal" variant="outlined" multiline rows={2}/>
@@ -500,7 +504,7 @@ const ControlPanelPage: React.FC = () => {
                         </Paper>
                     )}
 
-                    {activeTab === 'message' && (
+                    {formData.activeTab === 'message' && (
                         <Paper elevation={12} sx={{p: 3, bgcolor: 'background.paper', backdropFilter: 'blur(10px)', border: '1px solid rgba(255, 255, 255, 0.1)'}}>
                             <Typography variant="h6" gutterBottom>視聴者向け概要メッセージ</Typography>
                             <Box sx={{borderBottom: 1, borderColor: 'divider', mb: 2}}>
@@ -535,15 +539,15 @@ const ControlPanelPage: React.FC = () => {
                         </Paper>
                     )}
 
-                    {activeTab === 'common' && (
+                    {formData.activeTab === 'common' && (
                         <>
                             <Paper elevation={12} sx={{ mb: 3, p: 3, bgcolor: 'background.paper', backdropFilter: 'blur(10px)', border: '1px solid rgba(255, 255, 255, 0.1)' }}>
                                 <Typography variant="h6" gutterBottom>📣 音声認識エフェクト</Typography>
                                 <Box sx={{display: 'flex', alignItems: 'center', gap: 2}}>
-                                    <Button variant="contained" color={isListening ? 'error' : 'secondary'} onClick={handleToggleListening}>
-                                        {isListening ? '音声認識を停止' : '音声認識を開始'}
+                                    <Button variant="contained" color={formData.isListening ? 'error' : 'secondary'} onClick={handleToggleListening}>
+                                        {formData.isListening ? '音声認識を停止' : '音声認識を開始'}
                                     </Button>
-                                    {isListening && <Chip label="音声認識中..." color="secondary" />}
+                                    {formData.isListening && <Chip label="音声認識中..." color="secondary" />}
                                 </Box>
                                 <Typography variant="body2" sx={{mt: 2, color: 'text.secondary'}}>
                                     認識中: {interimTranscript || '...'}

@@ -117,6 +117,8 @@ describe('ControlPanelPage', () => {
             transitionDuration: 5,
             messagePresets: [],
             activePresetName: '',
+            activeTab: 'burndown',
+            isListening: true,
         };
 
         it('loads data from local storage instead of fetching from API', async () => {
@@ -125,8 +127,8 @@ describe('ControlPanelPage', () => {
 
             await waitFor(() => {
                 expect(mockedAxios.get).not.toHaveBeenCalled();
-                expect(screen.getByLabelText('フィールド名')).toHaveValue('Local Score');
-                expect(screen.getByLabelText('値')).toHaveValue('12345');
+                expect(screen.getByText('バーンダウンチャート設定')).toBeInTheDocument();
+                expect(screen.getByLabelText('目標値')).toHaveValue(mockFormData.burndownTargetValue);
             });
         });
 
@@ -149,12 +151,52 @@ describe('ControlPanelPage', () => {
             });
         });
 
+        it('persists the active tab state', async () => {
+            const setItemSpy = vi.spyOn(Storage.prototype, 'setItem');
+            
+            render(<ControlPanelPage />);
+            await waitFor(() => expect(screen.getByText('スコア設定')).toBeInTheDocument());
+
+            await act(async () => {
+                fireEvent.click(screen.getByRole('tab', { name: 'メッセージ' }));
+            });
+
+            await waitFor(() => {
+                expect(setItemSpy).toHaveBeenCalledWith(
+                    localStorageKey,
+                    expect.stringContaining('"activeTab":"message"')
+                );
+            });
+        });
+
+        it('persists the voice recognition listening state', async () => {
+            const setItemSpy = vi.spyOn(Storage.prototype, 'setItem');
+            
+            render(<ControlPanelPage />);
+            await waitFor(() => expect(screen.getByText('スコア設定')).toBeInTheDocument());
+
+            fireEvent.click(screen.getByRole('tab', { name: '共通設定' }));
+            const toggleButton = await screen.findByRole('button', { name: '音声認識を開始' });
+            
+            await act(async () => {
+                fireEvent.click(toggleButton);
+            });
+
+            await waitFor(() => {
+                expect(setItemSpy).toHaveBeenCalledWith(
+                    localStorageKey,
+                    expect.stringContaining('"isListening":true')
+                );
+                expect(screen.getByRole('button', { name: '音声認識を停止' })).toBeInTheDocument();
+            });
+        });
+
         it('clears local storage and reloads when "Clear Cache" button is clicked', async () => {
             localStorage.setItem(localStorageKey, JSON.stringify(mockFormData));
             const removeItemSpy = vi.spyOn(Storage.prototype, 'removeItem');
 
             render(<ControlPanelPage />);
-            await waitFor(() => expect(screen.getByLabelText('値')).toHaveValue('12345'));
+            await waitFor(() => expect(screen.getByLabelText('目標値')).toHaveValue(100));
             
             fireEvent.click(screen.getByRole('tab', { name: '共通設定' }));
             
