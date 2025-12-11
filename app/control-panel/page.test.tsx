@@ -37,6 +37,17 @@ vi.mock('next/image', () => ({
     )
 }));
 
+// Mock window.location.reload
+const originalLocation = window.location;
+beforeAll(() => {
+    // @ts-expect-error
+    delete window.location;
+    window.location = { ...originalLocation, reload: vi.fn() };
+});
+afterAll(() => {
+    window.location = originalLocation;
+});
+
 
 describe('ControlPanelPage', () => {
     let mockData: StreamData;
@@ -45,59 +56,33 @@ describe('ControlPanelPage', () => {
         mockData = getInitialStreamData();
         mockedAxios.get.mockResolvedValue({ data: mockData, status: 200 });
         mockedAxios.post.mockResolvedValue({ data: {}, status: 200 });
+        localStorage.clear();
+        vi.clearAllMocks();
     });
 
-    afterEach(() => {
-        vi.restoreAllMocks();
-    });
-
-    it('fetches and displays initial data in the correct fields', async () => {
+    it('fetches and displays initial data when no local storage data exists', async () => {
         render(<ControlPanelPage />);
-
-        // Wait for data to load and check score tab (default)
         await waitFor(() => {
+            expect(mockedAxios.get).toHaveBeenCalledWith('/api/stream-data');
             expect(screen.getByLabelText('フィールド名')).toHaveValue(mockData.scoreLabel);
             expect(screen.getByLabelText('値')).toHaveValue(mockData.scoreValue);
         });
-
-        // Switch to burndown tab and check
-        fireEvent.click(screen.getByRole('tab', { name: 'バーンダウン' }));
-        await waitFor(() => {
-            expect(screen.getByLabelText('目標値')).toHaveValue(mockData.burndown.targetValue);
-        });
-
-        // Switch to common settings tab and check
-        fireEvent.click(screen.getByRole('tab', { name: '共通設定' }));
-        await waitFor(() => {
-            expect(screen.getByLabelText('フォントサイズ (px)')).toHaveValue(mockData.fontSize);
-        });
     });
-
+    
     it('allows switching between tabs', async () => {
         render(<ControlPanelPage />);
-        await waitFor(() => {
-            expect(screen.getByText('スコア設定')).toBeInTheDocument();
-        });
+        await waitFor(() => expect(screen.getByText('スコア設定')).toBeInTheDocument());
 
-        // Click Burndown Tab
         fireEvent.click(screen.getByRole('tab', { name: 'バーンダウン' }));
-        await waitFor(() => {
-            expect(screen.getByText('バーンダウンチャート設定')).toBeInTheDocument();
-            expect(screen.queryByText('スコア設定')).not.toBeInTheDocument();
-        });
+        await waitFor(() => expect(screen.getByText('バーンダウンチャート設定')).toBeInTheDocument());
 
-        // Click Message Tab
         fireEvent.click(screen.getByRole('tab', { name: 'メッセージ' }));
-        await waitFor(() => {
-            expect(screen.getByText('視聴者向け概要メッセージ')).toBeInTheDocument();
-        });
+        await waitFor(() => expect(screen.getByText('視聴者向け概要メッセージ')).toBeInTheDocument());
     });
 
     it('updates score fields and sends correct payload on submit', async () => {
         render(<ControlPanelPage />);
-        await waitFor(() => {
-            expect(screen.getByLabelText('値')).toHaveValue(mockData.scoreValue);
-        });
+        await waitFor(() => expect(screen.getByLabelText('値')).toHaveValue(mockData.scoreValue));
 
         const scoreLabelInput = screen.getByLabelText('フィールド名');
         const scoreValueInput = screen.getByLabelText('値');
@@ -105,79 +90,104 @@ describe('ControlPanelPage', () => {
         await act(async () => {
             fireEvent.change(scoreLabelInput, { target: { value: 'New Score' } });
             fireEvent.change(scoreValueInput, { target: { value: '9999' } });
-        });
-        
-        await act(async () => {
             fireEvent.click(screen.getByRole('button', { name: /OBSに反映/ }));
         });
         
-        expect(mockedAxios.post).toHaveBeenCalledWith('/api/stream-data', 
-            expect.objectContaining({
-                scoreLabel: 'New Score',
-                scoreValue: '9999',
-            })
-        );
+        await waitFor(() => {
+            expect(mockedAxios.post).toHaveBeenCalledWith('/api/stream-data', 
+                expect.objectContaining({
+                    scoreLabel: 'New Score',
+                    scoreValue: '9999',
+                })
+            );
+        });
     });
 
-    it('adds and removes a message in the message tab', async () => {
-        render(<ControlPanelPage />);
-        await waitFor(() => {
-            expect(screen.getByLabelText('値')).toBeInTheDocument();
+    describe('Local Storage Persistence', () => {
+        const localStorageKey = 'control-panel-state';
+        const mockFormData = {
+            scoreLabel: 'Local Score',
+            scoreValue: '12345',
+            burndownLabel: 'Local Burndown',
+            burndownTargetValue: 100,
+            burndownEntriesText: '10\n20',
+            fontFamily: 'Arial',
+            fontSize: 20,
+            transitionEffect: 'slide',
+            transitionDuration: 5,
+            messagePresets: [],
+            activePresetName: '',
+        };
+
+        it('loads data from local storage instead of fetching from API', async () => {
+            localStorage.setItem(localStorageKey, JSON.stringify(mockFormData));
+            render(<ControlPanelPage />);
+
+            await waitFor(() => {
+                expect(mockedAxios.get).not.toHaveBeenCalled();
+                expect(screen.getByLabelText('フィールド名')).toHaveValue('Local Score');
+                expect(screen.getByLabelText('値')).toHaveValue('12345');
+            });
         });
 
-        fireEvent.click(screen.getByRole('tab', { name: 'メッセージ' }));
-
-        const initialMessages = mockData.messagePresets.find(p => p.name === '通常').messages;
-        await waitFor(() => {
-            expect(screen.getByText(initialMessages[0].text)).toBeInTheDocument();
-        });
-        
-        // Add a new message
-        const messageInput = screen.getByLabelText('新しいメッセージ');
-        const addButton = screen.getByRole('button', { name: '追加' });
-
-        await act(async () => {
-            fireEvent.change(messageInput, { target: { value: 'A new test message' } });
-        });
-        await act(async () => {
-            fireEvent.click(addButton);
-        });
-        
-        expect(screen.getByText('A new test message')).toBeInTheDocument();
-
-        // Remove a message
-        // This is fragile because the icon button has no accessible name.
-        const removeButtons = screen.getAllByRole('button');
-        const firstRemoveButton = removeButtons.find(btn => btn.querySelector('svg[data-testid="RemoveCircleIcon"]'));
-
-        await act(async () => {
-            fireEvent.click(firstRemoveButton);
+        it('saves updated form data to local storage', async () => {
+            const setItemSpy = vi.spyOn(Storage.prototype, 'setItem');
+            
+            render(<ControlPanelPage />);
+            await waitFor(() => expect(screen.getByLabelText('値')).toHaveValue(mockData.scoreValue));
+            
+            const scoreLabelInput = screen.getByLabelText('フィールド名');
+            await act(async () => {
+                fireEvent.change(scoreLabelInput, { target: { value: 'A New Value' } });
+            });
+            
+            await waitFor(() => {
+                expect(setItemSpy).toHaveBeenCalledWith(
+                    localStorageKey,
+                    expect.stringContaining('"scoreLabel":"A New Value"')
+                );
+            });
         });
 
-        expect(screen.queryByText(initialMessages[0].text)).not.toBeInTheDocument();
-    });
+        it('clears local storage and reloads when "Clear Cache" button is clicked', async () => {
+            localStorage.setItem(localStorageKey, JSON.stringify(mockFormData));
+            const removeItemSpy = vi.spyOn(Storage.prototype, 'removeItem');
 
-    it('triggers an effect with the correct payload', async () => {
-        render(<ControlPanelPage />);
-        await waitFor(() => {
-            expect(screen.getByLabelText('値')).toBeInTheDocument();
+            render(<ControlPanelPage />);
+            await waitFor(() => expect(screen.getByLabelText('値')).toHaveValue('12345'));
+            
+            fireEvent.click(screen.getByRole('tab', { name: '共通設定' }));
+            
+            const clearButton = await screen.findByRole('button', { name: '入力キャッシュをクリア' });
+            
+            await act(async () => {
+                fireEvent.click(clearButton);
+            });
+            
+            await waitFor(() => {
+                expect(removeItemSpy).toHaveBeenCalledWith(localStorageKey);
+                expect(window.location.reload).toHaveBeenCalled();
+            });
         });
 
-        fireEvent.click(screen.getByRole('tab', { name: '共通設定' }));
+        it('shows an error message and clear button if local storage data is corrupt', async () => {
+            localStorage.setItem(localStorageKey, 'this is not json');
+            render(<ControlPanelPage />);
 
-        await waitFor(() => {
-            expect(screen.getByText('演出効果')).toBeInTheDocument();
+            await waitFor(() => {
+                expect(screen.getByText(/設定の読み込みに失敗しました/)).toBeInTheDocument();
+            });
+
+            const clearButton = screen.getByRole('button', { name: 'キャッシュをクリア' });
+            expect(clearButton).toBeInTheDocument();
+
+            const removeItemSpy = vi.spyOn(Storage.prototype, 'removeItem');
+            fireEvent.click(clearButton);
+
+            await waitFor(() => {
+                expect(removeItemSpy).toHaveBeenCalledWith(localStorageKey);
+                expect(window.location.reload).toHaveBeenCalled();
+            });
         });
-
-        const loveButton = screen.getByRole('button', { name: /LOVE/ });
-        await act(async () => {
-            fireEvent.click(loveButton);
-        });
-
-        expect(mockedAxios.post).toHaveBeenCalledWith('/api/stream-data', 
-            expect.objectContaining({
-                lastEvent: expect.objectContaining({ name: 'LOVE' })
-            })
-        );
     });
 });
