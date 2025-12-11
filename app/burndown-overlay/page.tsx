@@ -57,7 +57,7 @@ const BurndownOverlayPage: React.FC = () => {
                 position: 'relative',
             }}
         >
-            <BurndownChart data={burndown} />
+            <BurndownChart key={data.revision} data={burndown} />
             <FireworksEffect trigger={hasReachedZero} />
         </div>
     );

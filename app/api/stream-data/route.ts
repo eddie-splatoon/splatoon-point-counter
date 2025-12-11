@@ -28,6 +28,7 @@ export interface StreamData {
         timestamp: number;
     } | null;
     burndown: BurndownData; // バーンダウンチャートのデータを追加
+    revision: number; // For forcing re-renders in clients
 }
 
 // データを一時的にインメモリで保持するストア (本番ではDBが必要です)
@@ -68,6 +69,7 @@ export const getInitialStreamData = (): StreamData => ({
         targetValue: 50000,
         entries: [],
     },
+    revision: 0, // Initialize revision
 });
 
 let streamData: StreamData = getInitialStreamData();
@@ -125,6 +127,7 @@ export async function POST(request: Request) {
             // lastEventがbodyに含まれていれば更新、そうでなければ元の値を維持
             lastEvent: 'lastEvent' in body ? lastEvent : streamData.lastEvent,
             burndown: burndown ?? streamData.burndown,
+            revision: streamData.revision + 1, // Increment revision on every update
         };
 
         return NextResponse.json(streamData);
