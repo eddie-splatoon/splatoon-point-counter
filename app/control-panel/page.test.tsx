@@ -254,6 +254,7 @@ describe('ControlPanelPage', () => {
         });
 
         it('shows an error message and clear button if local storage data is corrupt', async () => {
+            const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
             localStorage.setItem(localStorageKey, 'this is not json');
             render(<ControlPanelPage />);
 
@@ -271,6 +272,7 @@ describe('ControlPanelPage', () => {
                 expect(removeItemSpy).toHaveBeenCalledWith(localStorageKey);
                 expect(window.location.reload).toHaveBeenCalled();
             });
+            errorSpy.mockRestore();
         });
     });
 });
