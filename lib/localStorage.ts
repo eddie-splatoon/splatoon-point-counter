@@ -13,12 +13,8 @@ export function getItem<T>(key: string): T | null {
     if (item === null) {
         return null;
     }
-    try {
-        return JSON.parse(item) as T;
-    } catch (error) {
-        console.error(`Error parsing localStorage item for key "${key}":`, error);
-        throw error; // Re-throw the error to be caught by the caller
-    }
+    // Let the caller handle parsing errors
+    return JSON.parse(item) as T;
 }
 
 /**

@@ -120,7 +120,7 @@ describe('ControlPanelPage', () => {
 
         await waitFor(() => {
             const historyContainer = screen.getByTestId('burndown-history');
-            expect(within(historyContainer).getByText((content, element) => {
+            expect(within(historyContainer).getByText((content) => {
                 return content.includes('150');
             })).toBeInTheDocument();
         });
@@ -132,7 +132,7 @@ describe('ControlPanelPage', () => {
         
         await waitFor(() => {
             const historyContainer = screen.getByTestId('burndown-history');
-            expect(within(historyContainer).queryByText((content, element) => {
+            expect(within(historyContainer).queryByText((content) => {
                 return content.includes('150');
             })).not.toBeInTheDocument();
         });
@@ -167,7 +167,7 @@ describe('ControlPanelPage', () => {
                 expect(screen.getByText('バーンダウンチャート設定')).toBeInTheDocument();
                 expect(screen.getByLabelText('目標値')).toHaveValue(mockFormData.burndown.targetValue);
                 const historyContainer = screen.getByTestId('burndown-history');
-                expect(within(historyContainer).getByText((content, element) => {
+                expect(within(historyContainer).getByText((content) => {
                     return content.includes('50');
                 })).toBeInTheDocument();
             });
@@ -254,6 +254,7 @@ describe('ControlPanelPage', () => {
         });
 
         it('shows an error message and clear button if local storage data is corrupt', async () => {
+            const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
             localStorage.setItem(localStorageKey, 'this is not json');
             render(<ControlPanelPage />);
 
@@ -271,6 +272,7 @@ describe('ControlPanelPage', () => {
                 expect(removeItemSpy).toHaveBeenCalledWith(localStorageKey);
                 expect(window.location.reload).toHaveBeenCalled();
             });
+            errorSpy.mockRestore();
         });
     });
 });
