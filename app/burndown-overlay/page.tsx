@@ -13,6 +13,15 @@ const FIREWORKS_DURATION = 20000; // 20秒
 
 const BurndownOverlayPage: React.FC = () => {
     const [data, setData] = useState<StreamData | null>(null);
+    const [now, setNow] = useState(() => Date.now());
+
+    useEffect(() => {
+        const timer = setInterval(() => {
+            setNow(Date.now());
+        }, 1000); // 1秒ごとに現在時刻を更新
+        return () => clearInterval(timer);
+    }, []);
+
 
     const fetchDataInternal = useCallback(async () => {
         try {
@@ -33,6 +42,7 @@ const BurndownOverlayPage: React.FC = () => {
     }, []);
 
     useEffect(() => {
+        // eslint-disable-next-line react-hooks/set-state-in-effect
         fetchDataInternal().catch(error => {
             console.error("Initial data fetch error:", error);
         });
@@ -66,7 +76,7 @@ const BurndownOverlayPage: React.FC = () => {
     const { burndown, fontFamily } = data;
     
     // Determine if fireworks should be active based on lastEvent and its duration
-    const isFireworksActive = data.lastEvent?.name === 'FIREWORKS' && (Date.now() - data.lastEvent.timestamp) < FIREWORKS_DURATION;
+    const isFireworksActive = data.lastEvent?.name === 'FIREWORKS' && (now - data.lastEvent.timestamp) < FIREWORKS_DURATION;
 
     return (
         <div

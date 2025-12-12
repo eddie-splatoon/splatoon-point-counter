@@ -101,8 +101,6 @@ const BurndownChart: React.FC<BurndownChartProps> = ({data}) => {
         textShadow: '0 0 8px rgba(255, 64, 160, 0.7)', // Pink glow
         color: '#FF40A0' // Set explicit color for animation
     } : {};
-    const zeroStateColor = hasReachedZero && !isAnimating ? 'text-green-400' : 'text-white'; // Tailwind for color
-
 
     return (
         <div

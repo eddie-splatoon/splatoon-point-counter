@@ -49,7 +49,7 @@ describe('BurndownOverlayPage', () => {
         });
         
         it('shows a loading state if burndown data is missing', async () => {
-            const mockData: StreamData = { ...getInitialStreamData(), burndown: undefined as any }; // Ensure burndown is undefined
+            const mockData: StreamData = { ...getInitialStreamData(), burndown: undefined as unknown as BurndownData }; // Ensure burndown is undefined
             mockedAxios.get.mockResolvedValue({ data: mockData, status: 200 });
 
             render(<BurndownOverlayPage />);
