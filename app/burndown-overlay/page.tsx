@@ -55,7 +55,7 @@ const BurndownOverlayPage: React.FC = () => {
 
     // Effect to trigger fireworks via API
     useEffect(() => {
-        if (hasReachedZero && data) {
+        if (hasReachedZero && data && data.burndown) {
             // Only trigger if lastEvent is not already FIREWORKS or if it has expired
             if (!data.lastEvent || data.lastEvent.name !== 'FIREWORKS' || (Date.now() - data.lastEvent.timestamp) > FIREWORKS_DURATION) {
                 axios.post('/api/stream-data', {
