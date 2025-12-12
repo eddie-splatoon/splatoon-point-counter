@@ -50,7 +50,7 @@ const BurndownOverlayPage: React.FC = () => {
         return () => clearInterval(interval);
     }, [fetchDataInternal]);
 
-    const remaining = data ? data.burndown.targetValue - data.burndown.entries.reduce((sum, entry) => sum + entry.score, 0) : 0;
+    const remaining = data && data.burndown ? data.burndown.targetValue - data.burndown.entries.reduce((sum, entry) => sum + entry.score, 0) : 0;
     const hasReachedZero = remaining <= 0;
 
     // Effect to trigger fireworks via API
