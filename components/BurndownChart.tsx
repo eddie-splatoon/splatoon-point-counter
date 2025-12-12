@@ -81,9 +81,9 @@ const BurndownChart: React.FC<BurndownChartProps> = ({data}) => {
         const middle = first + (last - first) / 2;
         
         return [
-            { value: format(new Date(first), 'HH:mm:ss'), x: 0 },
-            { value: format(new Date(middle), 'HH:mm:ss'), x: chartWidth / 2 },
-            { value: format(new Date(last), 'HH:mm:ss'), x: chartWidth },
+            { value: format(new Date(first), 'HH:mm'), x: 0 },
+            { value: format(new Date(middle), 'HH:mm'), x: chartWidth / 2 },
+            { value: format(new Date(last), 'HH:mm'), x: chartWidth },
         ];
     };
 
