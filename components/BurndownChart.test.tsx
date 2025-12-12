@@ -57,9 +57,9 @@ describe('BurndownChart', () => {
 
     // X-Axis (formatted time)
     // We expect 3 time labels.
-    const firstTime = format(new Date(dataWithMoreEntries.entries[0].timestamp), 'HH:mm:ss');
-    const middleTime = format(new Date(dataWithMoreEntries.entries[0].timestamp + (dataWithMoreEntries.entries[2].timestamp - dataWithMoreEntries.entries[0].timestamp) / 2), 'HH:mm:ss');
-    const lastTime = format(new Date(dataWithMoreEntries.entries[2].timestamp), 'HH:mm:ss');
+    const firstTime = format(new Date(dataWithMoreEntries.entries[0].timestamp), 'HH:mm');
+    const middleTime = format(new Date(dataWithMoreEntries.entries[0].timestamp + (dataWithMoreEntries.entries[2].timestamp - dataWithMoreEntries.entries[0].timestamp) / 2), 'HH:mm');
+    const lastTime = format(new Date(dataWithMoreEntries.entries[2].timestamp), 'HH:mm');
 
     // Check that these formatted times are present in the document
     expect(screen.getByText(firstTime)).toBeInTheDocument();
