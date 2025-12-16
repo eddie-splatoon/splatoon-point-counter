@@ -19,6 +19,7 @@ body:
         - `gh`コマンドを利用し、Pull Requestを作成すること
           - Pull Request内の言語は日本語で記述すること
           - Pull Requestには変更内容に応じて処理シーケンスなどを `mermaid` 形式で記述すること
+          - 指定されたIssue番号を記述すること
         - GEMINIが変更内容を適切にトレースできるよう、必要に応じて `GEMINI.md` を修正すること
     validations:
       required: true
