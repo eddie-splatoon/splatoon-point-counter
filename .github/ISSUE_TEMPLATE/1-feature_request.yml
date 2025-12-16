@@ -71,7 +71,7 @@ body:
           required: true
         - label: 必要に応じて `GEMINI.md` を修正
           required: true
-        - label: `gh` コマンドを利用してPull Requestを作成 (日本語、`mermaid`形式のシーケンス図を記載)
+        - label: ghコマンドを利用してPull Requestを作成 (日本語、`mermaid`形式のシーケンス図を記載)
           required: true
 
   - type: input
