@@ -67,8 +67,6 @@ body:
       options:
         - label: 適切な作業ブランチを作成
           required: true
-        - label: `.dockerignore` ファイルを追加し、適切な除外設定を記述
-          required: true
         - label: このIssue内に記載の「前提」「概要」「詳細」を満たす全ての機能を実装すること
           required: true
         - label: 必要に応じて `GEMINI.md` を修正
