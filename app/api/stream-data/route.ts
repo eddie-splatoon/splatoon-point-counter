@@ -16,7 +16,7 @@ export interface BurndownData {
 export interface StreamData {
     scoreLabel: string;
     scoreValue: string;
-    transitionEffect: string;
+    transitionEffect: 'fade' | 'slide';
     transitionDuration: number;
     fontFamily: string;
     fontSize: number;

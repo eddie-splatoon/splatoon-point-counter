@@ -3,10 +3,10 @@
 import {motion, AnimatePresence} from 'motion/react';
 import React, {useEffect, useState} from 'react';
 
-import {StreamData} from '@/app/api/stream-data/route';
+import {MessagePreset, StreamData} from '@/app/api/stream-data/route';
 
 interface MessageScrollerProps {
-    messages: StreamData['messages'];
+    messages: MessagePreset['messages'];
     transitionEffect: 'fade' | 'slide';
     transitionDuration: number;  // 秒
     fontSize: number;
