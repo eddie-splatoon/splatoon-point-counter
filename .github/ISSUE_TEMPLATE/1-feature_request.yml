@@ -7,12 +7,6 @@ assignees:
 
 body:
   - type: markdown
-    attributes:
-      value: |
-        ### はじめに
-        このIssueは、GitHub ActionsパイプラインにDocker関連機能を追加する要望に対応するためのものです。
-
-  - type: markdown
     id: assumptions
     attributes:
       value: |
