@@ -6,13 +6,16 @@ assignees:
   - eddie-splatoon
 
 body:
-  - type: markdown
+  - type: textarea
     id: assumptions
     attributes:
+      label: 📘 前提 (Assumptions)
+      description: コーディングエージェントが実行すべき作業の前提条件を記載してください。
       value: |
-        ### 📘 前提 (Assumptions)
-        - 適切な作業ブランチを作成すること
+        - Issueに対応する適切な作業ブランチを作成すること
         - `概要` `詳細` の内容を読み取り、記述内容の条件を全て対応すること
+        - コード修正時、対応するテストも必ず作成すること
+        - ESLintによるチェックを実行すること
         - `gh`コマンドを利用し、Pull Requestを作成すること
           - Pull Request内の言語は日本語で記述すること
           - Pull Requestには変更内容に応じて処理シーケンスなどを `mermaid` 形式で記述すること
