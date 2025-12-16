@@ -94,7 +94,11 @@ export interface StreamData {
 -   `**/*.test.{ts,tsx}`: コンポーネントやAPIルートのテストファイル。対象ファイルと同じディレクトリに配置されます。
 
 ### CI/CD関連ファイル
--   `.github/workflows/ci.yml`: GitHub ActionsのCI/Testワークフロー定義ファイル。`main`ブランチへのプッシュ、および`main`または`staging`ブランチをターゲットとするプルリクエスト時に、Lintとテストを実行します。
+-   `.github/workflows/ci.yml`: GitHub ActionsのCI/CDワークフロー定義ファイル。以下の処理を実行します。
+    -   **CI (継続的インテグレーション)**: `main`または`staging`ブランチへのプルリクエスト時、および`main`ブランチへのプッシュ時に、Lintとテストを自動的に実行します。
+    -   **CD (継続的デリバリー)**: `main`ブランチへのマージ（プッシュ）をトリガーとして、Dockerイメージをビルドし、以下のコンテナレジストリにプッシュします。
+        -   Docker Hub
+        -   GitHub Container Registry (GHCR)
 
 ### Dockerでの起動
 `docker-compose` を使用して、アプリケーションをコンテナ化された環境でビルドおよび実行できます。
