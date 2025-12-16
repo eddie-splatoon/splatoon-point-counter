@@ -4,11 +4,9 @@
   OBS向けのリアルタイム・データオーバーレイ・システム
 </p>
 
-<!--
 <p align="center">
-  <i>[ここにアプリケーションの動作を示すスクリーンショットまたはアニメーションGIFを挿入]</i>
+  <img src="https://github.com/eddie-splatoon/splatoon-point-counter/blob/main/docs/assets/demo.png" width="1400px">
 </p>
--->
 
 ## 概要
 
