@@ -18,7 +18,7 @@ jobs:
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
-          node-version: 24
+          node-version: 20
           cache: npm
       - name: Install dependencies
         run: npm ci
@@ -28,18 +28,26 @@ jobs:
   test:
     needs: lint
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write # Required to post a PR comment
     steps:
       - name: Checkout
         uses: actions/checkout@v4
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
-          node-version: 24
+          node-version: 20
           cache: npm
       - name: Install dependencies
         run: npm ci
-      - name: Run tests
+      - name: Run tests with coverage
         run: npm run test:coverage
+      - name: Vitest Coverage Report
+        uses: davelosert/vitest-coverage-report-action@v2
+        if: github.event_name == 'pull_request'
+        with:
+          json-summary-path: ./coverage/coverage-summary.json
 
   build-and-push-docker:
     needs: test

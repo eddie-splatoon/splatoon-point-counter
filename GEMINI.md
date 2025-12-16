@@ -95,7 +95,7 @@ export interface StreamData {
 
 ### CI/CD関連ファイル
 -   `.github/workflows/ci.yml`: GitHub ActionsのCI/CDワークフロー定義ファイル。以下の処理を実行します。
-    -   **CI (継続的インテグレーション)**: `main`または`staging`ブランチへのプルリクエスト時、および`main`ブランチへのプッシュ時に、Lintとテストを自動的に実行します。
+    -   **CI (継続的インテグレーション)**: `main`または`staging`ブランチへのプルリクエスト時、および`main`ブランチへのプッシュ時に、Lintとテストを自動的に実行します。プルリクエスト時には、Vitestによるテストカバレッジレポートが生成され、PRコメントとJob Summaryに投稿されます。
     -   **CD (継続的デリバリー)**: `main`ブランチへのマージ（プッシュ）をトリガーとして、Dockerイメージをビルドし、以下のコンテナレジストリにプッシュします。
         -   Docker Hub
         -   GitHub Container Registry (GHCR)
