@@ -15,9 +15,8 @@ body:
   - type: markdown
     id: assumptions
     attributes:
-      label: 📘 前提 (Assumptions)
-      description: この作業を実施する上で必須となる条件
       value: |
+        ### 📘 前提 (Assumptions)
         - 適切な作業ブランチを作成すること
         - `概要` `詳細` の内容を読み取り、記述内容の条件を全て対応すること
         - `gh`コマンドを利用し、Pull Requestを作成すること
