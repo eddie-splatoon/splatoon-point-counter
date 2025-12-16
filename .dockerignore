@@ -1,0 +1,36 @@
+# Git
+.git
+.gitignore
+
+# Docker
+Dockerfile
+.dockerignore
+docker-compose.yml
+
+# Node
+node_modules
+npm-debug.log
+.npm
+
+# Next.js build output
+.next
+out
+
+# Local configs
+.idea
+.env
+.env.*
+!.env.example
+.envrc
+
+# Test reports and cache
+coverage
+.nyc_output
+.cache
+.parcel-cache
+*.tsbuildinfo
+.eslintcache
+
+# OS files
+.DS_Store
+*.swp
