@@ -1,36 +1,96 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Splatoon Point Counter
 
-## Getting Started
+<p align="center">
+  OBS向けのリアルタイム・データオーバーレイ・システム
+</p>
 
-First, run the development server:
+<p align="center">
+  <i>[ここにアプリケーションの動作を示すスクリーンショットまたはアニメーションGIFを挿入]</i>
+</p>
 
-```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
-```
+## 概要
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+**Splatoon Point Counter** は、ライブストリーミング（特にOBS Studioでの利用）をリッチにするためのリアルタイム・データオーバーレイ・システムです。Next.jsで構築されており、ストリーマーがコントロールパネルからスコアやメッセージ、各種データをリアルタイムで更新し、それを配信画面上のオーバーレイに反映させることができます。
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## 主な機能
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+本システムは、主に以下の4つの画面で構成されています。
 
-## Learn More
+### 1. ランチャー
 
-To learn more about Next.js, take a look at the following resources:
+アプリケーションの起点となるページです。ここからコントロールパネルや各オーバーレイ画面を新しいタブで開くことができます。
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+![ランチャー画面](https://via.placeholder.com/800x400.png?text=ランチャー画面のスクリーンショット)
+> *[ここにランチャー画面のスクリーンショットを挿入]*
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+### 2. コントロールパネル
 
-## Deploy on Vercel
+ストリーマーがオーバーレイに表示するデータを操作するための管理画面です。タブ形式で各機能を直感的にコントロールできます。
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+- **スコア表示**: メインスコアのラベルや値を更新します。
+- **バーンダウン**: 目標値に対する進捗（例: ポイント、視聴者数など）を管理します。
+- **メッセージ**: オーバーレイに表示するスクロールメッセージを複数プリセットから選択・管理します。
+- **共通設定**: オーバーレイ全体のフォントや、音声認識によるエフェクト（「ナイス！」などのキーワードでハートを表示）の有効/無効を切り替えます。
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+![コントロールパネル](https://via.placeholder.com/800x600.png?text=コントロールパネルのスクリーンショット)
+> *[ここにコントロールパネルのスクリーンショットを挿入]*
+
+### 3. スコア＆メッセージオーバーレイ
+
+コントロールパネルで設定されたスコアとメッセージを配信画面に表示するためのオーバーレイです。OBSのブラウザソースにURLを指定して使用します。
+
+![スコア＆メッセージオーバーレイ](https://via.placeholder.com/800x200.png?text=スコア＆メッセージオーバーレイのスクリーンショット)
+> *[ここにスコア＆メッセージオーバーレイのスクリーンショットを挿入]*
+
+### 4. バーンダウンチャートオーバーレイ
+
+特定の目標（例: 配信時間、目標登録者数）に対する進捗をグラフとプログレスバーで可視化する専用オーバーレイです。目標達成時には花火のエフェクトが表示されます。
+
+![バーンダウンチャートオーバーレイ](https://via.placeholder.com/300x600.png?text=バーンダウンチャートオーバーレイのスクリーンショット)
+> *[ここにバーンダウンチャートオーバーレイのスクリーンショットを挿入]*
+
+
+## 技術スタック
+
+- **フレームワーク**: [Next.js](https://nextjs.org/) 14+ (App Router)
+- **言語**: TypeScript
+- **UI/スタイリング**: Material-UI (MUI), Tailwind CSS
+- **リアルタイム通信**: REST API (クライアントからのポーリング)
+- **テスト**: Vitest, React Testing Library
+- **CI/CD**: GitHub Actions
+
+## セットアップと起動方法
+
+### ローカル環境での起動
+
+1.  依存関係をインストールします。
+    ```bash
+    npm install
+    ```
+
+2.  開発サーバーを起動します。
+    ```bash
+    npm run dev
+    ```
+
+3.  ブラウザで `http://localhost:3000` を開きます。
+
+### Dockerでの起動
+
+1.  Dockerイメージをビルドします。
+    ```bash
+    docker-compose build
+    ```
+
+2.  コンテナを起動します。
+    ```bash
+    docker-compose up
+    ```
+3.  ブラウザで `http://localhost:3000` を開きます。
+
+## CI/CD
+
+このリポジトリでは、GitHub Actionsを利用してCI/CDパイプラインを構築しています。
+
+- **CI (継続的インテグレーション)**: `main`または`staging`ブランチへのプルリクエスト時、および`main`ブランチへのプッシュ時に、Lintとテストが自動的に実行されます。
+- **CD (継続的デリバリー)**: `main`ブランチへのマージをトリガーとして、Dockerイメージがビルドされ、Docker HubおよびGitHub Container Registryに自動的にプッシュされます。
