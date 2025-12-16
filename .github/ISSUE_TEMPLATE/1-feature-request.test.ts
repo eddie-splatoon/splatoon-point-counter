@@ -1,7 +1,8 @@
-import { describe, it, expect, fail } from 'vitest';
 import fs from 'fs';
 import path from 'path';
+
 import yaml from 'js-yaml';
+import { describe, it, expect, fail } from 'vitest';
 
 describe('1-feature_request.yml', () => {
   const featureRequestFilePath = path.resolve(__dirname, '1-feature_request.yml');
