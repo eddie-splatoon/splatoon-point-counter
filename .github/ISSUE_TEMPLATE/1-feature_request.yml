@@ -3,7 +3,7 @@ description: 新しい機能の追加や既存機能の改善を提案します�
 title: "[Feature]: "
 labels: ["enhancement", "feature"]
 assignees:
-  - # ここにデフォルトの担当者名 (オプション)
+  - eddie-splatoon
 
 body:
   - type: markdown
@@ -12,12 +12,28 @@ body:
         ### はじめに
         このIssueは、GitHub ActionsパイプラインにDocker関連機能を追加する要望に対応するためのものです。
 
+  - type: markdown
+    id: assumptions
+    attributes:
+      label: 📘 前提 (Assumptions)
+      description: この作業を実施する上で必須となる条件
+      value: |
+        - 適切な作業ブランチを作成すること
+        - `概要` `詳細` の内容を読み取り、記述内容の条件を全て対応すること
+        - `gh`コマンドを利用し、Pull Requestを作成すること
+          - Pull Request内の言語は日本語で記述すること
+          - Pull Requestには変更内容に応じて処理シーケンスなどを `mermaid` 形式で記述すること
+        - GEMINIが変更内容を適切にトレースできるよう、必要に応じて `GEMINI.md` を修正すること
+    validations:
+      required: true
+
   - type: textarea
     id: overview
     attributes:
       label: 🚀 概要 (Overview)
       description: 本Issueの目的と達成したい結果を簡潔に記述してください。
       placeholder: |
+        例:
         - Github Actionsのパイプラインに機能を追加する
         - mainブランチにマージした際に、Dockerイメージをビルドし、Registryにpushする
     validations:
@@ -29,6 +45,7 @@ body:
       label: 💡 詳細 (Details)
       description: 具体的な作業内容、背景、満たすべき要件を記述してください。
       placeholder: |
+        例:
         ## .dockerignore の追加
         - 目的: 不要な設定ファイルなどが意図せず混入されるのを防ぐ。
         - 要件: .gitignoreの内容を参考に、適切な.dockerignoreを作成する。
@@ -43,36 +60,6 @@ body:
              - DockerHub
     validations:
       required: true
-
-  - type: textarea
-    id: assumptions
-    attributes:
-      label: 📘 前提 (Assumptions)
-      description: この作業を実施する上で必須となる条件を記述してください。
-      value: |
-        - 適切な作業ブランチを作成すること
-        - `概要` `詳細` の内容を読み取り、記述内容の条件を全て対応すること
-        - `gh`コマンドを利用し、Pull Requestを作成すること
-          - Pull Request内の言語は日本語で記述すること
-          - Pull Requestには変更内容に応じて処理シーケンスなどを `mermaid` 形式で記述すること
-        - GEMINIが変更内容を適切にトレースできるよう、必要に応じて `GEMINI.md` を修正すること
-    validations:
-      required: true
-
-  - type: checkboxes
-    id: checklist
-    attributes:
-      label: ✅ タスクリスト (Checklist)
-      description: 実施すべき具体的な作業項目をチェックリスト形式で確認します。
-      options:
-        - label: 適切な作業ブランチを作成
-          required: true
-        - label: このIssue内に記載の「前提」「概要」「詳細」を満たす全ての機能を実装すること
-          required: true
-        - label: 必要に応じて `GEMINI.md` を修正
-          required: true
-        - label: ghコマンドを利用してPull Requestを作成 (日本語、`mermaid`形式のシーケンス図を記載)
-          required: true
 
   - type: input
     id: additional_notes
