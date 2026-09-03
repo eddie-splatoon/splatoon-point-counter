@@ -18,8 +18,8 @@
 
 - **フレームワーク**: Next.js 16+ (App Router)
 - **言語**: TypeScript 5+
-- **UI/スタイリング**: Material-UI (MUI) v7, Tailwind CSS v4
-- **アニメーション**: Motion (旧Framer Motion) v12
+- **UI/スタイリング**: Material-UI (MUI) v9, Tailwind CSS v4
+- **アニメーション**: Motion (旧Framer Motion) v13
 - **リアルタイム通信**: REST API + クライアントサイドポーリング
 - **HTTPクライアント**: Axios
 - **ブラウザAPI**: Web Speech API (音声認識機能)
@@ -27,7 +27,7 @@
 - **Linting**: ESLint 9 (Flat Config)
 - **CI/CD**: GitHub Actions
 - **コンテナ**: Docker + Docker Compose
-- **Node.js**: v24.11.1 (Volta管理)
+- **Node.js**: v24.20.0 (Volta管理)
 
 ## ディレクトリ構造
 
@@ -62,7 +62,7 @@
 │   │   └── ci.yml                # CI/CDパイプライン
 │   └── ISSUE_TEMPLATE/           # Issueテンプレート
 ├── **/*.test.{ts,tsx}            # テストファイル（各ファイルと同じディレクトリ）
-├── vite.config.ts                # Vitest設定
+├── vite.config.mts               # Vitest設定
 ├── vitest.setup.ts               # テストセットアップ
 ├── eslint.config.mjs             # ESLint設定（Flat Config）
 ├── tsconfig.json                 # TypeScript設定
@@ -288,7 +288,7 @@ npm run lint -- --fix
 
 - **原因**: `useEffect` 内で直接 `setState` を呼び出している
 - **対応**: アニメーション起動など正当な理由がある場合はコメント付きで無効化
-- **該当箇所**: `ScoreDisplay.tsx`, `BurndownChart.tsx`, エフェクトコンポーネント
+- **該当箇所**: `ScoreDisplay.tsx`, `BurndownChart.tsx`, `FireworksEffect.tsx`, `app/burndown-overlay/page.tsx`, `app/control-panel/page.tsx`
 
 #### 4. `react-hooks/purity`
 
