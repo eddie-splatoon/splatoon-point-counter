@@ -1,8 +1,8 @@
 import fs from 'fs';
 import path from 'path';
 
-import yaml from 'js-yaml';
-import { describe, it, expect, fail } from 'vitest';
+import * as yaml from 'js-yaml';
+import { describe, it, expect } from 'vitest';
 
 describe('2-bug-report.yml', () => {
   const bugReportFilePath = path.resolve(__dirname, '2-bug-report.yml');
@@ -14,7 +14,7 @@ describe('2-bug-report.yml', () => {
     try {
       parsedYaml = yaml.load(fs.readFileSync(bugReportFilePath, 'utf8'));
     } catch (e) {
-      fail(`Failed to parse 2-bug-report.yml as YAML: ${e}`);
+      expect.fail(`Failed to parse 2-bug-report.yml as YAML: ${e}`);
     }
     expect(parsedYaml).toBeDefined();
     expect(typeof parsedYaml).toBe('object');

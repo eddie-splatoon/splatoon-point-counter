@@ -2,14 +2,14 @@ import { render, screen, act, waitFor } from '@testing-library/react';
 import axios from 'axios';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 
-import { getInitialStreamData } from '../api/stream-data/route';
+import { MessagePreset, getInitialStreamData } from '../api/stream-data/route';
 
 import ObsOverlayPage from './page';
 
 
 // Mock child components
 vi.mock('../../components/ScoreDisplay', () => ({
-  default: (props) => (
+  default: (props: { scoreLabel: string; scoreValue: string }) => (
     <div data-testid="ScoreDisplay">
       <span>{props.scoreLabel}</span>
       <span>{props.scoreValue}</span>
@@ -18,7 +18,7 @@ vi.mock('../../components/ScoreDisplay', () => ({
 }));
 
 vi.mock('../../components/MessageScroller', () => ({
-  default: (props) => (
+  default: (props: { messages: MessagePreset['messages'] }) => (
     <div data-testid="MessageScroller">
       {props.messages.map(m => <span key={m.id}>{m.text}</span>)}
     </div>

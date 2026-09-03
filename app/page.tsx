@@ -96,12 +96,19 @@ const darkTheme = createTheme({
         },
         MuiButton: {
             styleOverrides: {
-                containedPrimary: {
-                    color: '#FFFFFF',
-                    backgroundColor: '#FF40A0',
-                    '&:hover': {
-                        backgroundColor: '#E6398D',
-                    }
+                root: {
+                    variants: [
+                        {
+                            props: {variant: 'contained', color: 'primary'},
+                            style: {
+                                color: '#FFFFFF',
+                                backgroundColor: '#FF40A0',
+                                '&:hover': {
+                                    backgroundColor: '#E6398D',
+                                }
+                            }
+                        }
+                    ]
                 }
             }
         }

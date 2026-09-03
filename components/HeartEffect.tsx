@@ -1,6 +1,6 @@
 'use client';
 
-import {motion} from 'framer-motion';
+import {motion} from 'motion/react';
 import React, {useState, useEffect, useRef} from 'react';
 
 // ハートの型定義
@@ -49,7 +49,6 @@ const HeartEffect: React.FC<HeartEffectProps> = ({trigger}) => {
                     finalX: x + (Math.random() - 0.5) * 40,
                 });
             }
-            // eslint-disable-next-line react-hooks/set-state-in-effect
             setHearts(prevHearts => [...prevHearts, ...newHearts]);
         }
     }, [trigger]);

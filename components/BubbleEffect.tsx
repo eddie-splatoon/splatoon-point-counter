@@ -1,6 +1,6 @@
 'use client';
 
-import {motion} from 'framer-motion';
+import {motion} from 'motion/react';
 import React, {useState, useEffect, useRef} from 'react';
 
 // Bubbleの型定義に色を追加
@@ -49,7 +49,6 @@ const BubbleEffect: React.FC<BubbleEffectProps> = ({trigger}) => {
                     finalX: x + (Math.random() - 0.5) * 30,
                 });
             }
-            // eslint-disable-next-line react-hooks/set-state-in-effect
             setBubbles(prev => [...prev, ...newBubbles]);
         }
     }, [trigger]);

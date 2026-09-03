@@ -34,6 +34,7 @@ const BurndownOverlayPage: React.FC = () => {
     }, []);
 
     useEffect(() => {
+        // eslint-disable-next-line react-hooks/set-state-in-effect
         fetchDataInternal().catch(error => {
             console.error("Initial data fetch error:", error);
         });

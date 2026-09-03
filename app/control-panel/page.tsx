@@ -141,12 +141,19 @@ const darkTheme = createTheme({
         },
         MuiButton: {
             styleOverrides: {
-                containedPrimary: {
-                    color: '#FFFFFF',
-                    backgroundColor: '#FF40A0',
-                    '&:hover': {
-                        backgroundColor: '#E6398D',
-                    },
+                root: {
+                    variants: [
+                        {
+                            props: {variant: 'contained', color: 'primary'},
+                            style: {
+                                color: '#FFFFFF',
+                                backgroundColor: '#FF40A0',
+                                '&:hover': {
+                                    backgroundColor: '#E6398D',
+                                },
+                            },
+                        },
+                    ],
                 },
             },
         },
@@ -245,6 +252,7 @@ const ControlPanelPage: React.FC = () => {
     // Initialization Effect
     useEffect(() => {
         if (typeof window !== 'undefined') {
+            // eslint-disable-next-line react-hooks/set-state-in-effect
             setOrigin(window.location.origin);
 
             try {
@@ -312,6 +320,7 @@ const ControlPanelPage: React.FC = () => {
         const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
         if (!SpeechRecognition) {
             console.warn("Speech Recognition API is not supported in this browser.");
+            // eslint-disable-next-line react-hooks/set-state-in-effect
             setRecognitionError("音声認識はこのブラウザではサポートされていません。");
             return;
         }
@@ -499,7 +508,12 @@ const ControlPanelPage: React.FC = () => {
                             <Typography variant="h6" gutterBottom sx={{ mt: 2 }}>ポイント履歴</Typography>
                             <Box data-testid="burndown-history" sx={{my: 2, maxHeight: 200, overflowY: 'auto', p: 1, bgcolor: 'rgba(255, 255, 255, 0.03)', borderRadius: '4px'}}>
                                 {formData.burndown.entries.length === 0 ? (
-                                    <Typography variant="body2" color="text.secondary" sx={{p: 1}}>履歴がありません</Typography>
+                                    <Typography
+                                        variant="body2"
+                                        sx={{
+                                            color: "text.secondary",
+                                            p: 1
+                                        }}>履歴がありません</Typography>
                                 ) : (
                                     formData.burndown.entries.map((entry, index) => (
                                         <Box key={entry.timestamp} sx={{display: 'flex', justifyContent: 'space-between', alignItems: 'center', p: 0.5, borderBottom: '1px dotted rgba(255,255,255,0.2)'}}>
@@ -524,7 +538,12 @@ const ControlPanelPage: React.FC = () => {
                             
                             <Box sx={{flex: 1, display: 'flex', flexDirection: 'column', justifyContent: 'center', alignItems: 'center', bgcolor: 'rgba(255, 255, 255, 0.03)', borderRadius: '4px', p: 1}}>
                                 <Typography variant="h6" color="primary">合計</Typography>
-                                <Typography variant="h4" color="text.primary" fontWeight="bold">
+                                <Typography
+                                    variant="h4"
+                                    sx={{
+                                        color: "text.primary",
+                                        fontWeight: "bold"
+                                    }}>
                                     {totalEntries.toLocaleString()}
                                 </Typography>
                             </Box>
@@ -541,7 +560,12 @@ const ControlPanelPage: React.FC = () => {
                             </Box>
                             <Box sx={{my: 2, maxHeight: 150, overflowY: 'auto', p: 1, bgcolor: 'rgba(255, 255, 255, 0.03)', borderRadius: '4px'}}>
                                 {formData.messagePresets.find(p => p.name === formData.activePresetName)?.messages.length === 0 ? (
-                                    <Typography variant="body2" color="text.secondary" sx={{p: 1}}>メッセージがありません</Typography>
+                                    <Typography
+                                        variant="body2"
+                                        sx={{
+                                            color: "text.secondary",
+                                            p: 1
+                                        }}>メッセージがありません</Typography>
                                 ) : (
                                     formData.messagePresets.find(p => p.name === formData.activePresetName)?.messages.map((msg) => (
                                         <Box key={msg.id} sx={{display: 'flex', justifyContent: 'space-between', alignItems: 'center', p: 0.5, borderBottom: '1px dotted rgba(255,255,255,0.2)'}}>
@@ -562,7 +586,7 @@ const ControlPanelPage: React.FC = () => {
                                     <MenuItem value={'slide'}>スライド</MenuItem>
                                 </Select>
                             </FormControl>
-                            <TextField label="表示秒数 (秒)" type="number" value={formData.transitionDuration} onChange={(e) => updateFormData({transitionDuration: Number(e.target.value)})} fullWidth margin="normal" inputProps={{min: 1}} variant="outlined"/>
+                            <TextField label="表示秒数 (秒)" type="number" value={formData.transitionDuration} onChange={(e) => updateFormData({transitionDuration: Number(e.target.value)})} fullWidth margin="normal" slotProps={{htmlInput: {min: 1}}} variant="outlined"/>
                         </Paper>
                     )}
 
@@ -582,7 +606,13 @@ const ControlPanelPage: React.FC = () => {
                                 <Typography variant="body2" sx={{mt: 1, color: 'text.secondary'}}>
                                     最終認識テキスト: {transcript || '...'}
                                 </Typography>
-                                <Typography variant="caption" display="block" sx={{mt: 1, color: 'text.secondary'}}>
+                                <Typography
+                                    variant="caption"
+                                    sx={{
+                                        display: "block",
+                                        mt: 1,
+                                        color: 'text.secondary'
+                                    }}>
                                     「ナイス」→ ⭐, 「ありがとう」→ 💖, 「よっしゃ」→ ✨, 「やべぇ」→ 🫧
                                 </Typography>
                                 {recognitionError && <Typography variant="body2" color="error" sx={{mt: 1}}>音声認識エラー: {recognitionError}</Typography>}
@@ -594,17 +624,27 @@ const ControlPanelPage: React.FC = () => {
                                     <Button variant="contained" color="secondary" onClick={() => handleTriggerEffect('STAR')} disabled={effectStatus === 'loading'}>⭐ STAR</Button>
                                     <Button variant="contained" color="secondary" onClick={() => handleTriggerEffect('SPARKLE')} disabled={effectStatus === 'loading'}>✨ SPARKLE</Button>
                                     <Button variant="contained" color="secondary" onClick={() => handleTriggerEffect('BUBBLE')} disabled={effectStatus === 'loading'}>🫧 BUBBLE</Button>
-                                    {effectStatus === 'success' && (<Typography color="success.main" variant="body2">送信完了</Typography>)}
-                                    {effectStatus === 'error' && (<Typography color="error.main" variant="body2">送信失敗</Typography>)}
+                                    {effectStatus === 'success' && (<Typography variant="body2" sx={{
+                                        color: "success.main"
+                                    }}>送信完了</Typography>)}
+                                    {effectStatus === 'error' && (<Typography variant="body2" sx={{
+                                        color: "error.main"
+                                    }}>送信失敗</Typography>)}
                                 </Box>
-                                <Typography variant="caption" display="block" sx={{mt: 2, color: 'text.secondary'}}>
+                                <Typography
+                                    variant="caption"
+                                    sx={{
+                                        display: "block",
+                                        mt: 2,
+                                        color: 'text.secondary'
+                                    }}>
                                     ボタンを押すと、OBSのスコア表示オーバーレイにエフェクトが表示されます。
                                 </Typography>
                             </Paper>
                             <Paper elevation={12} sx={{ mb: 3, p: 3, bgcolor: 'background.paper', backdropFilter: 'blur(10px)', border: '1px solid rgba(255, 255, 255, 0.1)' }}>
                                 <Typography variant="h6" gutterBottom>🎨 フォント設定</Typography>
                                 <TextField label="フォント名 (CSS font-family)" value={formData.fontFamily} onChange={(e) => updateFormData({fontFamily: e.target.value})} fullWidth margin="normal" helperText="システムフォントや、OBS側でカスタムフォントがインストールされているフォント名を入力" variant="outlined"/>
-                                <TextField label="フォントサイズ (px)" type="number" value={formData.fontSize} onChange={(e) => updateFormData({fontSize: Number(e.target.value)})} fullWidth margin="normal" inputProps={{min: 1}} variant="outlined"/>
+                                <TextField label="フォントサイズ (px)" type="number" value={formData.fontSize} onChange={(e) => updateFormData({fontSize: Number(e.target.value)})} fullWidth margin="normal" slotProps={{htmlInput: {min: 1}}} variant="outlined"/>
                             </Paper>
                             <Paper elevation={12} sx={{p: 3, bgcolor: 'background.paper', backdropFilter: 'blur(10px)', border: '1px solid rgba(255, 255, 255, 0.1)'}}>
                                 <Typography variant="h6" gutterBottom>各種設定</Typography>
@@ -618,7 +658,9 @@ const ControlPanelPage: React.FC = () => {
                     )}
 
                     <Box sx={{ mt: 4, p: 2, border: '1px dashed grey', borderRadius: '4px', bgcolor: 'rgba(255, 255, 255, 0.05)' }}>
-                        <Typography variant="body2" fontWeight="bold">OBSブラウザソース設定</Typography>
+                        <Typography variant="body2" sx={{
+                            fontWeight: "bold"
+                        }}>OBSブラウザソース設定</Typography>
                         <Typography variant="body2">スコア表示URL: <code style={{ backgroundColor: '#333', padding: '2px 4px', borderRadius: '4px', color: 'text.primary' }}>{origin}/obs-overlay</code></Typography>
                         <Typography variant="body2">バーンダウン表示URL: <code style={{ backgroundColor: '#333', padding: '2px 4px', borderRadius: '4px', color: 'text.primary' }}>{origin}/burndown-overlay</code></Typography>
                         <Typography variant="body2">幅: 1450, 高さ: 160 (スコア表示)</Typography>
@@ -631,8 +673,18 @@ const ControlPanelPage: React.FC = () => {
                         <Button variant="contained" color="primary" onClick={handleSubmit} disabled={status === 'loading'} fullWidth size="large" sx={{ p: 1.5, fontSize: '1rem' }}>
                             {status === 'loading' ? '更新中...' : 'OBSに反映 (データ送信)'}
                         </Button>
-                        {status === 'success' && (<Typography color="success.main" align="center" sx={{mt: 1}}>✅ データを更新しました！OBS画面に反映されます。</Typography>)}
-                        {status === 'error' && (<Typography color="error.main" align="center" sx={{mt: 1}}>❌ 更新に失敗しました。サーバー/APIを確認してください。</Typography>)}
+                        {status === 'success' && (<Typography
+                            align="center"
+                            sx={{
+                                color: "success.main",
+                                mt: 1
+                            }}>✅ データを更新しました！OBS画面に反映されます。</Typography>)}
+                        {status === 'error' && (<Typography
+                            align="center"
+                            sx={{
+                                color: "error.main",
+                                mt: 1
+                            }}>❌ 更新に失敗しました。サーバー/APIを確認してください。</Typography>)}
                     </Box>
                 </Paper>
             </Box>

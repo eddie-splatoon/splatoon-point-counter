@@ -27,7 +27,6 @@ describe('RootLayout', () => {
     const renderLayout = () => {
         // Extract the <body> subtree so RTL does not nest <html> inside a <div>.
         const tree = RootLayout({ children: <span>child content</span> });
-        // @ts-expect-error: RootLayout returns a JSX element whose props are untyped here.
         const body = tree.props.children;
         return render(body.props.children);
     };

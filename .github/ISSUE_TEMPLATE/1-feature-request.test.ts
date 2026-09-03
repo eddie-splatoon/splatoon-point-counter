@@ -1,8 +1,8 @@
 import fs from 'fs';
 import path from 'path';
 
-import yaml from 'js-yaml';
-import { describe, it, expect, fail } from 'vitest';
+import * as yaml from 'js-yaml';
+import { describe, it, expect } from 'vitest';
 
 describe('1-feature_request.yml', () => {
   const featureRequestFilePath = path.resolve(__dirname, '1-feature_request.yml');
@@ -13,7 +13,7 @@ describe('1-feature_request.yml', () => {
     try {
       parsedYaml = yaml.load(fs.readFileSync(featureRequestFilePath, 'utf8'));
     } catch (e) {
-      fail(`Failed to parse 1-feature_request.yml as YAML: ${e}`);
+      expect.fail(`Failed to parse 1-feature_request.yml as YAML: ${e}`);
     }
     expect(parsedYaml).toBeDefined();
     expect(typeof parsedYaml).toBe('object');
