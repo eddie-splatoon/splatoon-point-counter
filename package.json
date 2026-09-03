@@ -16,10 +16,12 @@
     "react-dom": "^17.0.0 || ^18.0.0 || ^19.0.0"
   },
   "dependencies": {
+    "@emotion/cache": "^11.14.0",
     "@emotion/react": "^11.14.0",
     "@emotion/styled": "^11.14.1",
     "@mui/icons-material": "^7.3.6",
     "@mui/material": "^7.3.6",
+    "@mui/material-nextjs": "^9.4.0",
     "axios": "^1.13.2",
     "date-fns": "^4.1.0",
     "motion": "^12.23.25",
