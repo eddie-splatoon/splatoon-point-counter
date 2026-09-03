@@ -588,6 +588,20 @@ const ControlPanelPage: React.FC = () => {
                                 {recognitionError && <Typography variant="body2" color="error" sx={{mt: 1}}>音声認識エラー: {recognitionError}</Typography>}
                             </Paper>
                             <Paper elevation={12} sx={{ mb: 3, p: 3, bgcolor: 'background.paper', backdropFilter: 'blur(10px)', border: '1px solid rgba(255, 255, 255, 0.1)' }}>
+                                <Typography variant="h6" gutterBottom>🎆 演出効果</Typography>
+                                <Box sx={{display: 'flex', gap: 2, alignItems: 'center', flexWrap: 'wrap'}}>
+                                    <Button variant="contained" color="primary" onClick={() => handleTriggerEffect('LOVE')} disabled={effectStatus === 'loading'}>💖 LOVE</Button>
+                                    <Button variant="contained" color="secondary" onClick={() => handleTriggerEffect('STAR')} disabled={effectStatus === 'loading'}>⭐ STAR</Button>
+                                    <Button variant="contained" color="secondary" onClick={() => handleTriggerEffect('SPARKLE')} disabled={effectStatus === 'loading'}>✨ SPARKLE</Button>
+                                    <Button variant="contained" color="secondary" onClick={() => handleTriggerEffect('BUBBLE')} disabled={effectStatus === 'loading'}>🫧 BUBBLE</Button>
+                                    {effectStatus === 'success' && (<Typography color="success.main" variant="body2">送信完了</Typography>)}
+                                    {effectStatus === 'error' && (<Typography color="error.main" variant="body2">送信失敗</Typography>)}
+                                </Box>
+                                <Typography variant="caption" display="block" sx={{mt: 2, color: 'text.secondary'}}>
+                                    ボタンを押すと、OBSのスコア表示オーバーレイにエフェクトが表示されます。
+                                </Typography>
+                            </Paper>
+                            <Paper elevation={12} sx={{ mb: 3, p: 3, bgcolor: 'background.paper', backdropFilter: 'blur(10px)', border: '1px solid rgba(255, 255, 255, 0.1)' }}>
                                 <Typography variant="h6" gutterBottom>🎨 フォント設定</Typography>
                                 <TextField label="フォント名 (CSS font-family)" value={formData.fontFamily} onChange={(e) => updateFormData({fontFamily: e.target.value})} fullWidth margin="normal" helperText="システムフォントや、OBS側でカスタムフォントがインストールされているフォント名を入力" variant="outlined"/>
                                 <TextField label="フォントサイズ (px)" type="number" value={formData.fontSize} onChange={(e) => updateFormData({fontSize: Number(e.target.value)})} fullWidth margin="normal" inputProps={{min: 1}} variant="outlined"/>

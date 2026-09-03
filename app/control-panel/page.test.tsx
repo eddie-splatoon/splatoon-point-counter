@@ -275,4 +275,71 @@ describe('ControlPanelPage', () => {
             errorSpy.mockRestore();
         });
     });
+
+    describe('Effect Trigger Buttons', () => {
+        const effects = [
+            { name: 'LOVE', label: /LOVE/ },
+            { name: 'STAR', label: /STAR/ },
+            { name: 'SPARKLE', label: /SPARKLE/ },
+            { name: 'BUBBLE', label: /BUBBLE/ },
+        ];
+
+        const renderCommonTab = async () => {
+            render(<ControlPanelPage />);
+            await waitFor(() => expect(screen.getByLabelText('値')).toBeInTheDocument());
+            fireEvent.click(screen.getByRole('tab', { name: '共通設定' }));
+            await screen.findByText('🎆 演出効果');
+        };
+
+        it.each(effects)('triggers the $name effect with the correct payload', async ({ name, label }) => {
+            await renderCommonTab();
+
+            await act(async () => {
+                fireEvent.click(screen.getByRole('button', { name: label }));
+            });
+
+            expect(mockedAxios.post).toHaveBeenCalledWith('/api/stream-data',
+                expect.objectContaining({
+                    lastEvent: expect.objectContaining({ name })
+                })
+            );
+        });
+
+        it('disables every effect button while a request is in flight', async () => {
+            mockedAxios.post.mockReturnValue(new Promise(() => {}));
+
+            await renderCommonTab();
+
+            await act(async () => {
+                fireEvent.click(screen.getByRole('button', { name: /LOVE/ }));
+            });
+
+            for (const { label } of effects) {
+                expect(screen.getByRole('button', { name: label })).toBeDisabled();
+            }
+        });
+
+        it('shows a success message after the effect is sent', async () => {
+            await renderCommonTab();
+
+            await act(async () => {
+                fireEvent.click(screen.getByRole('button', { name: /LOVE/ }));
+            });
+
+            await waitFor(() => expect(screen.getByText('送信完了')).toBeInTheDocument());
+            expect(screen.getByRole('button', { name: /LOVE/ })).toBeEnabled();
+        });
+
+        it('shows an error message when the effect request fails', async () => {
+            mockedAxios.post.mockRejectedValue(new Error('network error'));
+
+            await renderCommonTab();
+
+            await act(async () => {
+                fireEvent.click(screen.getByRole('button', { name: /LOVE/ }));
+            });
+
+            await waitFor(() => expect(screen.getByText('送信失敗')).toBeInTheDocument());
+        });
+    });
 });
