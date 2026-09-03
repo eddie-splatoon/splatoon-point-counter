@@ -1,3 +1,4 @@
+import {AppRouterCacheProvider} from "@mui/material-nextjs/v16-appRouter";
 import {Geist, Geist_Mono} from "next/font/google";
 
 import type {Metadata} from "next";
@@ -31,7 +32,7 @@ export default function RootLayout({
         <body
             className={`${geistSans.variable} ${geistMono.variable} antialiased`}
         >
-        {children}
+        <AppRouterCacheProvider>{children}</AppRouterCacheProvider>
         </body>
         </html>
     );
