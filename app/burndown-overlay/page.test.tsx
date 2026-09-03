@@ -2,14 +2,14 @@ import { render, screen, waitFor } from '@testing-library/react';
 import axios from 'axios';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 
-import { getInitialStreamData, StreamData } from '../api/stream-data/route';
+import { BurndownData, getInitialStreamData, StreamData } from '../api/stream-data/route';
 
 import BurndownOverlayPage from './page';
 
 
 // Mock child components
 vi.mock('../../components/BurndownChart', () => ({
-  default: ({ data }) => (
+  default: ({ data }: { data: BurndownData }) => (
     <div data-testid="BurndownChart">
       <span>{data.label}</span>
       <span data-testid="BurndownChart-remaining">{data.targetValue - data.entries.reduce((sum, entry) => sum + entry.score, 0)}</span>
@@ -18,7 +18,7 @@ vi.mock('../../components/BurndownChart', () => ({
 }));
 
 vi.mock('../../components/FireworksEffect', () => ({
-  default: ({ trigger }) => (
+  default: ({ trigger }: { trigger: boolean }) => (
     <div data-testid="FireworksEffect" data-trigger={String(trigger)}></div>
   ),
 }));

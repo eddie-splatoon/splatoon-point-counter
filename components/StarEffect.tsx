@@ -1,6 +1,6 @@
 'use client';
 
-import {motion} from 'framer-motion';
+import {motion} from 'motion/react';
 import React, {useState, useEffect, useRef} from 'react';
 
 // スターの型定義
@@ -48,7 +48,6 @@ const StarEffect: React.FC<StarEffectProps> = ({trigger}) => {
                     finalX: x + (Math.random() - 0.5) * 40,
                 });
             }
-            // eslint-disable-next-line react-hooks/set-state-in-effect
             setStars(prevStars => [...prevStars, ...newStars]);
         }
     }, [trigger]);

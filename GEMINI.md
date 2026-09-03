@@ -89,7 +89,7 @@ export interface StreamData {
 -   **エフェクトコンポーネント** (`HeartEffect.tsx`、`StarEffect.tsx`、`FireworksEffect.tsx`など): オーバーレイで視覚効果をレンダリングする責任を負うコンポーネント。
 
 ### テスト関連ファイル
--   `vite.config.ts`: Vitestの設定ファイル。Reactプラグイン、JSDOM環境、テストファイルパターン、カバレッジプロバイダーなどを定義します。
+-   `vite.config.mts`: Vitestの設定ファイル。Reactプラグイン、JSDOM環境、テストファイルパターン、カバレッジプロバイダーなどを定義します。
 -   `vitest.setup.ts`: テスト実行前のセットアップファイル。`@testing-library/jest-dom`のインポート、`whatwg-fetch`の有効化、`next/navigation`のモックを行います。
 -   `**/*.test.{ts,tsx}`: コンポーネントやAPIルートのテストファイル。対象ファイルと同じディレクトリに配置されます。
 

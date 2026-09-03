@@ -6,6 +6,8 @@ import { getInitialStreamData, StreamData } from '../api/stream-data/route';
 
 import ControlPanelPage from './page';
 
+import type { ComponentPropsWithoutRef } from 'react';
+
 
 // Mock axios
 vi.mock('axios');
@@ -31,7 +33,7 @@ window.webkitSpeechRecognition = MockSpeechRecognition;
 
 // Mock next/image
 vi.mock('next/image', () => ({
-    default: (props) => (
+    default: (props: ComponentPropsWithoutRef<'img'>) => (
         // eslint-disable-next-line @next/next/no-img-element
         <img {...props} alt={props.alt} />
     )
@@ -40,12 +42,16 @@ vi.mock('next/image', () => ({
 // Mock window.location.reload
 const originalLocation = window.location;
 beforeAll(() => {
-    // @ts-expect-error: Cannot assign to 'location' because it is a read-only property in JSDOM.
-    delete window.location;
-    window.location = { ...originalLocation, reload: vi.fn() };
+    Object.defineProperty(window, 'location', {
+        configurable: true,
+        value: { ...originalLocation, reload: vi.fn() },
+    });
 });
 afterAll(() => {
-    window.location = originalLocation;
+    Object.defineProperty(window, 'location', {
+        configurable: true,
+        value: originalLocation,
+    });
 });
 
 

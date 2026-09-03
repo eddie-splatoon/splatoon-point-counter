@@ -1,20 +1,23 @@
 import { render, screen, act } from '@testing-library/react';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 
+
 import { MessagePreset } from '@/app/api/stream-data/route';
 
 import MessageScroller from './MessageScroller';
 
+import type { ComponentPropsWithoutRef, ReactNode } from 'react';
+
 // Mock the motion component to avoid actual animation logic in tests
 vi.mock('motion/react', async () => {
-    const motion = await vi.importActual('motion/react');
-    const React = await vi.importActual('react');
-    const MockP = React.forwardRef(function MockP({ children, ...props }, ref) {
+    const motion = await vi.importActual<typeof import('motion/react')>('motion/react');
+    const React = await vi.importActual<typeof import('react')>('react');
+    const MockP = React.forwardRef<HTMLParagraphElement, ComponentPropsWithoutRef<'p'>>(function MockP({ children, ...props }, ref) {
         return React.createElement('p', {...props, ref}, children);
     });
     return {
       ...motion,
-      AnimatePresence: function MockAnimatePresence({ children }) {
+      AnimatePresence: function MockAnimatePresence({ children }: { children?: ReactNode }) {
           return React.createElement('div', null, children);
       },
       motion: {
