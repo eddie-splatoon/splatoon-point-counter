@@ -28,6 +28,7 @@
 - **CI/CD**: GitHub Actions
 - **コンテナ**: Docker + Docker Compose
 - **Node.js**: v24.20.0 (Volta管理)
+- **パッケージマネージャ**: pnpm v10 (`packageManager` / `volta` フィールドで固定)
 
 ## ディレクトリ構造
 
@@ -200,13 +201,13 @@ export interface StreamData {
 
 ```bash
 # テスト実行
-npm run test
+pnpm run test
 
 # ウォッチモード
-npm run test:watch
+pnpm run test:watch
 
 # カバレッジレポート
-npm run test:coverage
+pnpm run test:coverage
 ```
 
 #### テストのベストプラクティス
@@ -220,10 +221,10 @@ npm run test:coverage
 
 ```bash
 # Lintチェック
-npm run lint
+pnpm run lint
 
 # 自動修正
-npm run lint -- --fix
+pnpm run lint -- --fix
 ```
 
 ### CI/CDパイプライン
@@ -266,7 +267,7 @@ GitHub Actionsで以下のワークフローが実行されます：
 エラーが発生したら、まず以下を実行：
 
 ```bash
-npm run lint -- --fix
+pnpm run lint -- --fix
 ```
 
 ### よくあるESLintエラーと対応
@@ -274,7 +275,7 @@ npm run lint -- --fix
 #### 1. `import/order`
 
 - **原因**: インポート文の順序やグループ分けが規則に違反
-- **対応**: `npm run lint -- --fix` で自動修正
+- **対応**: `pnpm run lint -- --fix` で自動修正
 
 #### 2. `react-hooks/exhaustive-deps`
 
@@ -374,7 +375,7 @@ docker-compose down
 
 ### 型エラー
 
-- `npm run build` でビルドエラーを確認
+- `pnpm run build` でビルドエラーを確認
 - `tsconfig.json` の設定を確認
 
 ## 参考リンク
