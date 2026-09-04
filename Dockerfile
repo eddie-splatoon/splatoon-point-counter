@@ -27,6 +27,8 @@ RUN pnpm run build
 # Expose the port Next.js runs on
 EXPOSE 3000
 
-# Define the command to start the application
-# For Next.js, 'pnpm start' usually runs the production build
-CMD ["pnpm", "start"]
+# Define the command to start the application.
+# Invoke the next binary directly rather than through pnpm: as PID 1 pnpm does not
+# forward SIGTERM to its child, so `docker stop` would kill the container with
+# SIGKILL (exit 137) instead of letting Next.js shut down gracefully.
+CMD ["node_modules/.bin/next", "start"]

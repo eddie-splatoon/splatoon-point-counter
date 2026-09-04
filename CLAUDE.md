@@ -224,7 +224,7 @@ pnpm run test:coverage
 pnpm run lint
 
 # 自動修正
-pnpm run lint -- --fix
+pnpm run lint --fix
 ```
 
 ### CI/CDパイプライン
@@ -267,7 +267,7 @@ GitHub Actionsで以下のワークフローが実行されます：
 エラーが発生したら、まず以下を実行：
 
 ```bash
-pnpm run lint -- --fix
+pnpm run lint --fix
 ```
 
 ### よくあるESLintエラーと対応
@@ -275,7 +275,7 @@ pnpm run lint -- --fix
 #### 1. `import/order`
 
 - **原因**: インポート文の順序やグループ分けが規則に違反
-- **対応**: `pnpm run lint -- --fix` で自動修正
+- **対応**: `pnpm run lint --fix` で自動修正
 
 #### 2. `react-hooks/exhaustive-deps`
 

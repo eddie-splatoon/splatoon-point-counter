@@ -3,35 +3,60 @@ import path from 'path';
 
 import { describe, it, expect } from 'vitest';
 
-describe('Dockerfile', () => {
-  const rootDir = path.resolve(__dirname);
-  const dockerfile = fs.readFileSync(path.resolve(rootDir, 'Dockerfile'), 'utf8');
+const rootDir = path.resolve(__dirname);
+const dockerfilePath = path.resolve(rootDir, 'Dockerfile');
 
-  it('should copy the pnpm lockfile instead of the npm one', () => {
-    expect(dockerfile).toMatch(/^COPY package\.json pnpm-lock\.yaml \.\/$/m);
-    expect(dockerfile).not.toMatch(/package-lock\.json/);
+const readDockerfile = () => fs.readFileSync(dockerfilePath, 'utf8');
+
+// コメント行を除いた命令部分のみを対象にする。コメントには移行前後の経緯として
+// npm / package-lock.json への言及が残りうるため、命令とは区別して扱う。
+const instructionsOf = (dockerfile: string): string =>
+  dockerfile
+    .split('\n')
+    .filter((line) => !line.trimStart().startsWith('#'))
+    .join('\n');
+
+describe('Dockerfile', () => {
+  it('should exist', () => {
+    expect(fs.existsSync(dockerfilePath)).toBe(true);
   });
 
-  it('should install dependencies from the lockfile with pnpm', () => {
-    expect(dockerfile).toMatch(/^RUN pnpm install --frozen-lockfile$/m);
+  it('should install dependencies from the pnpm lockfile', () => {
+    const instructions = instructionsOf(readDockerfile());
+
+    expect(instructions).toMatch(/^COPY\s+.*\bpnpm-lock\.yaml\b/m);
+    expect(instructions).toMatch(/^RUN\s+.*\bpnpm install\b.*--frozen-lockfile\b/m);
   });
 
   it('should enable corepack without an interactive download prompt', () => {
-    expect(dockerfile).toMatch(/^ENV COREPACK_ENABLE_DOWNLOAD_PROMPT=0$/m);
-    expect(dockerfile).toMatch(/^RUN corepack enable$/m);
+    const instructions = instructionsOf(readDockerfile());
+
+    expect(instructions).toMatch(/^ENV\s+COREPACK_ENABLE_DOWNLOAD_PROMPT=0$/m);
+    expect(instructions).toMatch(/^RUN\s+corepack enable\b/m);
   });
 
-  it('should build and start the app with pnpm', () => {
-    expect(dockerfile).toMatch(/^RUN pnpm run build$/m);
-    expect(dockerfile).toMatch(/^CMD \["pnpm", "start"\]$/m);
+  it('should build the app with pnpm', () => {
+    const instructions = instructionsOf(readDockerfile());
+
+    expect(instructions).toMatch(/^RUN\s+.*\bpnpm run build\b/m);
   });
 
-  it('should not run any npm command', () => {
-    const instructions = dockerfile
-      .split('\n')
-      .filter((line) => !line.trimStart().startsWith('#'));
+  // パッケージマネージャ経由で起動すると、PID 1 となったそのプロセスが SIGTERM を
+  // 子へ転送せず、docker stop が graceful shutdown ではなく SIGKILL (exit 137) になる。
+  it('should start the app without going through a package manager so that SIGTERM is delivered', () => {
+    const cmd = instructionsOf(readDockerfile()).match(/^CMD\s+(\[.*\])$/m);
 
-    expect(instructions.join('\n')).not.toMatch(/\bnpm\b/);
+    expect(cmd).not.toBeNull();
+    const argv = JSON.parse(cmd![1]) as string[];
+    expect(argv[0]).not.toMatch(/(^|\/)(npm|pnpm|yarn)$/);
+    expect(argv.join(' ')).toMatch(/\bnext\b.*\bstart\b/);
+  });
+
+  it('should not reference npm or its lockfile in any instruction', () => {
+    const instructions = instructionsOf(readDockerfile());
+
+    expect(instructions).not.toMatch(/\bnpm\b/);
+    expect(instructions).not.toMatch(/package-lock\.json/);
   });
 
   // corepack は package.json の packageManager フィールドから pnpm のバージョンを解決するため、
@@ -39,8 +64,12 @@ describe('Dockerfile', () => {
   it('should have a pnpm version pinned in package.json for corepack to resolve', () => {
     const packageJson = JSON.parse(fs.readFileSync(path.resolve(rootDir, 'package.json'), 'utf8'));
 
-    expect(packageJson.packageManager).toMatch(/^pnpm@\d+\.\d+\.\d+$/);
-    expect(packageJson.volta.pnpm).toBe(packageJson.packageManager.replace('pnpm@', ''));
+    // `corepack use` はハッシュ付き (pnpm@10.34.5+sha512.<hash>) で書き込むため、それも許容する。
+    expect(packageJson.packageManager).toMatch(/^pnpm@\d+\.\d+\.\d+(\+sha\d+\..+)?$/);
+
+    // Volta と corepack が別々のバージョンを解決してしまわないよう、両者の一致を保証する。
+    const corepackVersion = packageJson.packageManager.replace('pnpm@', '').split('+')[0];
+    expect(packageJson.volta?.pnpm).toBe(corepackVersion);
   });
 
   it('should have a committed pnpm lockfile', () => {
