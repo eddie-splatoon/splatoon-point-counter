@@ -23,6 +23,12 @@ out
 !.env.example
 .envrc
 
+# Tests
+# 本番イメージには不要。加えて Dockerfile.test.ts は Dockerfile 自身を読むが、
+# その Dockerfile はイメージに含まれないため、同梱するとコンテナ内での実行が ENOENT で落ちる。
+*.test.ts
+*.test.tsx
+
 # Test reports and cache
 coverage
 .nyc_output

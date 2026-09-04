@@ -54,20 +54,23 @@
 - **UI/スタイリング**: Material-UI (MUI), Tailwind CSS
 - **リアルタイム通信**: REST API (クライアントからのポーリング)
 - **テスト**: Vitest, React Testing Library
+- **パッケージマネージャ**: [pnpm](https://pnpm.io/)
 - **CI/CD**: GitHub Actions
 
 ## セットアップと起動方法
 
 ### ローカル環境での起動
 
+本プロジェクトはパッケージマネージャに **pnpm** を使用します。未導入の場合は [Volta](https://volta.sh/)（`volta install pnpm`）または corepack（`corepack enable`）で準備してください。使用するバージョンは `package.json` の `packageManager` / `volta` フィールドで固定されています。
+
 1.  依存関係をインストールします。
     ```bash
-    npm install
+    pnpm install
     ```
 
 2.  開発サーバーを起動します。
     ```bash
-    npm run dev
+    pnpm dev
     ```
 
 3.  ブラウザで `http://localhost:3000` を開きます。
@@ -84,6 +87,9 @@
     docker-compose up
     ```
 3.  ブラウザで `http://localhost:3000` を開きます。
+
+> [!NOTE]
+> `node_modules` は匿名ボリュームとしてマウントされるため、npm を使用していた頃のボリュームが残っていると古い依存関係がそのまま使われ続けます。pnpm 移行後に初めて起動する場合は、一度 `docker-compose down -v` でボリュームを破棄してからビルドし直してください。
 
 ## CI/CD
 
