@@ -14,7 +14,7 @@
 
 ## 主な機能
 
-本システムは、主に以下の4つの画面で構成されています。
+本システムは、主に以下の5つの画面で構成されています。
 
 ### 1. ランチャー
 
@@ -45,6 +45,19 @@
 
 <img width="1428" height="598" alt="image" src="https://github.com/user-attachments/assets/d55824e2-017c-419d-b5d6-e9b981c00146" />
 
+### 5. 字幕オーバーレイ
+
+配信者の声をリアルタイムに文字起こしし、字幕として表示するオーバーレイです（`/caption-overlay`）。背景は透過で、直近8秒以内の字幕を最大2行表示します。
+
+文字起こしは Apple Silicon Mac 上で動く Python スクリプト（`tools/caption-stt/`）が行い、`/api/caption` に字幕を送信します。
+
+```mermaid
+flowchart LR
+    Mic[マイク] --> STT["caption_stt.py<br/>Silero VAD + mlx-whisper"]
+    STT -- "POST {text}" --> API["/api/caption"]
+    OVL["/caption-overlay<br/>OBS ブラウザソース"] -- "GET 1秒ごと" --> API
+```
+
 
 
 ## 技術スタック
@@ -55,6 +68,7 @@
 - **リアルタイム通信**: REST API (クライアントからのポーリング)
 - **テスト**: Vitest, React Testing Library
 - **パッケージマネージャ**: [pnpm](https://pnpm.io/)
+- **文字起こし**: [mlx-whisper](https://github.com/ml-explore/mlx-examples/tree/main/whisper) + [Silero VAD](https://github.com/snakers4/silero-vad)（Python 3.12、Apple Silicon Mac でネイティブ実行）
 - **CI/CD**: GitHub Actions
 
 ## セットアップと起動方法
@@ -90,6 +104,16 @@
 
 > [!NOTE]
 > `node_modules` は匿名ボリュームとしてマウントされるため、npm を使用していた頃のボリュームが残っていると古い依存関係がそのまま使われ続けます。pnpm 移行後に初めて起動する場合は、一度 `docker-compose down -v` でボリュームを破棄してからビルドし直してください。
+
+### 字幕（文字起こし）の起動
+
+Next.js アプリを起動した状態で、リポジトリのルートで次を実行します（`Ctrl+C` で終了）。初回は Python の venv 作成と依存のインストール、Whisper モデル（約 1.5GB）のダウンロードが自動で行われます。
+
+```bash
+pnpm caption
+```
+
+OBS のブラウザソースには `http://localhost:3000/caption-overlay` を指定します。マイクの変更などの詳細は [tools/caption-stt/README.md](tools/caption-stt/README.md) を参照してください。
 
 ## CI/CD
 

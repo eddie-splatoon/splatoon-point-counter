@@ -12,7 +12,9 @@
 2. **コントロールパネル** (`/control-panel`) - ストリーマーがデータを更新するUI
 3. **スコア＆メッセージオーバーレイ** (`/obs-overlay`) - メインのオーバーレイ表示
 4. **バーンダウンチャートオーバーレイ** (`/burndown-overlay`) - 進捗状況を可視化
-5. **バックエンドAPI** (`/api/stream-data`) - データ管理とクライアント間の同期
+5. **字幕オーバーレイ** (`/caption-overlay`) - 配信者の音声をリアルタイムに字幕表示
+6. **バックエンドAPI** (`/api/stream-data`, `/api/caption`) - データ管理とクライアント間の同期
+7. **文字起こしスクリプト** (`tools/caption-stt/`) - マイク音声を文字起こしして `/api/caption` へ送信（Python, Mac ネイティブ実行）
 
 ## 技術スタック
 
@@ -23,6 +25,7 @@
 - **リアルタイム通信**: REST API + クライアントサイドポーリング
 - **HTTPクライアント**: Axios
 - **ブラウザAPI**: Web Speech API (音声認識機能)
+- **文字起こし**: mlx-whisper + Silero VAD (Python 3.12, `tools/caption-stt/`)
 - **テスト**: Vitest + React Testing Library + @testing-library/jest-dom
 - **Linting**: ESLint 9 (Flat Config)
 - **CI/CD**: GitHub Actions
@@ -43,9 +46,13 @@
 │   │   └── page.tsx              # メインオーバーレイ
 │   ├── burndown-overlay/
 │   │   └── page.tsx              # バーンダウンチャート
+│   ├── caption-overlay/
+│   │   └── page.tsx              # 字幕オーバーレイ
 │   └── api/
-│       └── stream-data/
-│           └── route.ts          # データ管理API
+│       ├── stream-data/
+│       │   └── route.ts          # データ管理API
+│       └── caption/
+│           └── route.ts          # 字幕API
 ├── components/                    # 再利用可能なReactコンポーネント
 │   ├── ScoreDisplay.tsx          # スコア表示
 │   ├── BurndownChart.tsx         # バーンダウンチャート
@@ -58,6 +65,8 @@
 │   └── FireworksEffect.tsx       # 花火エフェクト
 ├── public/                        # 静的アセット
 │   └── tips.tsv                  # Tips データ
+├── tools/
+│   └── caption-stt/              # 文字起こしスクリプト（Python, README参照）
 ├── .github/
 │   ├── workflows/
 │   │   └── ci.yml                # CI/CDパイプライン
@@ -160,6 +169,17 @@ export interface StreamData {
 - 1秒ごとにデータをポーリング
 - 目標達成時（残りポイント ≤ 0）に `FireworksEffect` を表示
 - `BurndownChart` コンポーネントを使用
+
+### `/app/api/caption/route.ts` と `/app/caption-overlay/page.tsx`
+
+配信者の音声をリアルタイムに字幕表示する機能。
+
+- 起動はリポジトリのルートで `pnpm caption`（`tools/caption-stt/run.sh`。初回は venv を自動作成）
+- `tools/caption-stt/caption_stt.py` が Silero VAD で発話を区切り、mlx-whisper で文字起こしして `POST /api/caption {text}` する
+- API は直近5件の字幕行をインメモリで保持（`DELETE` でクリア）。`getInitialCaptionData()` / `__TEST_ONLY_setCaptionData()` はテスト用。`POST` は `Content-Type: application/json` 必須（他サイトからの単純リクエスト対策）、1行は200文字で切り詰め
+- オーバーレイは1秒ごとにポーリングし、8秒以内の最新2行を表示
+- `/api/stream-data` とは別エンドポイント（コントロールパネルの保存と競合させないため）
+- Python 側のテストは `tools/caption-stt/` で `pytest`（CI 対象外）
 
 ### `/components/ScoreDisplay.tsx`
 

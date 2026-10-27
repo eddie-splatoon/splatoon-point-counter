@@ -142,3 +142,7 @@ vite.config.ts.timestamp-*
 .idea
 .swp
 *.mov
+# Python (tools/caption-stt)
+.venv
+__pycache__
+.pytest_cache
