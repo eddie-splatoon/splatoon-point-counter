@@ -44,5 +44,6 @@ MIC_DEVICE="デバイス名の一部" pnpm caption
 
 ```bash
 cd tools/caption-stt
+.venv/bin/pip install -r requirements-dev.txt
 .venv/bin/python -m pytest
 ```
