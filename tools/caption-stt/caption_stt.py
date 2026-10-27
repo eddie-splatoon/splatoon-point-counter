@@ -97,7 +97,11 @@ def run(caption_url: str, model: str, device: int | str | None) -> None:
 
     def flush():
         audio = np.concatenate(segment)
-        text = transcribe(audio, model)
+        try:
+            text = transcribe(audio, model)
+        except Exception as e:  # noqa: BLE001 - 配信中は一時的なエラーで常駐プロセスを止めない
+            print(f"[caption-stt] 文字起こしに失敗しました: {e}", file=sys.stderr)
+            return
         if is_valid_caption(text):
             print(f"[caption-stt] {text}")
             post_caption(caption_url, text)
