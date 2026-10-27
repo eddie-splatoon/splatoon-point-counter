@@ -185,6 +185,17 @@ export default function Home() {
                         >
                             バーンダウンチャートオーバーレイ (Preview)
                         </Button>
+                        <Button
+                            variant="contained"
+                            color="secondary"
+                            href="/caption-overlay"
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            fullWidth
+                            size="large"
+                        >
+                            字幕オーバーレイ (Preview)
+                        </Button>
                     </Box>
                 </Box>
                 <Typography variant="caption" sx={{mt: 4, color: 'text.secondary', zIndex: 1}}>

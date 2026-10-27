@@ -70,6 +70,8 @@ const eslintConfig = defineConfig([
         "out/**",
         "build/**",
         "next-env.d.ts",
+        // Python virtualenv of tools/caption-stt (contains third-party JS files)
+        "**/.venv/**",
     ]),
 ]);
 

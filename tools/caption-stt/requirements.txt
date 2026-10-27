@@ -1,0 +1,6 @@
+mlx-whisper
+silero-vad
+sounddevice
+numpy
+requests
+pytest

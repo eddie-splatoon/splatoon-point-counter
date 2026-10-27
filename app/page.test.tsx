@@ -30,7 +30,13 @@ describe('Home Page', () => {
     expect(burndownOverlayButton).toBeInTheDocument();
     expect(burndownOverlayButton).toHaveAttribute('href', '/burndown-overlay');
     expect(burndownOverlayButton).toHaveAttribute('target', '_blank');
-    
+
+    // Check for Caption Overlay button
+    const captionOverlayButton = screen.getByRole('link', { name: /字幕オーバーレイ \(Preview\)/i });
+    expect(captionOverlayButton).toBeInTheDocument();
+    expect(captionOverlayButton).toHaveAttribute('href', '/caption-overlay');
+    expect(captionOverlayButton).toHaveAttribute('target', '_blank');
+
     // Check for copyright text
     expect(screen.getByText(/© 2025 eddie-splatoon/i)).toBeInTheDocument();
   });
