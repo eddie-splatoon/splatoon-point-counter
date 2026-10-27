@@ -176,7 +176,7 @@ export interface StreamData {
 
 - 起動はリポジトリのルートで `pnpm caption`（`tools/caption-stt/run.sh`。初回は venv を自動作成）
 - `tools/caption-stt/caption_stt.py` が Silero VAD で発話を区切り、mlx-whisper で文字起こしして `POST /api/caption {text}` する
-- API は直近5件の字幕行をインメモリで保持（`DELETE` でクリア）。`getInitialCaptionData()` / `__TEST_ONLY_setCaptionData()` はテスト用
+- API は直近5件の字幕行をインメモリで保持（`DELETE` でクリア）。`getInitialCaptionData()` / `__TEST_ONLY_setCaptionData()` はテスト用。`POST` は `Content-Type: application/json` 必須（他サイトからの単純リクエスト対策）、1行は200文字で切り詰め
 - オーバーレイは1秒ごとにポーリングし、8秒以内の最新2行を表示
 - `/api/stream-data` とは別エンドポイント（コントロールパネルの保存と競合させないため）
 - Python 側のテストは `tools/caption-stt/` で `pytest`（CI 対象外）

@@ -2,6 +2,8 @@ import {NextResponse} from 'next/server';
 
 // 保持する字幕行の最大数
 export const MAX_CAPTION_LINES = 5;
+// 1行あたりの最大文字数（超過分は切り詰める）
+export const MAX_CAPTION_LENGTH = 200;
 
 export interface CaptionLine {
     id: number;
@@ -36,6 +38,11 @@ export async function GET() {
 }
 
 export async function POST(request: Request) {
+    // 他サイトからプリフライトなしで送れる text/plain などの「単純リクエスト」を拒否する
+    if (!request.headers.get('content-type')?.toLowerCase().startsWith('application/json')) {
+        return NextResponse.json({message: 'Content-Type must be application/json.'}, {status: 415});
+    }
+
     let body: unknown;
     try {
         body = await request.json();
@@ -50,7 +57,7 @@ export async function POST(request: Request) {
 
     const revision = captionData.revision + 1;
     captionData = {
-        lines: [...captionData.lines, {id: revision, text: text.trim(), timestamp: Date.now()}].slice(-MAX_CAPTION_LINES),
+        lines: [...captionData.lines, {id: revision, text: text.trim().slice(0, MAX_CAPTION_LENGTH), timestamp: Date.now()}].slice(-MAX_CAPTION_LINES),
         revision,
     };
 

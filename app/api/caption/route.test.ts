@@ -1,11 +1,14 @@
 import { NextRequest } from 'next/server';
 import { describe, it, expect, beforeEach } from 'vitest';
 
-import { GET, POST, DELETE, MAX_CAPTION_LINES, getInitialCaptionData, __TEST_ONLY_setCaptionData } from './route';
+import {
+  GET, POST, DELETE, MAX_CAPTION_LINES, MAX_CAPTION_LENGTH, getInitialCaptionData, __TEST_ONLY_setCaptionData,
+} from './route';
 
-const postText = (body: unknown) =>
+const postText = (body: unknown, contentType = 'application/json') =>
   POST(new NextRequest('http://localhost/api/caption', {
     method: 'POST',
+    headers: { 'Content-Type': contentType },
     body: typeof body === 'string' ? body : JSON.stringify(body),
   }));
 
@@ -65,6 +68,25 @@ describe('Caption API', () => {
       const response = await postText('not json');
       expect(response.status).toBe(400);
     });
+
+    it(`truncates text longer than ${MAX_CAPTION_LENGTH} characters`, async () => {
+      const body = await (await postText({ text: 'あ'.repeat(MAX_CAPTION_LENGTH + 50) })).json();
+      expect(body.lines[0].text).toBe('あ'.repeat(MAX_CAPTION_LENGTH));
+    });
+
+    it('accepts application/json with a charset parameter', async () => {
+      const response = await postText({ text: 'ok' }, 'application/json; charset=utf-8');
+      expect(response.status).toBe(200);
+    });
+
+    it.each(['text/plain', 'application/x-www-form-urlencoded'])(
+      'returns 415 for Content-Type %s without changing the data',
+      async (contentType) => {
+        const response = await postText({ text: '割り込み' }, contentType);
+        expect(response.status).toBe(415);
+        expect(await (await GET()).json()).toEqual(getInitialCaptionData());
+      },
+    );
   });
 
   describe('DELETE', () => {
