@@ -13,10 +13,14 @@ cd "$(dirname "$0")"
 export MIC_DEVICE="${MIC_DEVICE:-MIC (BRIDGE CAST ONE)}"
 export CAPTION_URL="${CAPTION_URL:-http://localhost:3000/api/caption}"
 
-if [ ! -x .venv/bin/python ]; then
-    echo "[caption-stt] 初回セットアップ: venv を作成して依存をインストールします"
-    python3 -m venv .venv
+# インストール完了時にだけマーカーを作る（途中で失敗しても次回やり直せるように）。
+# requirements.txt が更新された場合も再インストールする
+SETUP_MARKER=.venv/.setup-complete
+if [ ! -f "$SETUP_MARKER" ] || [ requirements.txt -nt "$SETUP_MARKER" ]; then
+    echo "[caption-stt] セットアップ: venv を作成して依存をインストールします"
+    [ -x .venv/bin/python ] || python3 -m venv .venv
     .venv/bin/pip install -q -r requirements.txt
+    touch "$SETUP_MARKER"
 fi
 
 if [ "$#" -eq 0 ] && ! curl -s -o /dev/null --max-time 2 "$CAPTION_URL"; then
