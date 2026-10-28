@@ -3,7 +3,7 @@ import { beforeEach, describe, expect, it } from 'vitest';
 
 import { __TEST_ONLY_setDb, openDb } from './db';
 import { addJob, deleteJob, getSummary, listSessions, parseId, parseJob, startSession } from './salmon';
-import { MAX_STAGE_LENGTH } from './salmonTypes';
+import { MAX_COUNT, MAX_STAGE_LENGTH } from './salmonTypes';
 
 const job = { goldenEggs: 30, bossKills: 12, deaths: 1, cleared: true, waveReached: 3, stage: 'アラマキ砦' };
 
@@ -85,6 +85,10 @@ describe('parseJob', () => {
     });
   });
 
+  it('accepts the maximum count', () => {
+    expect(parseJob({ ...body, goldenEggs: MAX_COUNT })).toMatchObject({ goldenEggs: MAX_COUNT });
+  });
+
   it('truncates a long stage name', () => {
     const parsed = parseJob({ ...body, stage: 'あ'.repeat(MAX_STAGE_LENGTH + 10) });
     expect(typeof parsed !== 'string' && parsed.stage).toHaveLength(MAX_STAGE_LENGTH);
@@ -95,6 +99,7 @@ describe('parseJob', () => {
     ['missing goldenEggs', { ...body, goldenEggs: undefined }],
     ['negative bossKills', { ...body, bossKills: -1 }],
     ['fractional deaths', { ...body, deaths: 0.5 }],
+    ['too many golden eggs', { ...body, goldenEggs: MAX_COUNT + 1 }],
     ['string goldenEggs', { ...body, goldenEggs: '30' }],
     ['missing cleared', { ...body, cleared: undefined }],
     ['missing waveReached on failure', { ...body, waveReached: undefined }],

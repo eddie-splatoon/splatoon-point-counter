@@ -19,7 +19,7 @@ import {
 import axios from 'axios';
 import React, {useCallback, useEffect, useRef, useState} from 'react';
 
-import {MAX_WAVE, SalmonJob, SalmonSessionWithTotals, SalmonSummary} from '../lib/salmonTypes';
+import {MAX_COUNT, MAX_WAVE, SalmonJob, SalmonSessionWithTotals, SalmonSummary} from '../lib/salmonTypes';
 
 import SalmonStats from './SalmonStats';
 
@@ -36,7 +36,7 @@ type NumberKey = typeof NUMBER_FIELDS[number]['key'];
 
 const EMPTY_NUMBERS: Record<NumberKey, string> = {goldenEggs: '', bossKills: '', deaths: ''};
 
-const isNonNegativeInteger = (value: string) => /^\d+$/.test(value);
+const isCount = (value: string) => /^\d+$/.test(value) && Number(value) <= MAX_COUNT;
 
 const formatDateTime = (timestamp: number) =>
     new Date(timestamp).toLocaleString('ja-JP', {month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hour12: false});
@@ -100,7 +100,7 @@ const SalmonRunPanel: React.FC = () => {
         void load();
     }, [load]);
 
-    const canSubmit = !saving && NUMBER_FIELDS.every(({key}) => isNonNegativeInteger(numbers[key]));
+    const canSubmit = !saving && NUMBER_FIELDS.every(({key}) => isCount(numbers[key]));
 
     const handleSubmit = async () => {
         if (!canSubmit) return;
@@ -183,7 +183,7 @@ const SalmonRunPanel: React.FC = () => {
                             value={numbers[key]}
                             onChange={(e) => setNumbers({...numbers, [key]: e.target.value})}
                             onKeyDown={(e) => e.key === 'Enter' && handleSubmit()}
-                            slotProps={{htmlInput: {min: 0, step: 1}}}
+                            slotProps={{htmlInput: {min: 0, max: MAX_COUNT, step: 1}}}
                             margin="normal"
                             fullWidth
                         />

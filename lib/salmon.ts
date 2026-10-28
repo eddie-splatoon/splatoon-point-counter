@@ -1,5 +1,6 @@
 import {getDb} from './db';
 import {
+    MAX_COUNT,
     MAX_STAGE_LENGTH,
     MAX_WAVE,
     NewSalmonJob,
@@ -114,8 +115,8 @@ export function getSummary(sessionId?: number): SalmonSummary {
 
 // ---- API 入力の検証 ----
 
-const isNonNegativeInteger = (value: unknown): value is number =>
-    typeof value === 'number' && Number.isInteger(value) && value >= 0;
+const isCount = (value: unknown): value is number =>
+    typeof value === 'number' && Number.isInteger(value) && value >= 0 && value <= MAX_COUNT;
 
 export const parseId = (value: string | null): number | null => {
     if (value === null || !/^[1-9]\d*$/.test(value)) return null;
@@ -125,13 +126,13 @@ export const parseId = (value: string | null): number | null => {
 /** POST の本文を検証して記録できる形にする。不正ならエラーメッセージを返す */
 export function parseJob(body: unknown): NewSalmonJob | string {
     const {goldenEggs, bossKills, deaths, cleared, waveReached, stage} = (body ?? {}) as Record<string, unknown>;
-    if (!isNonNegativeInteger(goldenEggs) || !isNonNegativeInteger(bossKills) || !isNonNegativeInteger(deaths)) {
-        return 'goldenEggs, bossKills and deaths must be non-negative integers.';
+    if (!isCount(goldenEggs) || !isCount(bossKills) || !isCount(deaths)) {
+        return `goldenEggs, bossKills and deaths must be integers between 0 and ${MAX_COUNT}.`;
     }
     if (typeof cleared !== 'boolean') return 'cleared must be a boolean.';
     // クリア時は最終 WAVE まで到達しているので省略可。失敗時はどの WAVE で失敗したかが必須
     const wave = cleared && waveReached === undefined ? MAX_WAVE : waveReached;
-    if (!isNonNegativeInteger(wave) || wave < 1 || wave > MAX_WAVE || (cleared && wave !== MAX_WAVE)) {
+    if (typeof wave !== 'number' || !Number.isInteger(wave) || wave < 1 || wave > MAX_WAVE || (cleared && wave !== MAX_WAVE)) {
         return `waveReached must be 1-${MAX_WAVE} (${MAX_WAVE} when cleared).`;
     }
     if (stage !== undefined && typeof stage !== 'string') return 'stage must be a string.';

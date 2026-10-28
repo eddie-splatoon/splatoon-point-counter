@@ -3,6 +3,8 @@
 
 // サーモンラン1回あたりの WAVE 数（クリア時の到達 WAVE）
 export const MAX_WAVE = 3;
+// 1回のバイトの金イクラ・オオモノ・デスの上限（入力ミスや異常値で合計が壊れないように）
+export const MAX_COUNT = 9999;
 export const MAX_STAGE_LENGTH = 50;
 export const MAX_TITLE_LENGTH = 50;
 

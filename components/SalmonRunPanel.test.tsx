@@ -100,6 +100,7 @@ describe('SalmonRunPanel', () => {
     ['an empty field', ['30', '', '1']],
     ['a negative number', ['30', '-1', '1']],
     ['a fraction', ['30', '12', '1.5']],
+    ['a number over the limit', ['10000', '12', '1']],
   ])('does not allow recording %s', async (_, [goldenEggs, bossKills, deaths]) => {
     render(<SalmonRunPanel />);
     await screen.findByText(/今のセッション/);
