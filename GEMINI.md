@@ -81,6 +81,12 @@ export interface StreamData {
 #### `/app/api/stream-data/route.ts`
 -   **目的**: `StreamData` オブジェクトの状態を管理するサーバーサイドAPIルート。オーバーレイからの `GET` リクエストとコントロールパネルからの `POST` リクエストを処理します。テストを容易にするために、初期データ (`getInitialStreamData`) とテスト用のデータ設定関数 (`__TEST_ONLY_setStreamData`) がエクスポートされています。
 
+#### `/app/api/twitch/route.ts`
+-   **目的**: Twitch のフォロワー数とフォロワー目標（`{followerTotal, goal, lastFollowAt, updatedAt, revision}`）をインメモリで保持するAPIルート。`tools/twitch-eventsub/` のスクリプトが `POST` し、オーバーレイが `GET` します。フォロワー名は保持しません。
+
+### `/tools/twitch-eventsub`
+-   **目的**: `pnpm twitch` で起動する常駐スクリプト。Device Code Flow で認証し、EventSub WebSocket でフォローとゴールの通知を受信して `/api/twitch` へ送信します。トークンは `data/twitch-token.json`（Git 管理外）に保存されます。詳細は同ディレクトリの README を参照。
+
 ### `/components`
 このディレクトリには、再利用可能なReactコンポーネントが格納されています。
 

@@ -44,3 +44,6 @@ coverage
 
 # 文字起こしスクリプト（Mac ネイティブで実行するため Next.js イメージには不要。.venv は 1GB 超）
 tools
+
+# ローカルのデータ（Twitch のトークンなど）
+data

@@ -146,3 +146,5 @@ vite.config.ts.timestamp-*
 .venv
 __pycache__
 .pytest_cache
+# ローカルのデータ（Twitch のトークンなど。tools/twitch-eventsub）
+data/

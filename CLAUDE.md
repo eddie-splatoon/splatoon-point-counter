@@ -13,8 +13,9 @@
 3. **スコア＆メッセージオーバーレイ** (`/obs-overlay`) - メインのオーバーレイ表示
 4. **バーンダウンチャートオーバーレイ** (`/burndown-overlay`) - 進捗状況を可視化
 5. **字幕オーバーレイ** (`/caption-overlay`) - 配信者の音声をリアルタイムに字幕表示
-6. **バックエンドAPI** (`/api/stream-data`, `/api/caption`) - データ管理とクライアント間の同期
+6. **バックエンドAPI** (`/api/stream-data`, `/api/caption`, `/api/twitch`) - データ管理とクライアント間の同期
 7. **文字起こしスクリプト** (`tools/caption-stt/`) - マイク音声を文字起こしして `/api/caption` へ送信（Python, Mac ネイティブ実行）
+8. **Twitch連携スクリプト** (`tools/twitch-eventsub/`) - フォロワー数・フォロワー目標を EventSub で受信して `/api/twitch` へ送信（Node, 依存なし）
 
 ## 技術スタック
 
@@ -26,6 +27,7 @@
 - **HTTPクライアント**: Axios
 - **ブラウザAPI**: Web Speech API (音声認識機能)
 - **文字起こし**: mlx-whisper + Silero VAD (Python 3.12, `tools/caption-stt/`)
+- **Twitch連携**: EventSub WebSocket + Device Code Flow（Node 24 標準の `fetch` / `WebSocket` と型除去で実行, `tools/twitch-eventsub/`）
 - **テスト**: Vitest + React Testing Library + @testing-library/jest-dom
 - **Linting**: ESLint 9 (Flat Config)
 - **CI/CD**: GitHub Actions
@@ -51,8 +53,10 @@
 │   └── api/
 │       ├── stream-data/
 │       │   └── route.ts          # データ管理API
-│       └── caption/
-│           └── route.ts          # 字幕API
+│       ├── caption/
+│       │   └── route.ts          # 字幕API
+│       └── twitch/
+│           └── route.ts          # Twitch API（フォロワー数・目標）
 ├── components/                    # 再利用可能なReactコンポーネント
 │   ├── ScoreDisplay.tsx          # スコア表示
 │   ├── BurndownChart.tsx         # バーンダウンチャート
@@ -66,7 +70,8 @@
 ├── public/                        # 静的アセット
 │   └── tips.tsv                  # Tips データ
 ├── tools/
-│   └── caption-stt/              # 文字起こしスクリプト（Python, README参照）
+│   ├── caption-stt/              # 文字起こしスクリプト（Python, README参照）
+│   └── twitch-eventsub/          # Twitch連携スクリプト（Node, README参照）
 ├── .github/
 │   ├── workflows/
 │   │   └── ci.yml                # CI/CDパイプライン
@@ -180,6 +185,17 @@ export interface StreamData {
 - オーバーレイは1秒ごとにポーリングし、8秒以内の最新2行を表示
 - `/api/stream-data` とは別エンドポイント（コントロールパネルの保存と競合させないため）
 - Python 側のテストは `tools/caption-stt/` で `pytest`（CI 対象外）
+
+### `/app/api/twitch/route.ts` と `tools/twitch-eventsub/`
+
+Twitch のフォロワー数とフォロワー目標を受け取る機能。
+
+- 起動はリポジトリのルートで `pnpm twitch`（`.env.local` の `TWITCH_CLIENT_ID` が必須。初回はブラウザで承認）
+- `tools/twitch-eventsub/twitch_eventsub.ts` は Node 24 の型除去でそのまま実行するため、enum・コンストラクタ引数プロパティなど型除去できない構文は使わない（`tools/twitch-eventsub/package.json` で ESM 指定）
+- 認証は Device Code Flow（Public クライアント、スコープ `moderator:read:followers` / `channel:read:goals`）。トークンは `data/twitch-token.json`（gitignore・dockerignore 済み）
+- EventSub WebSocket で `channel.follow` v2 と `channel.goal.*` を購読。フォロー通知では総数を加算し、60秒ごとに Helix から再同期して `/api/twitch` に送り直す
+- API は `{followerTotal, goal, lastFollowAt, updatedAt, revision}` をインメモリで保持（`followerTotal: null` はスクリプト未起動）。**フォロワー名は保持しない**。`POST` は `Content-Type: application/json` 必須。`getInitialTwitchData()` / `__TEST_ONLY_setTwitchData()` はテスト用
+- スクリプトのテストは Vitest（CI 対象）
 
 ### `/components/ScoreDisplay.tsx`
 

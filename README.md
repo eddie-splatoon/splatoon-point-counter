@@ -58,6 +58,15 @@ flowchart LR
     OVL["/caption-overlay<br/>OBS ブラウザソース"] -- "GET 1秒ごと" --> API
 ```
 
+### 6. Twitch 連携
+
+Twitch のフォロワー数とフォロワー目標（クリエイターゴール）をリアルタイムに受信し、`/api/twitch` で提供します。受信は Node のスクリプト（`tools/twitch-eventsub/`）が EventSub WebSocket で行うため、公開 URL は不要です。フォロワーの名前は扱いません。
+
+```mermaid
+flowchart LR
+    TW["Twitch<br/>Helix / EventSub"] --> SCR["twitch_eventsub.ts"]
+    SCR -- "POST {followerTotal, goal, lastFollowAt}" --> API["/api/twitch"]
+```
 
 
 ## 技術スタック
@@ -114,6 +123,16 @@ pnpm caption
 ```
 
 OBS のブラウザソースには `http://localhost:3000/caption-overlay` を指定します。マイクの変更などの詳細は [tools/caption-stt/README.md](tools/caption-stt/README.md) を参照してください。
+
+### Twitch 連携の起動
+
+Twitch Developer Console でアプリ（クライアントの種類: 公開）を登録し、クライアント ID を `.env.local` の `TWITCH_CLIENT_ID` に設定したうえで、Next.js アプリを起動した状態で次を実行します（`Ctrl+C` で終了）。初回はブラウザでの承認が必要です。
+
+```bash
+pnpm twitch
+```
+
+詳細は [tools/twitch-eventsub/README.md](tools/twitch-eventsub/README.md) を参照してください。
 
 ## CI/CD
 

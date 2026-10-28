@@ -1,0 +1,496 @@
+/**
+ * Twitch のフォロワー数とフォロワー目標を EventSub WebSocket で受信し、/api/twitch へ送信する常駐スクリプト。
+ *
+ *   pnpm twitch    # リポジトリのルートで起動（README.md 参照）
+ *
+ * Node 24 の型除去でそのまま実行するため、enum やコンストラクタ引数プロパティなど
+ * 型除去できない TypeScript 構文は使わないこと。
+ */
+import { mkdir, readFile, writeFile } from 'node:fs/promises';
+import { dirname, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
+
+export const SCOPES = ['moderator:read:followers', 'channel:read:goals'];
+export const EVENTSUB_URL = 'wss://eventsub.wss.twitch.tv/ws';
+const ID_URL = 'https://id.twitch.tv/oauth2';
+const HELIX_URL = 'https://api.twitch.tv/helix';
+
+// unfollow はイベントが無いため、定期的に総数を取り直す（Next.js 再起動でインメモリの値が消えた場合の再送も兼ねる）
+const RESYNC_INTERVAL_MS = 60_000;
+const INITIAL_RECONNECT_DELAY_MS = 1_000;
+const MAX_RECONNECT_DELAY_MS = 60_000;
+// keepalive_timeout_seconds を過ぎてもメッセージが来なければ切断とみなす（ネットワーク遅延分の猶予）
+const KEEPALIVE_MARGIN_MS = 5_000;
+
+const DEFAULT_TOKEN_PATH = resolve(dirname(fileURLToPath(import.meta.url)), '../../data/twitch-token.json');
+
+type FetchFn = typeof fetch;
+type SleepFn = (ms: number) => Promise<void>;
+
+const defaultSleep: SleepFn = (ms) => new Promise((r) => setTimeout(r, ms));
+
+export interface Token {
+  accessToken: string;
+  refreshToken: string;
+}
+
+export interface DeviceCode {
+  deviceCode: string;
+  userCode: string;
+  verificationUri: string;
+  interval: number;
+  expiresIn: number;
+}
+
+export interface GoalState {
+  current: number;
+  target: number;
+}
+
+export interface TwitchState {
+  followerTotal: number;
+  goal: GoalState | null;
+  lastFollowAt: number | null;
+}
+
+interface TokenResponse {
+  access_token: string;
+  refresh_token: string;
+}
+
+const toToken = (json: TokenResponse): Token => ({ accessToken: json.access_token, refreshToken: json.refresh_token });
+
+// ---- OAuth (Device Code Flow) ----
+
+export async function requestDeviceCode(clientId: string, fetchFn: FetchFn = fetch): Promise<DeviceCode> {
+  const res = await fetchFn(`${ID_URL}/device`, {
+    method: 'POST',
+    body: new URLSearchParams({ client_id: clientId, scopes: SCOPES.join(' ') }),
+  });
+  if (!res.ok) throw new Error(`デバイスコードの取得に失敗しました: ${res.status} ${await res.text()}`);
+  const json = await res.json();
+  return {
+    deviceCode: json.device_code,
+    userCode: json.user_code,
+    verificationUri: json.verification_uri,
+    interval: json.interval,
+    expiresIn: json.expires_in,
+  };
+}
+
+export async function pollDeviceToken(
+  clientId: string,
+  code: DeviceCode,
+  fetchFn: FetchFn = fetch,
+  sleep: SleepFn = defaultSleep,
+): Promise<Token> {
+  let interval = code.interval;
+  for (let elapsed = 0; elapsed < code.expiresIn; elapsed += interval) {
+    await sleep(interval * 1000);
+    const res = await fetchFn(`${ID_URL}/token`, {
+      method: 'POST',
+      body: new URLSearchParams({
+        client_id: clientId,
+        scopes: SCOPES.join(' '),
+        device_code: code.deviceCode,
+        grant_type: 'urn:ietf:params:oauth:grant-type:device_code',
+      }),
+    });
+    if (res.ok) return toToken(await res.json());
+    const { message } = await res.json().catch(() => ({ message: undefined }));
+    if (message === 'authorization_pending') continue;
+    if (message === 'slow_down') {
+      interval += 5;
+      continue;
+    }
+    throw new Error(`認可に失敗しました: ${res.status} ${message ?? ''}`);
+  }
+  throw new Error('認可の有効期限が切れました。もう一度起動してください');
+}
+
+export async function refreshAccessToken(clientId: string, refreshToken: string, fetchFn: FetchFn = fetch): Promise<Token> {
+  // Public クライアントなので client_secret は送らない
+  const res = await fetchFn(`${ID_URL}/token`, {
+    method: 'POST',
+    body: new URLSearchParams({ client_id: clientId, grant_type: 'refresh_token', refresh_token: refreshToken }),
+  });
+  if (!res.ok) throw new Error(`トークンの更新に失敗しました: ${res.status} ${await res.text()}`);
+  return toToken(await res.json());
+}
+
+export async function validateToken(
+  accessToken: string,
+  fetchFn: FetchFn = fetch,
+): Promise<{ userId: string; login: string; scopes: string[] } | null> {
+  const res = await fetchFn(`${ID_URL}/validate`, { headers: { Authorization: `OAuth ${accessToken}` } });
+  if (res.status === 401) return null;
+  if (!res.ok) throw new Error(`トークンの検証に失敗しました: ${res.status} ${await res.text()}`);
+  const json = await res.json();
+  return { userId: json.user_id, login: json.login, scopes: json.scopes ?? [] };
+}
+
+export async function loadToken(path: string): Promise<Token | null> {
+  try {
+    const json = JSON.parse(await readFile(path, 'utf8'));
+    return typeof json.accessToken === 'string' && typeof json.refreshToken === 'string' ? json : null;
+  } catch {
+    return null;
+  }
+}
+
+export async function saveToken(path: string, token: Token): Promise<void> {
+  await mkdir(dirname(path), { recursive: true });
+  await writeFile(path, JSON.stringify(token, null, 2), { mode: 0o600 });
+}
+
+// ---- Helix API ----
+
+interface TwitchClientOptions {
+  clientId: string;
+  tokenPath: string;
+  fetchFn?: FetchFn;
+  sleep?: SleepFn;
+  log?: (message: string) => void;
+}
+
+export class TwitchClient {
+  userId = '';
+  private clientId: string;
+  private tokenPath: string;
+  private fetchFn: FetchFn;
+  private sleep: SleepFn;
+  private log: (message: string) => void;
+  private token: Token | null = null;
+  // Public クライアントのリフレッシュトークンは使い捨てなので、同時に401が返っても更新は1回にまとめる
+  private refreshing: Promise<void> | null = null;
+
+  constructor(options: TwitchClientOptions) {
+    this.clientId = options.clientId;
+    this.tokenPath = options.tokenPath;
+    this.fetchFn = options.fetchFn ?? fetch;
+    this.sleep = options.sleep ?? defaultSleep;
+    this.log = options.log ?? console.log;
+  }
+
+  async authenticate(): Promise<void> {
+    this.token = await loadToken(this.tokenPath);
+    if (this.token) {
+      let info = await validateToken(this.token.accessToken, this.fetchFn);
+      if (!info) {
+        try {
+          await this.refreshAndSave();
+          info = await validateToken(this.token.accessToken, this.fetchFn);
+        } catch (error) {
+          this.log(`保存済みトークンを更新できませんでした: ${(error as Error).message}`);
+        }
+      }
+      const scopes = info?.scopes ?? [];
+      if (info && SCOPES.every((scope) => scopes.includes(scope))) {
+        this.userId = info.userId;
+        this.log(`${info.login} として認証しました`);
+        return;
+      }
+    }
+    await this.runDeviceFlow();
+  }
+
+  async helix(path: string, init: RequestInit = {}): Promise<Response> {
+    let res = await this.fetchFn(`${HELIX_URL}${path}`, this.withAuth(init));
+    if (res.status === 401) {
+      await this.refresh();
+      res = await this.fetchFn(`${HELIX_URL}${path}`, this.withAuth(init));
+    }
+    if (!res.ok) throw new Error(`Helix ${init.method ?? 'GET'} ${path} が失敗しました: ${res.status} ${await res.text()}`);
+    return res;
+  }
+
+  async getFollowerTotal(): Promise<number> {
+    const res = await this.helix(`/channels/followers?broadcaster_id=${this.userId}&first=1`);
+    return (await res.json()).total;
+  }
+
+  async getFollowerGoal(): Promise<GoalState | null> {
+    const res = await this.helix(`/goals?broadcaster_id=${this.userId}`);
+    const goal = ((await res.json()).data as GoalEvent[]).find((g) => g.type === 'follower');
+    return goal ? { current: goal.current_amount, target: goal.target_amount } : null;
+  }
+
+  async subscribeAll(sessionId: string): Promise<void> {
+    const subscriptions = [
+      { type: 'channel.follow', version: '2', condition: { broadcaster_user_id: this.userId, moderator_user_id: this.userId } },
+      { type: 'channel.goal.begin', version: '1', condition: { broadcaster_user_id: this.userId } },
+      { type: 'channel.goal.progress', version: '1', condition: { broadcaster_user_id: this.userId } },
+      { type: 'channel.goal.end', version: '1', condition: { broadcaster_user_id: this.userId } },
+    ];
+    for (const sub of subscriptions) {
+      await this.helix('/eventsub/subscriptions', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ...sub, transport: { method: 'websocket', session_id: sessionId } }),
+      });
+    }
+    this.log(`EventSub を購読しました (${subscriptions.map((s) => s.type).join(', ')})`);
+  }
+
+  private withAuth(init: RequestInit): RequestInit {
+    return {
+      ...init,
+      headers: { ...init.headers, Authorization: `Bearer ${this.token?.accessToken}`, 'Client-Id': this.clientId },
+    };
+  }
+
+  private refresh(): Promise<void> {
+    this.refreshing ??= this.refreshAndSave()
+      .catch((error) => {
+        this.log(`トークンを更新できませんでした: ${(error as Error).message}`);
+        return this.runDeviceFlow();
+      })
+      .finally(() => {
+        this.refreshing = null;
+      });
+    return this.refreshing;
+  }
+
+  private async refreshAndSave(): Promise<void> {
+    if (!this.token) throw new Error('トークンがありません');
+    this.token = await refreshAccessToken(this.clientId, this.token.refreshToken, this.fetchFn);
+    await saveToken(this.tokenPath, this.token);
+  }
+
+  private async runDeviceFlow(): Promise<void> {
+    const code = await requestDeviceCode(this.clientId, this.fetchFn);
+    this.log(`ブラウザで ${code.verificationUri} を開き、コード ${code.userCode} を確認して承認してください`);
+    this.token = await pollDeviceToken(this.clientId, code, this.fetchFn, this.sleep);
+    await saveToken(this.tokenPath, this.token);
+    const info = await validateToken(this.token.accessToken, this.fetchFn);
+    if (!info) throw new Error('取得したトークンが無効です');
+    this.userId = info.userId;
+    this.log(`${info.login} として認証しました`);
+  }
+}
+
+// ---- EventSub ----
+
+interface GoalEvent {
+  type: string;
+  current_amount: number;
+  target_amount: number;
+}
+
+/** EventSub の通知を状態に反映する。フォロワー名は保持しない */
+export function applyNotification(state: TwitchState, type: string, event: unknown, now: number): TwitchState {
+  if (type === 'channel.follow') {
+    // 通知に総数は含まれない。直後の Helix は反映が遅れることがあるため加算し、定期同期で補正する
+    return { ...state, followerTotal: state.followerTotal + 1, lastFollowAt: now };
+  }
+  const goal = event as GoalEvent;
+  if (goal.type !== 'follower') return state;
+  if (type === 'channel.goal.begin' || type === 'channel.goal.progress') {
+    return { ...state, goal: { current: goal.current_amount, target: goal.target_amount } };
+  }
+  if (type === 'channel.goal.end') {
+    return { ...state, goal: null };
+  }
+  return state;
+}
+
+export interface SocketLike {
+  onmessage: ((event: MessageEvent) => void) | null;
+  onclose: ((event: CloseEvent) => void) | null;
+  close(): void;
+}
+
+interface EventSubHandlers {
+  onWelcome: (sessionId: string) => Promise<void>;
+  onNotification: (type: string, event: unknown) => void;
+  onError: (error: Error) => void;
+}
+
+interface EventSubMessage {
+  metadata: { message_type: string; subscription_type?: string };
+  payload: {
+    session?: { id: string; keepalive_timeout_seconds: number; reconnect_url: string };
+    event?: unknown;
+    subscription?: { type: string; status: string };
+  };
+}
+
+export class EventSubConnection {
+  private handlers: EventSubHandlers;
+  private createSocket: (url: string) => SocketLike;
+  private log: (message: string) => void;
+  private socket: SocketLike | null = null;
+  // session_reconnect で接続中の新しいソケット。welcome を受けたら socket と入れ替える
+  private pending: SocketLike | null = null;
+  private keepaliveTimer: ReturnType<typeof setTimeout> | null = null;
+  private keepaliveMs = 0;
+  private reconnectDelay = INITIAL_RECONNECT_DELAY_MS;
+  private stopped = false;
+
+  constructor(handlers: EventSubHandlers, createSocket: (url: string) => SocketLike = (url) => new WebSocket(url), log = console.log) {
+    this.handlers = handlers;
+    this.createSocket = createSocket;
+    this.log = log;
+  }
+
+  start(): void {
+    this.stopped = false;
+    this.socket = this.open(EVENTSUB_URL);
+  }
+
+  stop(): void {
+    this.stopped = true;
+    this.clearKeepalive();
+    this.socket?.close();
+    this.pending?.close();
+    this.socket = null;
+    this.pending = null;
+  }
+
+  private open(url: string): SocketLike {
+    const socket = this.createSocket(url);
+    socket.onmessage = (event) => {
+      if (socket !== this.socket && socket !== this.pending) return;
+      this.handleMessage(socket, JSON.parse(String(event.data)) as EventSubMessage);
+    };
+    socket.onclose = () => {
+      if (socket === this.pending) this.pending = null;
+      if (socket !== this.socket || this.stopped) return;
+      this.log('EventSub の接続が切れました。再接続します');
+      this.restart();
+    };
+    return socket;
+  }
+
+  private handleMessage(socket: SocketLike, message: EventSubMessage): void {
+    if (socket === this.socket) this.resetKeepalive();
+    const { metadata, payload } = message;
+    switch (metadata.message_type) {
+      case 'session_welcome': {
+        const session = payload.session!;
+        this.keepaliveMs = session.keepalive_timeout_seconds * 1000 + KEEPALIVE_MARGIN_MS;
+        if (socket === this.pending) {
+          // 再接続先では購読が引き継がれるので、旧接続を閉じるだけでよい
+          const previous = this.socket;
+          this.socket = socket;
+          this.pending = null;
+          previous?.close();
+        } else {
+          this.reconnectDelay = INITIAL_RECONNECT_DELAY_MS;
+          this.handlers.onWelcome(session.id).catch((error) => this.handlers.onError(error as Error));
+        }
+        this.resetKeepalive();
+        break;
+      }
+      case 'notification':
+        this.handlers.onNotification(metadata.subscription_type ?? '', payload.event);
+        break;
+      case 'session_reconnect':
+        this.pending?.close();
+        this.pending = this.open(payload.session!.reconnect_url);
+        break;
+      case 'revocation':
+        this.handlers.onError(new Error(`購読が取り消されました: ${payload.subscription?.type} (${payload.subscription?.status})`));
+        break;
+    }
+  }
+
+  private resetKeepalive(): void {
+    this.clearKeepalive();
+    if (this.keepaliveMs === 0 || this.stopped) return;
+    this.keepaliveTimer = setTimeout(() => {
+      this.log('EventSub の keepalive が途絶えました。再接続します');
+      this.restart();
+    }, this.keepaliveMs);
+  }
+
+  private clearKeepalive(): void {
+    if (this.keepaliveTimer) clearTimeout(this.keepaliveTimer);
+    this.keepaliveTimer = null;
+  }
+
+  /** 新しいセッションで接続し直す（購読もやり直しになる） */
+  private restart(): void {
+    this.clearKeepalive();
+    this.keepaliveMs = 0;
+    const previous = this.socket;
+    this.socket = null;
+    previous?.close();
+    const delay = this.reconnectDelay;
+    this.reconnectDelay = Math.min(delay * 2, MAX_RECONNECT_DELAY_MS);
+    setTimeout(() => {
+      if (!this.stopped && !this.socket) this.socket = this.open(EVENTSUB_URL);
+    }, delay);
+  }
+}
+
+// ---- アプリへの送信 ----
+
+export async function publishState(apiUrl: string, state: TwitchState, fetchFn: FetchFn = fetch): Promise<void> {
+  const res = await fetchFn(apiUrl, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(state),
+  });
+  if (!res.ok) throw new Error(`${apiUrl} への送信に失敗しました: ${res.status}`);
+}
+
+async function main(): Promise<void> {
+  const clientId = process.env.TWITCH_CLIENT_ID;
+  if (!clientId) {
+    console.error('[twitch] TWITCH_CLIENT_ID が未設定です。.env.local に設定してください（tools/twitch-eventsub/README.md 参照）');
+    process.exit(1);
+  }
+  const apiUrl = process.env.TWITCH_API_URL ?? 'http://localhost:3000/api/twitch';
+  const log = (message: string) => console.log(`[twitch] ${message}`);
+
+  const client = new TwitchClient({ clientId, tokenPath: process.env.TWITCH_TOKEN_PATH ?? DEFAULT_TOKEN_PATH, log });
+  await client.authenticate();
+
+  let state: TwitchState = { followerTotal: await client.getFollowerTotal(), goal: await client.getFollowerGoal(), lastFollowAt: null };
+  const publish = () =>
+    publishState(apiUrl, state).catch((error) => {
+      log(`警告: ${(error as Error).message}。Next.js アプリ（pnpm dev / docker-compose up）が起動しているか確認してください`);
+    });
+  await publish();
+  log(`フォロワー数: ${state.followerTotal}${state.goal ? ` / 目標: ${state.goal.target}` : ''}`);
+
+  setInterval(async () => {
+    try {
+      state = { ...state, followerTotal: await client.getFollowerTotal(), goal: await client.getFollowerGoal() };
+    } catch (error) {
+      log(`同期に失敗しました: ${(error as Error).message}`);
+    }
+    await publish();
+  }, RESYNC_INTERVAL_MS);
+
+  const connection = new EventSubConnection(
+    {
+      onWelcome: (sessionId) => client.subscribeAll(sessionId),
+      onNotification: (type, event) => {
+        state = applyNotification(state, type, event, Date.now());
+        log(`${type} を受信しました（フォロワー数: ${state.followerTotal}）`);
+        void publish();
+      },
+      onError: (error) => {
+        console.error(`[twitch] ${error.message}`);
+        process.exit(1);
+      },
+    },
+    undefined,
+    log,
+  );
+  connection.start();
+
+  process.on('SIGINT', () => {
+    connection.stop();
+    process.exit(0);
+  });
+}
+
+if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
+  main().catch((error) => {
+    console.error(`[twitch] ${(error as Error).message}`);
+    process.exit(1);
+  });
+}
