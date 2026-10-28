@@ -36,7 +36,8 @@ export const getDefaultSidePanelSettings = (): SidePanelSettings => ({
     activeSlot: 'salmon',
     autoRotate: false,
     rotateSeconds: 30,
-    enabledSlots: [...SIDE_PANEL_SLOTS],
+    // お題は登録されていないと何も表示しないので、既定のローテーションには含めない（空白の時間ができないように）
+    enabledSlots: ['salmon', 'burndown'],
     followerGoal: null,
     challenges: [],
 });

@@ -92,7 +92,11 @@ describe('pickSlot', () => {
 
   it('cycles through the enabled slots when rotating', () => {
     const settings = { ...getDefaultSidePanelSettings(), autoRotate: true };
-    expect([0, 1, 2, 3].map((i) => pickSlot(settings, i))).toEqual(['salmon', 'challenges', 'burndown', 'salmon']);
+    expect([0, 1, 2, 3].map((i) => pickSlot({ ...settings, enabledSlots: ['salmon', 'challenges', 'burndown'] }, i))).toEqual(['salmon', 'challenges', 'burndown', 'salmon']);
+  });
+
+  it('does not rotate through the challenges by default', () => {
+    expect(getDefaultSidePanelSettings().enabledSlots).not.toContain('challenges');
   });
 });
 
