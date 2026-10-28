@@ -19,6 +19,7 @@ import {
 import axios from 'axios';
 import React, {useCallback, useEffect, useRef, useState} from 'react';
 
+import {SalmonScheduleData, pickCurrentSchedule} from '../lib/salmonSchedule';
 import {MAX_COUNT, MAX_WAVE, SalmonJob, SalmonSessionWithTotals, SalmonSummary} from '../lib/salmonTypes';
 
 import SalmonStats from './SalmonStats';
@@ -94,11 +95,24 @@ const SalmonRunPanel: React.FC = () => {
         }
     }, [loadSessions]);
 
+    // ステージ欄が空なら、いま開催中のスケジュールのステージ名を入れる（手入力した値は上書きしない）
+    const fillStageFromSchedule = useCallback(async () => {
+        try {
+            const res = await axios.get<SalmonScheduleData>('/api/salmon-schedule');
+            const current = pickCurrentSchedule(res.data.entries, Date.now());
+            if (current) setStage((prev) => prev || current.stage.name);
+        } catch (e) {
+            // スケジュールは入力の補助なので、取れなくても手入力で記録できる
+            console.error('Failed to load the salmon run schedule', e);
+        }
+    }, []);
+
     useEffect(() => {
         // マウント時に API から記録を読み込む（burndown-overlay の初回取得と同じパターン）
         // eslint-disable-next-line react-hooks/set-state-in-effect
         void load();
-    }, [load]);
+        void fillStageFromSchedule();
+    }, [load, fillStageFromSchedule]);
 
     const canSubmit = !saving && NUMBER_FIELDS.every(({key}) => isCount(numbers[key]));
 

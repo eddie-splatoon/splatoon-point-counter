@@ -13,6 +13,11 @@ vi.mock('../../components/SalmonStats', () => ({
 vi.mock('../../components/InkTankGauge', () => ({
   default: ({ current, target }: { current: number; target: number }) => <div data-testid="InkTankGauge">{current} / {target}</div>,
 }));
+vi.mock('../../components/SalmonSchedule', () => ({
+  default: ({ schedule }: { schedule: { stage: { name: string } } | null }) => (
+    <div data-testid="SalmonSchedule">{schedule ? schedule.stage.name : 'none'}</div>
+  ),
+}));
 vi.mock('../../components/ChallengeList', () => ({
   default: ({ challenges }: { challenges: { text: string }[] }) => <div data-testid="ChallengeList">{challenges.map((c) => c.text).join(',')}</div>,
 }));
@@ -32,13 +37,19 @@ const salmonSummary = {
 
 const noTwitch = { followerTotal: null, goal: null, lastFollowAt: null, updatedAt: null, revision: 0 };
 
-const mockApis = (settings: SidePanelSettings, failing: string[] = [], twitch: object = noTwitch) => {
+const scheduleData = (stage: string) => ({
+  entries: [{ kind: 'regular', startTime: Date.now() - 60_000, endTime: Date.now() + 60 * 60_000, stage: { name: stage, image: '' }, weapons: [] }],
+  fetchedAt: Date.now(),
+});
+
+const mockApis = (settings: SidePanelSettings, failing: string[] = [], twitch: object = noTwitch, schedule: object = scheduleData('アラマキ砦')) => {
   mockedAxios.get.mockImplementation(async (url: string) => {
     if (failing.includes(url)) throw new Error('500');
     if (url === '/api/side-panel') return { data: settings, status: 200 };
     if (url === '/api/salmon') return { data: salmonSummary, status: 200 };
     if (url === '/api/stream-data') return { data: getInitialStreamData(), status: 200 };
     if (url === '/api/twitch') return { data: twitch, status: 200 };
+    if (url === '/api/salmon-schedule') return { data: schedule, status: 200 };
     throw new Error(`unexpected ${url}`);
   });
 };
@@ -90,6 +101,23 @@ describe('SidePanelOverlayPage', () => {
     const order = [...screen.getByTestId('side-panel-slot').querySelectorAll('[data-slot]')].map((el) => el.getAttribute('data-slot'));
     expect(order).toEqual(['salmon', 'challenges']);
     expect(screen.getByTestId('SalmonStats')).toBeInTheDocument();
+  });
+
+  it('shows the running salmon run schedule above the stats', async () => {
+    mockApis({ ...getDefaultSidePanelSettings(), visibleSlots: ['schedule', 'salmon'] });
+    render(<SidePanelOverlayPage />);
+
+    expect(await screen.findByTestId('SalmonSchedule')).toHaveTextContent('アラマキ砦');
+    const order = [...screen.getByTestId('side-panel-slot').querySelectorAll('[data-slot]')].map((el) => el.getAttribute('data-slot'));
+    expect(order).toEqual(['schedule', 'salmon']);
+  });
+
+  it('shows nothing in the schedule slot until the schedule is fetched', async () => {
+    mockApis({ ...getDefaultSidePanelSettings(), visibleSlots: ['schedule', 'salmon'] }, ['/api/salmon-schedule']);
+    render(<SidePanelOverlayPage />);
+
+    await screen.findByTestId('SalmonStats');
+    expect(screen.queryByTestId('SalmonSchedule')).not.toBeInTheDocument();
   });
 
   it('switches slots when the setting changes', async () => {

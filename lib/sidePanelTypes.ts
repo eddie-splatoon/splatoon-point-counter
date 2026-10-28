@@ -1,7 +1,7 @@
 // サイドパネル（配信画面右側）の型と定数。クライアントからも使うため DB に依存させない
 
-// 下段スロットに表示できるもの（並び順は自動ローテーションの順）。スケジュール（schedule）は #59 で追加する
-export const SIDE_PANEL_SLOTS = ['salmon', 'challenges', 'burndown'] as const;
+// 下段スロットに表示できるもの（並び順は、縦に並べるときの上からの順と、自動ローテーションの順）
+export const SIDE_PANEL_SLOTS = ['schedule', 'salmon', 'challenges', 'burndown'] as const;
 
 export type SidePanelSlot = typeof SIDE_PANEL_SLOTS[number];
 
@@ -9,6 +9,7 @@ export type SidePanelSlot = typeof SIDE_PANEL_SLOTS[number];
 export const FULL_HEIGHT_SLOTS: readonly SidePanelSlot[] = ['burndown'];
 
 export const SIDE_PANEL_SLOT_LABELS: Record<SidePanelSlot, string> = {
+    schedule: 'スケジュール',
     salmon: 'サーモンラン',
     challenges: '本日のお題',
     burndown: 'バーンダウン',

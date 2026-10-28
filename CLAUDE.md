@@ -14,7 +14,7 @@
 4. **バーンダウンチャートオーバーレイ** (`/burndown-overlay`) - 進捗状況を可視化
 5. **字幕オーバーレイ** (`/caption-overlay`) - 配信者の音声をリアルタイムに字幕表示
 6. **サイドパネルオーバーレイ** (`/side-panel-overlay`) - 配信画面右側（250x584）。上段にフォロワーゲージ、下段にコントロールパネルで選んだスロットを表示
-7. **バックエンドAPI** (`/api/stream-data`, `/api/caption`, `/api/twitch`, `/api/salmon`, `/api/side-panel`) - データ管理とクライアント間の同期
+7. **バックエンドAPI** (`/api/stream-data`, `/api/caption`, `/api/twitch`, `/api/salmon`, `/api/side-panel`, `/api/salmon-schedule`) - データ管理とクライアント間の同期
 8. **文字起こしスクリプト** (`tools/caption-stt/`) - マイク音声を文字起こしして `/api/caption` へ送信（Python, Mac ネイティブ実行）
 9. **Twitch連携スクリプト** (`tools/twitch-eventsub/`) - フォロワー数・フォロワー目標を EventSub で受信して `/api/twitch` へ送信（Node, 依存なし）
 
@@ -65,8 +65,10 @@
 │       │   ├── route.ts          # サーモンラン記録API
 │       │   └── sessions/
 │       │       └── route.ts      # サーモンランのセッションAPI
-│       └── side-panel/
-│           └── route.ts          # サイドパネル設定API
+│       ├── side-panel/
+│       │   └── route.ts          # サイドパネル設定API
+│       └── salmon-schedule/
+│           └── route.ts          # サーモンランのスケジュール（外部 API の中継・キャッシュ）
 ├── components/                    # 再利用可能なReactコンポーネント
 │   ├── ScoreDisplay.tsx          # スコア表示
 │   ├── BurndownChart.tsx         # バーンダウンチャート
@@ -81,13 +83,15 @@
 │   ├── SalmonRunPanel.tsx        # コントロールパネルのサーモンランタブ
 │   ├── SidePanelSettingsPanel.tsx # コントロールパネルのサイドパネルタブ
 │   ├── InkTankGauge.tsx          # インクタンク型フォロワーゲージ
-│   └── ChallengeList.tsx         # 本日のお題（サイドパネルのスロット）
+│   ├── ChallengeList.tsx         # 本日のお題（サイドパネルのスロット）
+│   └── SalmonSchedule.tsx        # サーモンランのスケジュール（サイドパネルのスロット）
 ├── lib/
 │   ├── localStorage.ts           # ローカルストレージのラッパー
 │   ├── db.ts                     # SQLite の接続とスキーマ
 │   ├── salmon.ts                 # サーモンラン記録のデータアクセス・入力検証（サーバー専用）
 │   ├── salmonTypes.ts            # サーモンラン記録の型・定数（クライアントからも使う）
-│   └── sidePanelTypes.ts         # サイドパネルのスロット定義・設定の検証（クライアントからも使う）
+│   ├── sidePanelTypes.ts         # サイドパネルのスロット定義・設定の検証（クライアントからも使う）
+│   └── salmonSchedule.ts         # サーモンランのスケジュールの型・変換（クライアントからも使う）
 ├── data/                          # SQLite・Twitch トークン（Git / Docker イメージ管理外）
 ├── public/                        # 静的アセット
 │   └── tips.tsv                  # Tips データ
@@ -234,7 +238,7 @@ Twitch のフォロワー数とフォロワー目標を受け取る機能。
 
 配信画面右側（250x584）のサイドパネル。上段はインクタンク型フォロワーゲージ（`components/InkTankGauge.tsx`）、下段は「スロット」を表示する。
 
-- スロットの定義は `lib/sidePanelTypes.ts` の `SIDE_PANEL_SLOTS`（現在は `salmon` / `challenges` / `burndown`。並び順が自動ローテーションの順）。スロットを追加するときは、ここと `SIDE_PANEL_SLOT_LABELS`、オーバーレイの `renderSlot` に足す
+- スロットの定義は `lib/sidePanelTypes.ts` の `SIDE_PANEL_SLOTS`（現在は `schedule` / `salmon` / `challenges` / `burndown`。並び順が、縦に並べるときの上からの順と自動ローテーションの順）。スロットを追加するときは、ここと `SIDE_PANEL_SLOT_LABELS`、オーバーレイの `renderSlot` に足す
 - 設定 `{visibleSlots, autoRotate, rotateSeconds, enabledSlots, followerGoal, challenges}` は SQLite のキーバリュー `app_state`（`getAppState` / `setAppState`、キー `sidePanel`）に保存。保存値が不正（スロット削除後など）なら既定値を返す
 - オーバーレイは2秒ごとに `/api/side-panel`・`/api/salmon`・`/api/stream-data` をポーリングし（1つが失敗しても他は表示を続ける）、motion のクロスフェードでスロットを切り替える。表示するスロットは `pickSlots` で決める: 自動ローテーションが OFF なら `visibleSlots` を上から順に並べ、ON なら `enabledSlots` を1つずつ順に回す
 - `visibleSlots` は以前の `activeSlot`（1つだけ選ぶ方式）を置き換えた項目。保存済みの設定に無ければ `[activeSlot]` として読み込む。下段全体の高さを使うスロット（`FULL_HEIGHT_SLOTS`、現在は `burndown`）は他と同時に選べない（検証で拒否し、コントロールパネルでは新しく選んだ側に入れ替える）
@@ -245,6 +249,17 @@ Twitch のフォロワー数とフォロワー目標を受け取る機能。
 - `followerGoal` と `challenges` は後から追加した項目なので、保存済みの設定に無ければそれぞれ `null` / `[]` として扱う（既存の設定を既定値に戻さないため）。設定に項目を足すときも同じようにする
 - 本日のお題（`challenges: {id, text, done}[]`、最大8個・各3行・改行を除いて40文字）はサイドパネル設定に含めて保存し、コントロールパネルで追加・削除・達成チェックする。`components/ChallengeList.tsx` は `done` が false → true に変わった瞬間だけスタンプを押す演出をする（前回の状態と比べてレンダー中に state を調整する。表示時点で達成済みのものやポーリングでは再生しない）。お題が0個なら何も表示しない
 - お題の改行は配信者が折り返したい位置なので、`normalizeChallengeText` で各行の前後の空白と空行だけを除いて残し、オーバーレイ・コントロールパネルとも `white-space: pre-line` で表示する。入力欄は複数行（Enter は改行、Ctrl / ⌘ + Enter で追加）
+
+### `/app/api/salmon-schedule/route.ts` と `lib/salmonSchedule.ts`
+
+サーモンランのスケジュール（ステージ・支給ブキ・残り時間）を表示する機能。
+
+- 非公式 API（https://spla3.yuu26.com/）の `coop-grouping/schedule` と `coop-grouping-team-contest/schedule` をサーバー側で中継する。利用規約に従い、連絡先（リポジトリの URL）入りの User-Agent を付ける
+- 外部 API へのアクセスは 5 分キャッシュ（`CACHE_TTL_MS`）で抑え、同時のリクエストは1回にまとめる。失敗したら直前の値を返し、1 分（`RETRY_AFTER_FAILURE_MS`）は再取得しない。一度も取れていなければ 502
+- 非公式 API の仕様変更に備え、`parseScheduleResults` は形が想定と違う要素を捨てる。開催中のものは `pickCurrentSchedule` で選び、同じ時間帯ならバイトチームコンテスト > ビッグラン > 通常の順に優先する
+- サイドパネルの `schedule` スロット（`components/SalmonSchedule.tsx`）で表示する。画像は外部の署名付き URL なので `next/image` を通さず `<img>` で表示する
+- コントロールパネルの「サーモンラン」タブは、ステージ欄が空なら開催中のステージ名を入れる（手入力した値は上書きしない。取れなくても記録はできる）
+- テストでは `fetch` を `vi.stubGlobal` で差し替え、`__TEST_ONLY_resetSalmonScheduleCache()` でキャッシュを消す
 
 ### `/components/ScoreDisplay.tsx`
 

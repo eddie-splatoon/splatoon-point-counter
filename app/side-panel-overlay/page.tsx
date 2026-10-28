@@ -7,7 +7,9 @@ import React, {useCallback, useEffect, useState} from 'react';
 import BurndownChart from '../../components/BurndownChart';
 import ChallengeList from '../../components/ChallengeList';
 import InkTankGauge from '../../components/InkTankGauge';
+import SalmonSchedule from '../../components/SalmonSchedule';
 import SalmonStats from '../../components/SalmonStats';
+import {SalmonScheduleData, pickCurrentSchedule} from '../../lib/salmonSchedule';
 import {SalmonSummary} from '../../lib/salmonTypes';
 import {FULL_HEIGHT_SLOTS, SidePanelSettings, SidePanelSlot, getFollowerProgress, pickSlots} from '../../lib/sidePanelTypes';
 import {StreamData} from '../api/stream-data/route';
@@ -26,21 +28,28 @@ const SidePanelOverlayPage: React.FC = () => {
     const [salmon, setSalmon] = useState<SalmonSummary | null>(null);
     const [streamData, setStreamData] = useState<StreamData | null>(null);
     const [twitch, setTwitch] = useState<TwitchData | null>(null);
+    const [schedule, setSchedule] = useState<SalmonScheduleData | null>(null);
+    // スケジュールの開催中の判定と残り時間に使う現在時刻（ポーリングのたびに更新する）
+    const [now, setNow] = useState(0);
     // ローテーションの位置。key（ローテーションの設定）が変わったら先頭からやり直す
     const [rotation, setRotation] = useState({key: '', index: 0});
 
     const fetchData = useCallback(async () => {
         // 1つの API が落ちていても、他のスロットは表示し続ける
-        const [settingsRes, salmonRes, streamRes, twitchRes] = await Promise.allSettled([
+        const [settingsRes, salmonRes, streamRes, twitchRes, scheduleRes] = await Promise.allSettled([
             axios.get<SidePanelSettings>('/api/side-panel', {headers: NO_CACHE_HEADERS}),
             axios.get<SalmonSummary>('/api/salmon', {headers: NO_CACHE_HEADERS}),
             axios.get<StreamData>('/api/stream-data', {headers: NO_CACHE_HEADERS}),
             axios.get<TwitchData>('/api/twitch', {headers: NO_CACHE_HEADERS}),
+            // 外部 API への問い合わせはサーバー側で5分ごとにまとめている
+            axios.get<SalmonScheduleData>('/api/salmon-schedule', {headers: NO_CACHE_HEADERS}),
         ]);
+        setNow(Date.now());
         if (settingsRes.status === 'fulfilled') setSettings(settingsRes.value.data);
         if (salmonRes.status === 'fulfilled') setSalmon(salmonRes.value.data);
         if (streamRes.status === 'fulfilled') setStreamData(streamRes.value.data);
         if (twitchRes.status === 'fulfilled') setTwitch(twitchRes.value.data);
+        if (scheduleRes.status === 'fulfilled') setSchedule(scheduleRes.value.data);
     }, []);
 
     useEffect(() => {
@@ -73,6 +82,9 @@ const SidePanelOverlayPage: React.FC = () => {
 
     const renderSlot = (slot: SidePanelSlot) => {
         switch (slot) {
+            case 'schedule':
+                // 一度も取得できていない間は何も出さない（取得できたが開催中のものが無ければ、その旨を表示する）
+                return schedule && <SalmonSchedule schedule={pickCurrentSchedule(schedule.entries, now)} now={now}/>;
             case 'salmon':
                 return salmon && <SalmonStats lastJob={salmon.lastJob} totals={salmon.totals}/>;
             case 'challenges':
