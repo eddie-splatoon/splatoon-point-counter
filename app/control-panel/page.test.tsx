@@ -31,6 +31,11 @@ window.SpeechRecognition = MockSpeechRecognition;
 window.webkitSpeechRecognition = MockSpeechRecognition;
 
 
+// SalmonRunPanel は独自に API を呼ぶため、ここではタブの切り替えだけを確認する（中身は SalmonRunPanel.test.tsx）
+vi.mock('../../components/SalmonRunPanel', () => ({
+    default: () => <div>SalmonRunPanel</div>,
+}));
+
 // Mock next/image
 vi.mock('next/image', () => ({
     default: (props: ComponentPropsWithoutRef<'img'>) => (
@@ -84,6 +89,9 @@ describe('ControlPanelPage', () => {
 
         fireEvent.click(screen.getByRole('tab', { name: 'メッセージ' }));
         await waitFor(() => expect(screen.getByText('視聴者向け概要メッセージ')).toBeInTheDocument());
+
+        fireEvent.click(screen.getByRole('tab', { name: 'サーモンラン' }));
+        await waitFor(() => expect(screen.getByText('SalmonRunPanel')).toBeInTheDocument());
     });
 
     it('updates score fields and sends correct payload on submit', async () => {

@@ -13,7 +13,7 @@
 3. **スコア＆メッセージオーバーレイ** (`/obs-overlay`) - メインのオーバーレイ表示
 4. **バーンダウンチャートオーバーレイ** (`/burndown-overlay`) - 進捗状況を可視化
 5. **字幕オーバーレイ** (`/caption-overlay`) - 配信者の音声をリアルタイムに字幕表示
-6. **バックエンドAPI** (`/api/stream-data`, `/api/caption`, `/api/twitch`) - データ管理とクライアント間の同期
+6. **バックエンドAPI** (`/api/stream-data`, `/api/caption`, `/api/twitch`, `/api/salmon`) - データ管理とクライアント間の同期
 7. **文字起こしスクリプト** (`tools/caption-stt/`) - マイク音声を文字起こしして `/api/caption` へ送信（Python, Mac ネイティブ実行）
 8. **Twitch連携スクリプト** (`tools/twitch-eventsub/`) - フォロワー数・フォロワー目標を EventSub で受信して `/api/twitch` へ送信（Node, 依存なし）
 
@@ -28,6 +28,7 @@
 - **ブラウザAPI**: Web Speech API (音声認識機能)
 - **文字起こし**: mlx-whisper + Silero VAD (Python 3.12, `tools/caption-stt/`)
 - **Twitch連携**: EventSub WebSocket + Device Code Flow（Node 24 標準の `fetch` / `WebSocket` と型除去で実行, `tools/twitch-eventsub/`）
+- **永続化**: SQLite（Node 24 標準の `node:sqlite`, `lib/db.ts`。`data/overlay.db`）
 - **テスト**: Vitest + React Testing Library + @testing-library/jest-dom
 - **Linting**: ESLint 9 (Flat Config)
 - **CI/CD**: GitHub Actions
@@ -55,8 +56,12 @@
 │       │   └── route.ts          # データ管理API
 │       ├── caption/
 │       │   └── route.ts          # 字幕API
-│       └── twitch/
-│           └── route.ts          # Twitch API（フォロワー数・目標）
+│       ├── twitch/
+│       │   └── route.ts          # Twitch API（フォロワー数・目標）
+│       └── salmon/
+│           ├── route.ts          # サーモンラン記録API
+│           └── sessions/
+│               └── route.ts      # サーモンランのセッションAPI
 ├── components/                    # 再利用可能なReactコンポーネント
 │   ├── ScoreDisplay.tsx          # スコア表示
 │   ├── BurndownChart.tsx         # バーンダウンチャート
@@ -66,7 +71,15 @@
 │   ├── StarEffect.tsx            # スターエフェクト
 │   ├── BubbleEffect.tsx          # バブルエフェクト
 │   ├── SparkleEffect.tsx         # スパークルエフェクト
-│   └── FireworksEffect.tsx       # 花火エフェクト
+│   ├── FireworksEffect.tsx       # 花火エフェクト
+│   ├── SalmonStats.tsx           # サーモンランの前回・本日合計
+│   └── SalmonRunPanel.tsx        # コントロールパネルのサーモンランタブ
+├── lib/
+│   ├── localStorage.ts           # ローカルストレージのラッパー
+│   ├── db.ts                     # SQLite の接続とスキーマ
+│   ├── salmon.ts                 # サーモンラン記録のデータアクセス・入力検証（サーバー専用）
+│   └── salmonTypes.ts            # サーモンラン記録の型・定数（クライアントからも使う）
+├── data/                          # SQLite・Twitch トークン（Git / Docker イメージ管理外）
 ├── public/                        # 静的アセット
 │   └── tips.tsv                  # Tips データ
 ├── tools/
@@ -196,6 +209,17 @@ Twitch のフォロワー数とフォロワー目標を受け取る機能。
 - EventSub WebSocket で `channel.follow` v2 と `channel.goal.*` を購読。フォロー通知では総数を加算し、60秒ごとに Helix から再同期して `/api/twitch` に送り直す
 - API は `{followerTotal, goal, lastFollowAt, updatedAt, revision}` をインメモリで保持（`followerTotal: null` はスクリプト未起動）。**フォロワー名は保持しない**。`POST` は `Content-Type: application/json` 必須。`getInitialTwitchData()` / `__TEST_ONLY_setTwitchData()` はテスト用
 - スクリプトのテストは Vitest（CI 対象）
+
+### `/app/api/salmon/` と `lib/db.ts` / `lib/salmon.ts`
+
+サーモンランの成績（金イクラ納品数・オオモノ処理数・デス数・クリア/失敗と到達WAVE・ステージ）を記録する機能。
+
+- 永続化は SQLite（`node:sqlite` の `DatabaseSync`）。パスは `OVERLAY_DB_PATH`（既定 `data/overlay.db`）。スキーマは初回接続時に `CREATE TABLE IF NOT EXISTS`
+- 集計は **配信セッション単位**。最後に開始したセッションが「現在のセッション」。記録時にセッションが無ければ自動作成
+- `GET /api/salmon`（`?sessionId=` で過去分）、`POST /api/salmon`（記録）、`DELETE /api/salmon?id=`（取り消し）、`GET/POST /api/salmon/sessions`（一覧・開始）。POST は `Content-Type: application/json` 必須
+- `lib/salmon.ts` は `node:sqlite` に依存するのでクライアントコンポーネントから import しない。型と定数は `lib/salmonTypes.ts` から import する
+- コントロールパネルの「サーモンラン」タブ（`components/SalmonRunPanel.tsx`）は API に直接保存する（「OBSに反映」ボタンや localStorage は使わない）
+- テストは `vite.config.mts` の `OVERLAY_DB_PATH=:memory:` で実データに触れない。各テストで `__TEST_ONLY_setDb(openDb(':memory:'))` してから使う
 
 ### `/components/ScoreDisplay.tsx`
 

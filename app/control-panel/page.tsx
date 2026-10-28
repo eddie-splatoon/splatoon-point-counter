@@ -23,6 +23,7 @@ import axios from 'axios';
 import Image from 'next/image';
 import React, {useState, useEffect, useRef, useMemo, useCallback} from 'react';
 
+import SalmonRunPanel from '../../components/SalmonRunPanel';
 import {getItem, setItem, removeItem} from '../../lib/localStorage';
 import {StreamData, MessagePreset, BurndownData} from '../api/stream-data/route';
 
@@ -488,6 +489,7 @@ const ControlPanelPage: React.FC = () => {
                         <Tab label="スコア表示" value="score"/>
                         <Tab label="バーンダウン" value="burndown"/>
                         <Tab label="メッセージ" value="message"/>
+                        <Tab label="サーモンラン" value="salmon"/>
                         <Tab label="共通設定" value="common"/>
                     </Tabs>
 
@@ -589,6 +591,8 @@ const ControlPanelPage: React.FC = () => {
                             <TextField label="表示秒数 (秒)" type="number" value={formData.transitionDuration} onChange={(e) => updateFormData({transitionDuration: Number(e.target.value)})} fullWidth margin="normal" slotProps={{htmlInput: {min: 1}}} variant="outlined"/>
                         </Paper>
                     )}
+
+                    {formData.activeTab === 'salmon' && <SalmonRunPanel/>}
 
                     {formData.activeTab === 'common' && (
                         <>
