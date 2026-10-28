@@ -6,7 +6,7 @@
  * Node 24 の型除去でそのまま実行するため、enum やコンストラクタ引数プロパティなど
  * 型除去できない TypeScript 構文は使わないこと。
  */
-import { mkdir, readFile, writeFile } from 'node:fs/promises';
+import { chmod, mkdir, readFile, writeFile } from 'node:fs/promises';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -139,8 +139,10 @@ export async function loadToken(path: string): Promise<Token | null> {
 }
 
 export async function saveToken(path: string, token: Token): Promise<void> {
-  await mkdir(dirname(path), { recursive: true });
+  await mkdir(dirname(path), { recursive: true, mode: 0o700 });
   await writeFile(path, JSON.stringify(token, null, 2), { mode: 0o600 });
+  // mode は新規作成時にしか効かないため、既存ファイルの権限も絞る
+  await chmod(path, 0o600);
 }
 
 // ---- Helix API ----

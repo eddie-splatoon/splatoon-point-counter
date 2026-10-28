@@ -1,5 +1,5 @@
 // @vitest-environment node
-import { mkdtemp, readFile, rm, stat } from 'node:fs/promises';
+import { mkdir, mkdtemp, readFile, rm, stat, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
@@ -47,6 +47,16 @@ describe('token storage', () => {
     await saveToken(tokenPath, token);
 
     expect(await loadToken(tokenPath)).toEqual(token);
+    expect((await stat(tokenPath)).mode & 0o777).toBe(0o600);
+    expect((await stat(join(dir, 'data'))).mode & 0o777).toBe(0o700);
+  });
+
+  it('tightens the permissions of an existing token file', async () => {
+    await mkdir(join(dir, 'data'));
+    await writeFile(tokenPath, '{}', { mode: 0o644 });
+
+    await saveToken(tokenPath, { accessToken: 'a', refreshToken: 'r' });
+
     expect((await stat(tokenPath)).mode & 0o777).toBe(0o600);
   });
 
