@@ -13,6 +13,9 @@ vi.mock('../../components/SalmonStats', () => ({
 vi.mock('../../components/InkTankGauge', () => ({
   default: ({ current, target }: { current: number; target: number }) => <div data-testid="InkTankGauge">{current} / {target}</div>,
 }));
+vi.mock('../../components/ChallengeList', () => ({
+  default: ({ challenges }: { challenges: { text: string }[] }) => <div data-testid="ChallengeList">{challenges.map((c) => c.text).join(',')}</div>,
+}));
 vi.mock('../../components/BurndownChart', () => ({
   default: ({ data }: { data: { label: string } }) => <div data-testid="BurndownChart">{data.label}</div>,
 }));
@@ -72,6 +75,13 @@ describe('SidePanelOverlayPage', () => {
     expect(await screen.findByTestId('BurndownChart')).toHaveTextContent(getInitialStreamData().burndown.label);
   });
 
+  it('shows the challenges slot when it is selected', async () => {
+    mockApis({ ...getDefaultSidePanelSettings(), activeSlot: 'challenges', challenges: [{ id: 1, text: 'キケン度MAXでクリア', done: false }] });
+    render(<SidePanelOverlayPage />);
+
+    expect(await screen.findByTestId('ChallengeList')).toHaveTextContent('キケン度MAXでクリア');
+  });
+
   it('switches slots when the setting changes', async () => {
     mockApis(getDefaultSidePanelSettings());
     vi.useFakeTimers({ shouldAdvanceTime: true });
@@ -86,7 +96,7 @@ describe('SidePanelOverlayPage', () => {
   });
 
   it('rotates through the enabled slots', async () => {
-    mockApis({ ...getDefaultSidePanelSettings(), autoRotate: true, rotateSeconds: 10 });
+    mockApis({ ...getDefaultSidePanelSettings(), autoRotate: true, rotateSeconds: 10, enabledSlots: ['salmon', 'burndown'] });
     vi.useFakeTimers({ shouldAdvanceTime: true });
     render(<SidePanelOverlayPage />);
     await screen.findByTestId('SalmonStats');
@@ -100,7 +110,7 @@ describe('SidePanelOverlayPage', () => {
   });
 
   it('restarts the rotation from the first slot when auto rotation is turned back on', async () => {
-    const rotating = { ...getDefaultSidePanelSettings(), autoRotate: true, rotateSeconds: 10 };
+    const rotating: SidePanelSettings = { ...getDefaultSidePanelSettings(), autoRotate: true, rotateSeconds: 10, enabledSlots: ['salmon', 'burndown'] };
     mockApis(rotating);
     vi.useFakeTimers({ shouldAdvanceTime: true });
     render(<SidePanelOverlayPage />);
@@ -117,7 +127,7 @@ describe('SidePanelOverlayPage', () => {
   });
 
   it('restarts the rotation when the enabled slots change', async () => {
-    const rotating = { ...getDefaultSidePanelSettings(), autoRotate: true, rotateSeconds: 10 };
+    const rotating: SidePanelSettings = { ...getDefaultSidePanelSettings(), autoRotate: true, rotateSeconds: 10, enabledSlots: ['salmon', 'burndown'] };
     mockApis(rotating);
     vi.useFakeTimers({ shouldAdvanceTime: true });
     render(<SidePanelOverlayPage />);
