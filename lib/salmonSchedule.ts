@@ -23,8 +23,17 @@ export interface SalmonScheduleData {
 
 const isRecord = (value: unknown): value is Record<string, unknown> => typeof value === 'object' && value !== null;
 
+// 画像は配信画面（OBS）とコントロールパネルのブラウザが直接読み込むので、https の URL に限る
+const isHttpsUrl = (value: string): boolean => {
+    try {
+        return new URL(value).protocol === 'https:';
+    } catch {
+        return false;
+    }
+};
+
 const toImage = (value: unknown): {name: string; image: string} | null => {
-    if (!isRecord(value) || typeof value.name !== 'string' || typeof value.image !== 'string') return null;
+    if (!isRecord(value) || typeof value.name !== 'string' || typeof value.image !== 'string' || !isHttpsUrl(value.image)) return null;
     return {name: value.name, image: value.image};
 };
 

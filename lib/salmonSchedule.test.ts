@@ -34,6 +34,8 @@ describe('parseScheduleResults', () => {
     ['a missing stage', { stage: null }],
     ['a stage without an image', { stage: { name: 'ステージ' } }],
     ['a malformed weapon', { weapons: [...weapons.slice(0, 3), { name: 'ブキ' }] }],
+    ['a stage image that is not https', { stage: { name: 'ステージ', image: 'http://example.com/stage.png' } }],
+    ['a weapon image that is not a URL', { weapons: [...weapons.slice(0, 3), { name: 'ブキ', image: 'javascript:alert(1)' }] }],
   ])('skips a result with %s', (_, overrides) => {
     expect(parseScheduleResults({ results: [result(overrides), result()] }, false)).toHaveLength(1);
   });

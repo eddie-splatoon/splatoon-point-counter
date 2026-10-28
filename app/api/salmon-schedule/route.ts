@@ -10,6 +10,10 @@ const USER_AGENT = 'splatoon-point-counter (+https://github.com/eddie-splatoon/s
 export const CACHE_TTL_MS = 5 * 60_000;
 // 取得に失敗したら、しばらくは再取得しない（障害中に2秒ごとに叩き続けないように）
 export const RETRY_AFTER_FAILURE_MS = 60_000;
+// 応答が無いまま待ち続けると、まとめて待っている全リクエストが止まるので打ち切る
+export const FETCH_TIMEOUT_MS = 10_000;
+// スケジュールは数 KB 程度。異常に大きい応答はメモリを使い切る前に捨てる
+export const MAX_RESPONSE_BYTES = 1_000_000;
 
 let cache: SalmonScheduleData | null = null;
 let inflight: Promise<SalmonScheduleData> | null = null;
@@ -26,14 +30,19 @@ export function __TEST_ONLY_resetSalmonScheduleCache() {
 }
 
 async function fetchJson(url: string): Promise<unknown> {
-    const res = await fetch(url, {headers: {'User-Agent': USER_AGENT}, cache: 'no-store'});
+    const res = await fetch(url, {headers: {'User-Agent': USER_AGENT}, cache: 'no-store', signal: AbortSignal.timeout(FETCH_TIMEOUT_MS)});
     if (!res.ok) throw new Error(`${url} returned ${res.status}`);
-    return res.json();
+    const text = await res.text();
+    if (text.length > MAX_RESPONSE_BYTES) throw new Error(`${url} returned too large a response`);
+    return JSON.parse(text);
 }
 
 async function fetchSchedule(): Promise<SalmonScheduleData> {
     // チームコンテストは開催されていないことが多い補助的な情報なので、取れなくても通常のスケジュールは返す
-    const [schedule, teamContest] = await Promise.all([fetchJson(SCHEDULE_URL), fetchJson(TEAM_CONTEST_URL).catch(() => null)]);
+    const [schedule, teamContest] = await Promise.all([fetchJson(SCHEDULE_URL), fetchJson(TEAM_CONTEST_URL).catch((error) => {
+        console.error('Failed to fetch the team contest schedule:', error);
+        return null;
+    })]);
     const entries = [...parseScheduleResults(schedule, false), ...parseScheduleResults(teamContest, true)];
     if (entries.length === 0) throw new Error('The schedule API returned no usable entries.');
     return {entries, fetchedAt: Date.now()};

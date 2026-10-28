@@ -1,7 +1,7 @@
 // @vitest-environment node
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { CACHE_TTL_MS, GET, RETRY_AFTER_FAILURE_MS, __TEST_ONLY_resetSalmonScheduleCache } from './route';
+import { CACHE_TTL_MS, GET, MAX_RESPONSE_BYTES, RETRY_AFTER_FAILURE_MS, __TEST_ONLY_resetSalmonScheduleCache } from './route';
 
 const weapons = [1, 2, 3, 4].map((i) => ({ name: `ブキ${i}`, image: `https://example.com/w${i}.png` }));
 const result = (name: string, isBigRun = false) => ({
@@ -112,6 +112,27 @@ describe('Salmon schedule API', () => {
 
   it('returns 502 when nothing has been fetched yet', async () => {
     fetchMock.mockRejectedValue(new TypeError('fetch failed'));
+
+    expect((await GET()).status).toBe(502);
+  });
+
+  it('passes a timeout signal to every request', async () => {
+    respondWith('A');
+    await GET();
+
+    for (const [, init] of fetchMock.mock.calls) {
+      expect(init.signal).toBeInstanceOf(AbortSignal);
+    }
+  });
+
+  it('treats a timed-out request as a failure', async () => {
+    fetchMock.mockRejectedValue(new DOMException('The operation was aborted due to timeout', 'TimeoutError'));
+
+    expect((await GET()).status).toBe(502);
+  });
+
+  it('rejects a response that is too large', async () => {
+    fetchMock.mockImplementation(async () => new Response(`{"results":[],"padding":"${'x'.repeat(MAX_RESPONSE_BYTES)}"}`));
 
     expect((await GET()).status).toBe(502);
   });
