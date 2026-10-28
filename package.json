@@ -10,7 +10,8 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",
-    "caption": "tools/caption-stt/run.sh"
+    "caption": "tools/caption-stt/run.sh",
+    "twitch": "node --env-file-if-exists=.env.local tools/twitch-eventsub/twitch_eventsub.ts"
   },
   "dependencies": {
     "@emotion/cache": "^11.14.0",

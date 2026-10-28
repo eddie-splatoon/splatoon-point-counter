@@ -58,6 +58,15 @@ flowchart LR
     OVL["/caption-overlay<br/>OBS ブラウザソース"] -- "GET 1秒ごと" --> API
 ```
 
+### 6. Twitch 連携
+
+Twitch のフォロワー数とフォロワー目標（クリエイターゴール）をリアルタイムに受信し、`/api/twitch` で提供します。受信は Node のスクリプト（`tools/twitch-eventsub/`）が EventSub WebSocket で行うため、公開 URL は不要です。フォロワーの名前は扱いません。
+
+```mermaid
+flowchart LR
+    TW["Twitch<br/>Helix / EventSub"] --> SCR["twitch_eventsub.ts"]
+    SCR -- "POST {followerTotal, goal, lastFollowAt}" --> API["/api/twitch"]
+```
 
 
 ## 技術スタック
@@ -69,6 +78,7 @@ flowchart LR
 - **テスト**: Vitest, React Testing Library
 - **パッケージマネージャ**: [pnpm](https://pnpm.io/)
 - **文字起こし**: [mlx-whisper](https://github.com/ml-explore/mlx-examples/tree/main/whisper) + [Silero VAD](https://github.com/snakers4/silero-vad)（Python 3.12、Apple Silicon Mac でネイティブ実行）
+- **Twitch 連携**: [EventSub WebSocket](https://dev.twitch.tv/docs/eventsub/handling-websocket-events/) + [Device Code Flow](https://dev.twitch.tv/docs/authentication/getting-tokens-oauth/#device-code-grant-flow)（Node 24 標準の `fetch` / `WebSocket` で実行。追加の依存なし）
 - **CI/CD**: GitHub Actions
 
 ## セットアップと起動方法
@@ -114,6 +124,18 @@ pnpm caption
 ```
 
 OBS のブラウザソースには `http://localhost:3000/caption-overlay` を指定します。マイクの変更などの詳細は [tools/caption-stt/README.md](tools/caption-stt/README.md) を参照してください。
+
+### Twitch 連携の起動
+
+Twitch Developer Console でアプリ（クライアントの種類: 公開）を登録し、クライアント ID を `.env.local` の `TWITCH_CLIENT_ID` に設定したうえで、Next.js アプリを起動した状態で次を実行します（`Ctrl+C` で終了）。初回はブラウザでの承認が必要です。
+
+```bash
+pnpm twitch
+```
+
+スクリプトは Docker の外（ホスト側）で実行します。アプリを `docker-compose up` で起動している場合も、そのまま `http://localhost:3000/api/twitch` に送信されます。
+
+詳細は [tools/twitch-eventsub/README.md](tools/twitch-eventsub/README.md) を参照してください。
 
 ## CI/CD
 
