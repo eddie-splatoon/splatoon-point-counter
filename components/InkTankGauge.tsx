@@ -26,8 +26,16 @@ const InkTankGauge: React.FC<InkTankGaugeProps> = ({current, target, lastFollowA
 
     // 表示した時点の値は演出の対象にしない（オーバーレイを読み込み直すたびに演出が出ないように）
     const [initialFollowAt] = useState(lastFollowAt);
-    const [initiallyReached] = useState(reached);
     const newFollowAt = lastFollowAt !== null && lastFollowAt !== initialFollowAt ? lastFollowAt : null;
+
+    // 花火は「目標はそのままで、フォロワーが増えて届いた」ときだけ出す（目標の編集だけでは出さない）。
+    // 前回の値と比べて、レンダー中に state を調整する（React の「props の変化に合わせて state を調整する」パターン）
+    const [prev, setPrev] = useState({current, target});
+    const [celebration, setCelebration] = useState(0);
+    if (prev.current !== current || prev.target !== target) {
+        if (prev.target === target && prev.current < target && current >= target) setCelebration((n) => n + 1);
+        setPrev({current, target});
+    }
 
     return (
         <div className="w-[250px] flex items-center justify-center gap-4 py-3" data-testid="ink-tank-gauge">
@@ -56,7 +64,7 @@ const InkTankGauge: React.FC<InkTankGaugeProps> = ({current, target, lastFollowA
                     data-testid="ink-level"
                     data-ratio={ratio}
                 >
-                    {/* インクの表面。フォローのたびに key が変わり、波打つ動きを最初から再生する */}
+                    {/* インクの表面。フォローのたびに key が変わり、大きく波打つ動きを最初から再生する */}
                     <motion.svg
                         key={newFollowAt ?? 'idle'}
                         className="absolute left-0 -top-2"
@@ -66,7 +74,7 @@ const InkTankGauge: React.FC<InkTankGaugeProps> = ({current, target, lastFollowA
                         initial={{x: 0, scaleY: newFollowAt ? 2.5 : 1}}
                         animate={{x: -TANK_WIDTH, scaleY: 1}}
                         transition={{
-                            x: {duration: newFollowAt ? 0.8 : 3, repeat: Infinity, ease: 'linear'},
+                            x: {duration: 3, repeat: Infinity, ease: 'linear'},
                             scaleY: {duration: 2, ease: 'easeOut'},
                         }}
                         aria-hidden
@@ -86,8 +94,12 @@ const InkTankGauge: React.FC<InkTankGaugeProps> = ({current, target, lastFollowA
                 </p>
             </div>
 
-            <BubbleEffect trigger={newFollowAt}/>
-            <FireworksEffect trigger={reached && !initiallyReached}/>
+            {/* 下段スロットより手前に出す（スロットは後続の要素なので、z-index が無いと泡が裏に隠れる） */}
+            <div className="absolute inset-0 z-50 pointer-events-none">
+                <BubbleEffect trigger={newFollowAt}/>
+                {/* 達成のたびに作り直して、20 秒の花火を最初から再生する */}
+                <FireworksEffect key={celebration} trigger={celebration > 0}/>
+            </div>
         </div>
     );
 };

@@ -56,4 +56,25 @@ describe('InkTankGauge', () => {
     render(<InkTankGauge current={20} target={20} lastFollowAt={null} />);
     expect(fireworksTrigger()).toBe('false');
   });
+
+  it('does not play the fireworks when only the goal is lowered', () => {
+    const { rerender } = render(<InkTankGauge current={10} target={20} lastFollowAt={null} />);
+
+    rerender(<InkTankGauge current={10} target={10} lastFollowAt={null} />);
+
+    expect(fireworksTrigger()).toBe('false');
+  });
+
+  it('plays the fireworks again when a new goal is reached', () => {
+    const { rerender } = render(<InkTankGauge current={19} target={20} lastFollowAt={null} />);
+    rerender(<InkTankGauge current={20} target={20} lastFollowAt={1} />);
+    const first = screen.getByTestId('FireworksEffect');
+
+    rerender(<InkTankGauge current={20} target={30} lastFollowAt={1} />);
+    rerender(<InkTankGauge current={30} target={30} lastFollowAt={2} />);
+
+    // 作り直された（別の要素になった）ことで、花火が最初から再生される
+    expect(screen.getByTestId('FireworksEffect')).not.toBe(first);
+    expect(fireworksTrigger()).toBe('true');
+  });
 });
