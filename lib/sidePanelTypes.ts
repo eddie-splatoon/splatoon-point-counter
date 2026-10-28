@@ -5,7 +5,7 @@ export const SIDE_PANEL_SLOTS = ['schedule', 'salmon', 'challenges', 'burndown']
 
 export type SidePanelSlot = typeof SIDE_PANEL_SLOTS[number];
 
-// 下段全体の高さを使うスロット。他のスロットと同時には表示できない
+// 下段の残りの高さいっぱいを使うスロット。固定枠に入れるときは単独でしか表示できない（ローテーション枠なら固定枠の下に表示できる）
 export const FULL_HEIGHT_SLOTS: readonly SidePanelSlot[] = ['burndown'];
 
 export const SIDE_PANEL_SLOT_LABELS: Record<SidePanelSlot, string> = {
@@ -29,20 +29,17 @@ export interface Challenge {
 }
 
 export interface SidePanelSettings {
-    visibleSlots: SidePanelSlot[]; // 自動ローテーションが OFF のときに上から順に表示するスロット
-    autoRotate: boolean;
+    fixedSlots: SidePanelSlot[]; // 固定枠: 上から順に常に表示するスロット
+    rotationSlots: SidePanelSlot[]; // ローテーション枠: 固定枠の下で rotateSeconds ごとに1つずつ切り替えるスロット
     rotateSeconds: number;
-    enabledSlots: SidePanelSlot[]; // 自動ローテーションで順に表示するスロット
     followerGoal: number | null; // 手入力のフォロワー目標。Twitch のフォロワー目標が無いときに使う
     challenges: Challenge[]; // 本日のお題（表示順）
 }
 
 export const getDefaultSidePanelSettings = (): SidePanelSettings => ({
-    visibleSlots: ['salmon'],
-    autoRotate: false,
+    fixedSlots: ['salmon'],
+    rotationSlots: [],
     rotateSeconds: 30,
-    // お題は登録されていないと何も表示しないので、既定のローテーションには含めない（空白の時間ができないように）
-    enabledSlots: ['salmon', 'burndown'],
     followerGoal: null,
     challenges: [],
 });
@@ -50,25 +47,36 @@ export const getDefaultSidePanelSettings = (): SidePanelSettings => ({
 const isSlot = (value: unknown): value is SidePanelSlot =>
     typeof value === 'string' && (SIDE_PANEL_SLOTS as readonly string[]).includes(value);
 
+/**
+ * 固定枠とローテーション枠。新しい形式（fixedSlots / rotationSlots）が無ければ、以前の保存形式から作る
+ * - visibleSlots（さらに前は activeSlot）と autoRotate: ON ならローテーション枠だけ（enabledSlots）、OFF なら固定枠だけ
+ */
+function readSlotFields(body: Record<string, unknown>): {fixed: unknown; rotation: unknown} {
+    const {fixedSlots, rotationSlots, visibleSlots, activeSlot, autoRotate, enabledSlots} = body;
+    if (fixedSlots !== undefined || rotationSlots !== undefined) return {fixed: fixedSlots ?? [], rotation: rotationSlots ?? []};
+    const legacyVisible = visibleSlots ?? (isSlot(activeSlot) ? [activeSlot] : undefined);
+    return autoRotate === true ? {fixed: [], rotation: enabledSlots} : {fixed: legacyVisible, rotation: []};
+}
+
+const toSlots = (value: unknown): SidePanelSlot[] | null =>
+    // 表示順は SIDE_PANEL_SLOTS の順にそろえ、重複を除く
+    Array.isArray(value) && value.every(isSlot) ? SIDE_PANEL_SLOTS.filter((slot) => value.includes(slot)) : null;
+
 /** 設定を検証する。不正ならエラーメッセージを返す */
 export function parseSidePanelSettings(body: unknown): SidePanelSettings | string {
-    const {visibleSlots: savedVisibleSlots, activeSlot, autoRotate, rotateSeconds, enabledSlots, followerGoal = null, challenges = []} =
-        (body ?? {}) as Record<string, unknown>;
-    // visibleSlots は activeSlot（1つだけ選ぶ方式）を置き換えた項目。保存済みの設定に無ければ activeSlot から作る
-    const visibleSlots = savedVisibleSlots ?? (isSlot(activeSlot) ? [activeSlot] : undefined);
-    if (!Array.isArray(visibleSlots) || visibleSlots.length === 0 || !visibleSlots.every(isSlot)) {
-        return `visibleSlots must be a non-empty array of ${SIDE_PANEL_SLOTS.join(', ')}.`;
+    const record = (body ?? {}) as Record<string, unknown>;
+    const {rotateSeconds, followerGoal = null, challenges = []} = record;
+    const {fixed: rawFixed, rotation: rawRotation} = readSlotFields(record);
+    const fixedSlots = toSlots(rawFixed);
+    const rotationSlots = toSlots(rawRotation);
+    if (!fixedSlots || !rotationSlots) return `fixedSlots and rotationSlots must be arrays of ${SIDE_PANEL_SLOTS.join(', ')}.`;
+    if (fixedSlots.length + rotationSlots.length === 0) return 'At least one slot must be shown.';
+    if (fixedSlots.some((slot) => rotationSlots.includes(slot))) return 'A slot cannot be both fixed and rotated.';
+    if (fixedSlots.some((slot) => FULL_HEIGHT_SLOTS.includes(slot)) && fixedSlots.length + rotationSlots.length > 1) {
+        return `A fixed ${FULL_HEIGHT_SLOTS.join(', ')} cannot be shown together with other slots.`;
     }
-    const visible = SIDE_PANEL_SLOTS.filter((slot) => visibleSlots.includes(slot));
-    if (visible.length > 1 && visible.some((slot) => FULL_HEIGHT_SLOTS.includes(slot))) {
-        return `${FULL_HEIGHT_SLOTS.join(', ')} cannot be shown together with other slots.`;
-    }
-    if (typeof autoRotate !== 'boolean') return 'autoRotate must be a boolean.';
     if (typeof rotateSeconds !== 'number' || !Number.isInteger(rotateSeconds) || rotateSeconds < MIN_ROTATE_SECONDS || rotateSeconds > MAX_ROTATE_SECONDS) {
         return `rotateSeconds must be an integer between ${MIN_ROTATE_SECONDS} and ${MAX_ROTATE_SECONDS}.`;
-    }
-    if (!Array.isArray(enabledSlots) || enabledSlots.length === 0 || !enabledSlots.every(isSlot)) {
-        return 'enabledSlots must be a non-empty array of slots.';
     }
     // followerGoal は後から追加した項目なので、保存済みの設定に無ければ未設定（null）とみなす
     if (followerGoal !== null && (typeof followerGoal !== 'number' || !Number.isInteger(followerGoal) || followerGoal < 1 || followerGoal > MAX_FOLLOWER_GOAL)) {
@@ -77,9 +85,7 @@ export function parseSidePanelSettings(body: unknown): SidePanelSettings | strin
     // challenges も後から追加した項目なので、保存済みの設定に無ければお題なしとみなす
     const parsedChallenges = parseChallenges(challenges);
     if (typeof parsedChallenges === 'string') return parsedChallenges;
-    // 表示順は SIDE_PANEL_SLOTS の順にそろえ、重複を除く
-    const slots = SIDE_PANEL_SLOTS.filter((slot) => enabledSlots.includes(slot));
-    return {visibleSlots: visible, autoRotate, rotateSeconds, enabledSlots: slots, followerGoal, challenges: parsedChallenges};
+    return {fixedSlots, rotationSlots, rotateSeconds, followerGoal, challenges: parsedChallenges};
 }
 
 /**
@@ -107,9 +113,9 @@ function parseChallenges(value: unknown): Challenge[] | string {
     return challenges;
 }
 
-/** いま表示するスロット（上から順）。自動ローテーション中は enabledSlots を rotationIndex 番目から1つずつ回す */
-export const pickSlots = (settings: SidePanelSettings, rotationIndex: number): SidePanelSlot[] =>
-    settings.autoRotate ? [settings.enabledSlots[rotationIndex % settings.enabledSlots.length]] : settings.visibleSlots;
+/** ローテーション枠でいま表示するスロット。rotationIndex 番目から1つずつ回す。ローテーション枠が空なら null */
+export const pickRotationSlot = (settings: SidePanelSettings, rotationIndex: number): SidePanelSlot | null =>
+    settings.rotationSlots.length === 0 ? null : settings.rotationSlots[rotationIndex % settings.rotationSlots.length];
 
 export interface FollowerProgress {
     current: number;

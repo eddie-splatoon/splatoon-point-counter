@@ -1,4 +1,4 @@
-import { act, fireEvent, render, screen } from '@testing-library/react';
+import { act, fireEvent, render, screen, within } from '@testing-library/react';
 import axios from 'axios';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -12,7 +12,7 @@ const mockedAxios = vi.mocked(axios);
 const renderLoaded = async (settings = getDefaultSidePanelSettings()) => {
   mockedAxios.get.mockResolvedValue({ data: settings, status: 200 });
   render(<SidePanelSettingsPanel />);
-  await screen.findByText('🧩 表示するスロット');
+  await screen.findByText('📌 固定枠');
 };
 
 const lastPosted = () => mockedAxios.post.mock.calls.at(-1)?.[1];
@@ -23,57 +23,93 @@ beforeEach(() => {
 });
 
 describe('SidePanelSettingsPanel', () => {
-  it('shows the saved settings', async () => {
-    await renderLoaded({ ...getDefaultSidePanelSettings(), visibleSlots: ['burndown'], rotateSeconds: 45 });
+  // 固定枠とローテーション枠に同じ名前のボタンが並ぶので、枠を指定して探す
+  const fixedButton = (name: string) => within(screen.getByRole('group', { name: '固定枠' })).getByRole('button', { name });
+  const rotationButton = (name: string) => within(screen.getByRole('group', { name: 'ローテーション枠' })).getByRole('button', { name });
 
-    expect(screen.getByRole('button', { name: 'バーンダウン' })).toHaveAttribute('aria-pressed', 'true');
+  it('shows the saved settings', async () => {
+    await renderLoaded({ ...getDefaultSidePanelSettings(), fixedSlots: ['schedule'], rotationSlots: ['salmon', 'challenges'], rotateSeconds: 45 });
+
+    expect(fixedButton('スケジュール')).toHaveAttribute('aria-pressed', 'true');
+    expect(rotationButton('本日の戦績')).toHaveAttribute('aria-pressed', 'true');
+    expect(rotationButton('本日のお題')).toHaveAttribute('aria-pressed', 'true');
     expect(screen.getByLabelText('切り替え秒数')).toHaveValue(45);
   });
 
-  it('saves the selected slot immediately', async () => {
+  it('adds a fixed slot', async () => {
     await renderLoaded();
 
-    await act(async () => fireEvent.click(screen.getByRole('button', { name: 'バーンダウン' })));
+    await act(async () => fireEvent.click(fixedButton('スケジュール')));
 
-    expect(mockedAxios.post).toHaveBeenCalledWith('/api/side-panel', expect.objectContaining({ visibleSlots: ['burndown'] }));
-    expect(screen.getByRole('button', { name: 'バーンダウン' })).toHaveAttribute('aria-pressed', 'true');
-    expect(screen.getByRole('button', { name: '本日の戦績' })).toHaveAttribute('aria-pressed', 'false');
+    expect(lastPosted()).toMatchObject({ fixedSlots: ['schedule', 'salmon'], rotationSlots: [] });
+    expect(fixedButton('スケジュール')).toHaveAttribute('aria-pressed', 'true');
   });
 
-  it('shows several slots together', async () => {
+  it('adds rotation slots below the fixed ones', async () => {
+    await renderLoaded({ ...getDefaultSidePanelSettings(), fixedSlots: ['schedule'], rotationSlots: [] });
+
+    await act(async () => fireEvent.click(rotationButton('本日の戦績')));
+    await act(async () => fireEvent.click(rotationButton('本日のお題')));
+
+    expect(lastPosted()).toMatchObject({ fixedSlots: ['schedule'], rotationSlots: ['salmon', 'challenges'] });
+  });
+
+  it('does not let a fixed slot be chosen for the rotation', async () => {
+    await renderLoaded({ ...getDefaultSidePanelSettings(), fixedSlots: ['schedule'], rotationSlots: ['salmon'] });
+
+    expect(rotationButton('スケジュール')).toBeDisabled();
+    expect(rotationButton('本日のお題')).toBeEnabled();
+  });
+
+  it('moves a rotating slot to the fixed area', async () => {
+    await renderLoaded({ ...getDefaultSidePanelSettings(), fixedSlots: ['schedule'], rotationSlots: ['salmon', 'challenges'] });
+
+    await act(async () => fireEvent.click(fixedButton('本日の戦績')));
+
+    expect(lastPosted()).toMatchObject({ fixedSlots: ['schedule', 'salmon'], rotationSlots: ['challenges'] });
+    expect(rotationButton('本日の戦績')).toBeDisabled();
+  });
+
+  it('fixes the burndown alone and turns off the rotation', async () => {
+    await renderLoaded({ ...getDefaultSidePanelSettings(), fixedSlots: ['salmon'], rotationSlots: ['challenges'] });
+
+    await act(async () => fireEvent.click(fixedButton('バーンダウン')));
+
+    expect(lastPosted()).toMatchObject({ fixedSlots: ['burndown'], rotationSlots: [] });
+    expect(rotationButton('本日のお題')).toBeDisabled();
+  });
+
+  it('releases a fixed burndown when another slot is fixed', async () => {
+    await renderLoaded({ ...getDefaultSidePanelSettings(), fixedSlots: ['burndown'], rotationSlots: [] });
+
+    await act(async () => fireEvent.click(fixedButton('本日のお題')));
+
+    expect(lastPosted()).toMatchObject({ fixedSlots: ['challenges'], rotationSlots: [] });
+  });
+
+  it('rotates the burndown below fixed slots', async () => {
+    await renderLoaded({ ...getDefaultSidePanelSettings(), fixedSlots: ['schedule'], rotationSlots: [] });
+
+    await act(async () => fireEvent.click(rotationButton('バーンダウン')));
+
+    expect(lastPosted()).toMatchObject({ fixedSlots: ['schedule'], rotationSlots: ['burndown'] });
+  });
+
+  it('keeps at least one slot across both areas', async () => {
     await renderLoaded();
 
-    await act(async () => fireEvent.click(screen.getByRole('button', { name: '本日のお題' })));
-
-    expect(lastPosted()).toMatchObject({ visibleSlots: ['salmon', 'challenges'] });
-    expect(screen.getByRole('button', { name: '本日の戦績' })).toHaveAttribute('aria-pressed', 'true');
-    expect(screen.getByRole('button', { name: '本日のお題' })).toHaveAttribute('aria-pressed', 'true');
-  });
-
-  it('replaces the burndown when another slot is chosen', async () => {
-    await renderLoaded({ ...getDefaultSidePanelSettings(), visibleSlots: ['burndown'] });
-
-    await act(async () => fireEvent.click(screen.getByRole('button', { name: '本日のお題' })));
-
-    expect(lastPosted()).toMatchObject({ visibleSlots: ['challenges'] });
-  });
-
-  it('keeps at least one visible slot', async () => {
-    await renderLoaded();
-
-    await act(async () => fireEvent.click(screen.getByRole('button', { name: '本日の戦績' })));
+    await act(async () => fireEvent.click(fixedButton('本日の戦績')));
 
     expect(mockedAxios.post).not.toHaveBeenCalled();
-    expect(screen.getByRole('button', { name: '本日の戦績' })).toHaveAttribute('aria-pressed', 'true');
+    expect(fixedButton('本日の戦績')).toHaveAttribute('aria-pressed', 'true');
   });
 
-  it('turns on auto rotation and disables the manual slot choice', async () => {
-    await renderLoaded();
+  it('allows emptying the fixed area while something rotates', async () => {
+    await renderLoaded({ ...getDefaultSidePanelSettings(), fixedSlots: ['salmon'], rotationSlots: ['challenges'] });
 
-    await act(async () => fireEvent.click(screen.getByRole('switch', { name: '一定時間ごとに切り替える' })));
+    await act(async () => fireEvent.click(fixedButton('本日の戦績')));
 
-    expect(lastPosted()).toMatchObject({ autoRotate: true });
-    expect(screen.getByRole('button', { name: 'バーンダウン' })).toBeDisabled();
+    expect(lastPosted()).toMatchObject({ fixedSlots: [], rotationSlots: ['challenges'] });
   });
 
   it('saves the rotation seconds only when they are valid', async () => {
@@ -88,24 +124,14 @@ describe('SidePanelSettingsPanel', () => {
     expect(lastPosted()).toMatchObject({ rotateSeconds: 15 });
   });
 
-  it('keeps at least one slot in the rotation', async () => {
-    await renderLoaded({ ...getDefaultSidePanelSettings(), enabledSlots: ['salmon', 'burndown'] });
-    const salmon = screen.getByRole('checkbox', { name: '本日の戦績' });
-
-    await act(async () => fireEvent.click(salmon));
-    expect(lastPosted()).toMatchObject({ enabledSlots: ['burndown'] });
-
-    expect(screen.getByRole('checkbox', { name: 'バーンダウン' })).toBeDisabled();
-  });
-
   it('reloads the saved settings when saving fails', async () => {
     await renderLoaded();
     mockedAxios.post.mockRejectedValue(new Error('500'));
 
-    await act(async () => fireEvent.click(screen.getByRole('button', { name: 'バーンダウン' })));
+    await act(async () => fireEvent.click(fixedButton('スケジュール')));
 
     expect(screen.getByText('設定の保存に失敗しました。')).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: '本日の戦績' })).toHaveAttribute('aria-pressed', 'true');
+    expect(fixedButton('スケジュール')).toHaveAttribute('aria-pressed', 'false');
   });
 
   it('shows the saved follower goal', async () => {

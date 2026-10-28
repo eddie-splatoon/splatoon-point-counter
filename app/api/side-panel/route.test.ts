@@ -15,10 +15,9 @@ const post = (body: unknown, contentType = 'application/json') =>
   }));
 
 const settings = {
-  visibleSlots: ['burndown'],
-  autoRotate: true,
+  fixedSlots: ['schedule'],
+  rotationSlots: ['salmon', 'challenges', 'burndown'],
   rotateSeconds: 15,
-  enabledSlots: ['salmon', 'challenges', 'burndown'],
   followerGoal: 20,
   challenges: [{ id: 1, text: 'キケン度MAXでクリア', done: true }],
 };
@@ -48,15 +47,20 @@ describe('Side panel API', () => {
     expect(await (await GET()).json()).toEqual({ ...settings, followerGoal: null, challenges: [] });
   });
 
-  it('keeps the slot of settings saved with a single activeSlot', async () => {
-    const saved: Record<string, unknown> = { ...settings, activeSlot: 'challenges' };
-    delete saved.visibleSlots;
-    setAppState('sidePanel', saved);
-    expect(await (await GET()).json()).toEqual({ ...settings, visibleSlots: ['challenges'] });
+  it.each([
+    ['auto rotation on', { visibleSlots: ['schedule'], autoRotate: true, enabledSlots: ['salmon', 'burndown'] }, { fixedSlots: [], rotationSlots: ['salmon', 'burndown'] }],
+    ['auto rotation off', { visibleSlots: ['schedule', 'salmon'], autoRotate: false, enabledSlots: ['salmon'] }, { fixedSlots: ['schedule', 'salmon'], rotationSlots: [] }],
+    ['a single activeSlot', { activeSlot: 'challenges', autoRotate: false, enabledSlots: ['salmon'] }, { fixedSlots: ['challenges'], rotationSlots: [] }],
+  ])('reads settings saved in the older format with %s', async (_, slots, expected) => {
+    const rest: Record<string, unknown> = { ...settings };
+    delete rest.fixedSlots;
+    delete rest.rotationSlots;
+    setAppState('sidePanel', { ...rest, ...slots });
+    expect(await (await GET()).json()).toEqual({ ...rest, ...expected });
   });
 
   it('falls back to the defaults when the saved settings are no longer valid', async () => {
-    setAppState('sidePanel', { ...settings, visibleSlots: ['removed-slot'] });
+    setAppState('sidePanel', { ...settings, fixedSlots: ['removed-slot'] });
     expect(await (await GET()).json()).toEqual(getDefaultSidePanelSettings());
   });
 

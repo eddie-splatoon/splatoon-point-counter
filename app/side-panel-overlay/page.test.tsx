@@ -7,6 +7,18 @@ import { getInitialStreamData } from '../api/stream-data/route';
 
 import SidePanelOverlayPage from './page';
 
+import type { ReactNode } from 'react';
+
+// クロスフェードを本物のまま動かすと、切り替え直後は消えかけの古いスロットが残り、負荷が高いと待ち時間内に消えずに落ちることがある。
+// ここではアニメーションではなく、どのスロットを出すかを確かめたいので、すぐに切り替わる単純な要素に置き換える
+vi.mock('motion/react', () => ({
+  AnimatePresence: ({ children }: { children: ReactNode }) => <>{children}</>,
+  motion: {
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    div: ({ initial, animate, exit, transition, ...props }: Record<string, unknown>) => <div {...props} />,
+  },
+}));
+
 vi.mock('../../components/SalmonStats', () => ({
   default: ({ totals }: { totals: { goldenEggs: number } }) => <div data-testid="SalmonStats">金イクラ {totals.goldenEggs}</div>,
 }));
@@ -54,7 +66,10 @@ const mockApis = (settings: SidePanelSettings, failing: string[] = [], twitch: o
   });
 };
 
-const visibleSlot = () => screen.getByTestId('side-panel-slot').querySelector('[data-slots]:last-child')?.getAttribute('data-slots');
+// ローテーション枠でいま表示しているスロット
+const rotationSlot = () => screen.queryByTestId('side-panel-rotation')?.querySelector('[data-area="rotation"]')?.getAttribute('data-slot');
+const fixedSlots = () => [...screen.getByTestId('side-panel-slot').querySelectorAll('[data-area="fixed"]')].map((el) => el.getAttribute('data-slot'));
+const rotating: SidePanelSettings = { ...getDefaultSidePanelSettings(), fixedSlots: [], rotationSlots: ['salmon', 'burndown'], rotateSeconds: 10 };
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -80,21 +95,21 @@ describe('SidePanelOverlayPage', () => {
   });
 
   it('shows the burndown slot when it is selected', async () => {
-    mockApis({ ...getDefaultSidePanelSettings(), visibleSlots: ['burndown'] });
+    mockApis({ ...getDefaultSidePanelSettings(), fixedSlots: ['burndown'] });
     render(<SidePanelOverlayPage />);
 
     expect(await screen.findByTestId('BurndownChart')).toHaveTextContent(getInitialStreamData().burndown.label);
   });
 
   it('shows the challenges slot when it is selected', async () => {
-    mockApis({ ...getDefaultSidePanelSettings(), visibleSlots: ['challenges'], challenges: [{ id: 1, text: 'キケン度MAXでクリア', done: false }] });
+    mockApis({ ...getDefaultSidePanelSettings(), fixedSlots: ['challenges'], challenges: [{ id: 1, text: 'キケン度MAXでクリア', done: false }] });
     render(<SidePanelOverlayPage />);
 
     expect(await screen.findByTestId('ChallengeList')).toHaveTextContent('キケン度MAXでクリア');
   });
 
   it('shows several slots together from top to bottom', async () => {
-    mockApis({ ...getDefaultSidePanelSettings(), visibleSlots: ['salmon', 'challenges'], challenges: [{ id: 1, text: 'お題', done: false }] });
+    mockApis({ ...getDefaultSidePanelSettings(), fixedSlots: ['salmon', 'challenges'], challenges: [{ id: 1, text: 'お題', done: false }] });
     render(<SidePanelOverlayPage />);
 
     await screen.findByTestId('ChallengeList');
@@ -104,7 +119,7 @@ describe('SidePanelOverlayPage', () => {
   });
 
   it('shows the running salmon run schedule above the stats', async () => {
-    mockApis({ ...getDefaultSidePanelSettings(), visibleSlots: ['schedule', 'salmon'] });
+    mockApis({ ...getDefaultSidePanelSettings(), fixedSlots: ['schedule', 'salmon'] });
     render(<SidePanelOverlayPage />);
 
     expect(await screen.findByTestId('SalmonSchedule')).toHaveTextContent('アラマキ砦');
@@ -113,7 +128,7 @@ describe('SidePanelOverlayPage', () => {
   });
 
   it('shows nothing in the schedule slot until the schedule is fetched', async () => {
-    mockApis({ ...getDefaultSidePanelSettings(), visibleSlots: ['schedule', 'salmon'] }, ['/api/salmon-schedule']);
+    mockApis({ ...getDefaultSidePanelSettings(), fixedSlots: ['schedule', 'salmon'] }, ['/api/salmon-schedule']);
     render(<SidePanelOverlayPage />);
 
     await screen.findByTestId('SalmonStats');
@@ -126,64 +141,85 @@ describe('SidePanelOverlayPage', () => {
     render(<SidePanelOverlayPage />);
     await screen.findByTestId('SalmonStats');
 
-    mockApis({ ...getDefaultSidePanelSettings(), visibleSlots: ['burndown'] });
+    mockApis({ ...getDefaultSidePanelSettings(), fixedSlots: ['burndown'] });
     await act(async () => vi.advanceTimersByTime(2000));
 
     expect(await screen.findByTestId('BurndownChart')).toBeInTheDocument();
     await waitFor(() => expect(screen.queryByTestId('SalmonStats')).not.toBeInTheDocument());
   });
 
-  it('rotates through the enabled slots', async () => {
-    mockApis({ ...getDefaultSidePanelSettings(), autoRotate: true, rotateSeconds: 10, enabledSlots: ['salmon', 'burndown'] });
+  it('rotates through the rotation slots', async () => {
+    mockApis(rotating);
     vi.useFakeTimers({ shouldAdvanceTime: true });
     render(<SidePanelOverlayPage />);
     await screen.findByTestId('SalmonStats');
-    expect(visibleSlot()).toBe('salmon');
+    expect(rotationSlot()).toBe('salmon');
 
     await act(async () => vi.advanceTimersByTime(10_000));
-    await waitFor(() => expect(visibleSlot()).toBe('burndown'));
+    await waitFor(() => expect(rotationSlot()).toBe('burndown'));
 
     await act(async () => vi.advanceTimersByTime(10_000));
-    await waitFor(() => expect(visibleSlot()).toBe('salmon'));
+    await waitFor(() => expect(rotationSlot()).toBe('salmon'));
   });
 
-  it('restarts the rotation from the first slot when auto rotation is turned back on', async () => {
-    const rotating: SidePanelSettings = { ...getDefaultSidePanelSettings(), autoRotate: true, rotateSeconds: 10, enabledSlots: ['salmon', 'burndown'] };
-    mockApis(rotating);
+  it('keeps the fixed slots while rotating below them', async () => {
+    mockApis({ ...rotating, fixedSlots: ['schedule'], rotationSlots: ['salmon', 'challenges'], challenges: [{ id: 1, text: 'お題', done: false }] });
     vi.useFakeTimers({ shouldAdvanceTime: true });
     render(<SidePanelOverlayPage />);
     await screen.findByTestId('SalmonStats');
+    expect(fixedSlots()).toEqual(['schedule']);
+    expect(rotationSlot()).toBe('salmon');
+
     await act(async () => vi.advanceTimersByTime(10_000));
-    await waitFor(() => expect(visibleSlot()).toBe('burndown'));
-
-    mockApis({ ...rotating, autoRotate: false, visibleSlots: ['burndown'] });
-    await act(async () => vi.advanceTimersByTime(2000));
-    mockApis(rotating);
-    await act(async () => vi.advanceTimersByTime(2000));
-
-    await waitFor(() => expect(visibleSlot()).toBe('salmon'));
+    await waitFor(() => expect(rotationSlot()).toBe('challenges'));
+    expect(fixedSlots()).toEqual(['schedule']);
+    expect(screen.getByTestId('SalmonSchedule')).toBeInTheDocument();
   });
 
-  it('restarts the rotation when the enabled slots change', async () => {
-    const rotating: SidePanelSettings = { ...getDefaultSidePanelSettings(), autoRotate: true, rotateSeconds: 10, enabledSlots: ['salmon', 'burndown'] };
+  it('does not show the rotation area without rotation slots', async () => {
+    mockApis(getDefaultSidePanelSettings());
+    render(<SidePanelOverlayPage />);
+    await screen.findByTestId('SalmonStats');
+
+    expect(fixedSlots()).toEqual(['salmon']);
+    expect(screen.queryByTestId('side-panel-rotation')).not.toBeInTheDocument();
+  });
+
+  it('restarts the rotation from the first slot when it is emptied and set again', async () => {
     mockApis(rotating);
     vi.useFakeTimers({ shouldAdvanceTime: true });
     render(<SidePanelOverlayPage />);
     await screen.findByTestId('SalmonStats');
     await act(async () => vi.advanceTimersByTime(10_000));
-    await waitFor(() => expect(visibleSlot()).toBe('burndown'));
+    await waitFor(() => expect(rotationSlot()).toBe('burndown'));
 
-    mockApis({ ...rotating, enabledSlots: ['burndown'] });
+    mockApis({ ...rotating, fixedSlots: ['burndown'], rotationSlots: [] });
     await act(async () => vi.advanceTimersByTime(2000));
-    await waitFor(() => expect(visibleSlot()).toBe('burndown'));
+    mockApis(rotating);
+    await act(async () => vi.advanceTimersByTime(2000));
+
+    await waitFor(() => expect(rotationSlot()).toBe('salmon'));
+  });
+
+  it('restarts the rotation when the rotation slots change', async () => {
+    mockApis(rotating);
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    render(<SidePanelOverlayPage />);
+    await screen.findByTestId('SalmonStats');
+    await act(async () => vi.advanceTimersByTime(10_000));
+    await waitFor(() => expect(rotationSlot()).toBe('burndown'));
+
+    mockApis({ ...rotating, rotationSlots: ['burndown'] });
+    await act(async () => vi.advanceTimersByTime(2000));
+    await waitFor(() => expect(rotationSlot()).toBe('burndown'));
 
     // 1スロットだけなら、周期が来ても同じスロットのまま
     await act(async () => vi.advanceTimersByTime(10_000));
-    expect(visibleSlot()).toBe('burndown');
+    expect(rotationSlot()).toBe('burndown');
   });
 
   it('keeps the last settings when fetching them fails', async () => {
-    mockApis({ ...getDefaultSidePanelSettings(), visibleSlots: ['burndown'] });
+    mockApis({ ...getDefaultSidePanelSettings(), fixedSlots: ['burndown'] });
     vi.useFakeTimers({ shouldAdvanceTime: true });
     render(<SidePanelOverlayPage />);
     await screen.findByTestId('BurndownChart');
@@ -191,7 +227,7 @@ describe('SidePanelOverlayPage', () => {
     mockApis(getDefaultSidePanelSettings(), ['/api/side-panel']);
     await act(async () => vi.advanceTimersByTime(2000));
 
-    expect(visibleSlot()).toBe('burndown');
+    expect(fixedSlots()).toEqual(['burndown']);
   });
 
   it('keeps showing a slot when another API fails', async () => {
