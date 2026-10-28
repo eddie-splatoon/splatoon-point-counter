@@ -12,7 +12,7 @@ export const CACHE_TTL_MS = 5 * 60_000;
 export const RETRY_AFTER_FAILURE_MS = 60_000;
 // 応答が無いまま待ち続けると、まとめて待っている全リクエストが止まるので打ち切る
 export const FETCH_TIMEOUT_MS = 10_000;
-// スケジュールは数 KB 程度。異常に大きい応答はメモリを使い切る前に捨てる
+// スケジュールは数 KB 程度。異常に大きい応答は、読み込みながら上限を超えた時点で打ち切る
 export const MAX_RESPONSE_BYTES = 1_000_000;
 
 let cache: SalmonScheduleData | null = null;
@@ -29,12 +29,37 @@ export function __TEST_ONLY_resetSalmonScheduleCache() {
     retryAt = 0;
 }
 
+/** 本文を読む。全文をメモリに載せる前に、バイト数が上限を超えた時点で読むのをやめる */
+async function readLimitedText(res: Response, url: string): Promise<string> {
+    const tooLarge = () => new Error(`${url} returned too large a response`);
+    if (Number(res.headers.get('content-length')) > MAX_RESPONSE_BYTES) throw tooLarge();
+    if (!res.body) return '';
+    const reader = res.body.getReader();
+    const chunks: Uint8Array[] = [];
+    let total = 0;
+    for (;;) {
+        const {done, value} = await reader.read();
+        if (done) break;
+        total += value.byteLength;
+        if (total > MAX_RESPONSE_BYTES) {
+            await reader.cancel();
+            throw tooLarge();
+        }
+        chunks.push(value);
+    }
+    const bytes = new Uint8Array(total);
+    let offset = 0;
+    for (const chunk of chunks) {
+        bytes.set(chunk, offset);
+        offset += chunk.byteLength;
+    }
+    return new TextDecoder().decode(bytes);
+}
+
 async function fetchJson(url: string): Promise<unknown> {
     const res = await fetch(url, {headers: {'User-Agent': USER_AGENT}, cache: 'no-store', signal: AbortSignal.timeout(FETCH_TIMEOUT_MS)});
     if (!res.ok) throw new Error(`${url} returned ${res.status}`);
-    const text = await res.text();
-    if (text.length > MAX_RESPONSE_BYTES) throw new Error(`${url} returned too large a response`);
-    return JSON.parse(text);
+    return JSON.parse(await readLimitedText(res, url));
 }
 
 async function fetchSchedule(): Promise<SalmonScheduleData> {

@@ -131,10 +131,43 @@ describe('Salmon schedule API', () => {
     expect((await GET()).status).toBe(502);
   });
 
-  it('rejects a response that is too large', async () => {
-    fetchMock.mockImplementation(async () => new Response(`{"results":[],"padding":"${'x'.repeat(MAX_RESPONSE_BYTES)}"}`));
+  it('rejects a response that is too large without reading all of it', async () => {
+    const chunk = new Uint8Array(MAX_RESPONSE_BYTES / 4);
+    let pulled = 0;
+    const cancel = vi.fn();
+    fetchMock.mockImplementation(async () => new Response(new ReadableStream({
+      pull(controller) {
+        pulled += 1;
+        controller.enqueue(chunk);
+      },
+      cancel,
+    })));
 
     expect((await GET()).status).toBe(502);
+    expect(cancel).toHaveBeenCalled();
+    // 上限（4チャンク分）を超えた時点で止まり、終わりのない応答を読み続けない
+    expect(pulled).toBeLessThan(20);
+  });
+
+  it('rejects a response whose declared size is too large', async () => {
+    fetchMock.mockImplementation(async () => new Response('{}', { headers: { 'content-length': String(MAX_RESPONSE_BYTES + 1) } }));
+
+    expect((await GET()).status).toBe(502);
+  });
+
+  it('decodes a multi-byte response read in chunks', async () => {
+    const bytes = new TextEncoder().encode(JSON.stringify({ results: [result('ムニ・エール海洋発電所')] }));
+    fetchMock.mockImplementation(async (url: string) => url.endsWith('/coop-grouping/schedule')
+      ? new Response(new ReadableStream({
+        start(controller) {
+          // マルチバイト文字の途中で区切っても正しく復元できること
+          for (let i = 0; i < bytes.length; i += 7) controller.enqueue(bytes.slice(i, i + 7));
+          controller.close();
+        },
+      }))
+      : json({ results: [] }));
+
+    expect((await (await GET()).json()).entries[0].stage.name).toBe('ムニ・エール海洋発電所');
   });
 
   it('treats a response without usable entries as a failure', async () => {
