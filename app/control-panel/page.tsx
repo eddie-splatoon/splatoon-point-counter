@@ -24,6 +24,7 @@ import Image from 'next/image';
 import React, {useState, useEffect, useRef, useMemo, useCallback} from 'react';
 
 import SalmonRunPanel from '../../components/SalmonRunPanel';
+import SidePanelSettingsPanel from '../../components/SidePanelSettingsPanel';
 import {getItem, setItem, removeItem} from '../../lib/localStorage';
 import {StreamData, MessagePreset, BurndownData} from '../api/stream-data/route';
 
@@ -490,6 +491,7 @@ const ControlPanelPage: React.FC = () => {
                         <Tab label="バーンダウン" value="burndown"/>
                         <Tab label="メッセージ" value="message"/>
                         <Tab label="サーモンラン" value="salmon"/>
+                        <Tab label="サイドパネル" value="sidePanel"/>
                         <Tab label="共通設定" value="common"/>
                     </Tabs>
 
@@ -594,6 +596,8 @@ const ControlPanelPage: React.FC = () => {
 
                     {formData.activeTab === 'salmon' && <SalmonRunPanel/>}
 
+                    {formData.activeTab === 'sidePanel' && <SidePanelSettingsPanel/>}
+
                     {formData.activeTab === 'common' && (
                         <>
                             <Paper elevation={12} sx={{ mb: 3, p: 3, bgcolor: 'background.paper', backdropFilter: 'blur(10px)', border: '1px solid rgba(255, 255, 255, 0.1)' }}>
@@ -667,8 +671,9 @@ const ControlPanelPage: React.FC = () => {
                         }}>OBSブラウザソース設定</Typography>
                         <Typography variant="body2">スコア表示URL: <code style={{ backgroundColor: '#333', padding: '2px 4px', borderRadius: '4px', color: 'text.primary' }}>{origin}/obs-overlay</code></Typography>
                         <Typography variant="body2">バーンダウン表示URL: <code style={{ backgroundColor: '#333', padding: '2px 4px', borderRadius: '4px', color: 'text.primary' }}>{origin}/burndown-overlay</code></Typography>
+                        <Typography variant="body2">サイドパネル表示URL: <code style={{ backgroundColor: '#333', padding: '2px 4px', borderRadius: '4px', color: 'text.primary' }}>{origin}/side-panel-overlay</code></Typography>
                         <Typography variant="body2">幅: 1450, 高さ: 160 (スコア表示)</Typography>
-                        <Typography variant="body2">幅: 250, 高さ: 584 (バーンダウン表示)</Typography>
+                        <Typography variant="body2">幅: 250, 高さ: 584 (バーンダウン表示・サイドパネル表示)</Typography>
                     </Box>
                 </Box>
                 

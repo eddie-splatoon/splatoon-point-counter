@@ -35,6 +35,9 @@ window.webkitSpeechRecognition = MockSpeechRecognition;
 vi.mock('../../components/SalmonRunPanel', () => ({
     default: () => <div>SalmonRunPanel</div>,
 }));
+vi.mock('../../components/SidePanelSettingsPanel', () => ({
+    default: () => <div>SidePanelSettingsPanel</div>,
+}));
 
 // Mock next/image
 vi.mock('next/image', () => ({
@@ -92,6 +95,9 @@ describe('ControlPanelPage', () => {
 
         fireEvent.click(screen.getByRole('tab', { name: 'サーモンラン' }));
         await waitFor(() => expect(screen.getByText('SalmonRunPanel')).toBeInTheDocument());
+
+        fireEvent.click(screen.getByRole('tab', { name: 'サイドパネル' }));
+        await waitFor(() => expect(screen.getByText('SidePanelSettingsPanel')).toBeInTheDocument());
     });
 
     it('updates score fields and sends correct payload on submit', async () => {

@@ -87,6 +87,9 @@ export interface StreamData {
 #### `/app/api/salmon/route.ts` と `/app/api/salmon/sessions/route.ts`
 -   **目的**: サーモンランの成績（金イクラ・オオモノ・デス・クリア/失敗・ステージ）を配信セッション単位で記録・集計するAPIルート。データは `lib/db.ts` の SQLite（`data/overlay.db`）に保存され、再起動後も残ります。データアクセスは `lib/salmon.ts`、クライアントからも使う型・定数は `lib/salmonTypes.ts` にあります。コントロールパネルの「サーモンラン」タブ（`components/SalmonRunPanel.tsx`）から操作し、表示は `components/SalmonStats.tsx` が担います。
 
+#### `/app/side-panel-overlay/page.tsx` と `/app/api/side-panel/route.ts`
+-   **目的**: 配信画面右側（250x584）のサイドパネル。下段にコントロールパネルの「サイドパネル」タブ（`components/SidePanelSettingsPanel.tsx`）で選んだスロット（サーモンラン / バーンダウン）を表示し、自動ローテーションもできます。設定は SQLite の `app_state` に保存され、スロットの定義と検証は `lib/sidePanelTypes.ts` にあります。
+
 ### `/tools/twitch-eventsub`
 -   **目的**: `pnpm twitch` で起動する常駐スクリプト。Device Code Flow で認証し、EventSub WebSocket でフォローとゴールの通知を受信して `/api/twitch` へ送信します。トークンは `data/twitch-token.json`（Git 管理外）に保存されます。詳細は同ディレクトリの README を参照。
 

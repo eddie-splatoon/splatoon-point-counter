@@ -196,6 +196,17 @@ export default function Home() {
                         >
                             字幕オーバーレイ (Preview)
                         </Button>
+                        <Button
+                            variant="contained"
+                            color="secondary"
+                            href="/side-panel-overlay"
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            fullWidth
+                            size="large"
+                        >
+                            サイドパネルオーバーレイ (Preview)
+                        </Button>
                     </Box>
                 </Box>
                 <Typography variant="caption" sx={{mt: 4, color: 'text.secondary', zIndex: 1}}>
