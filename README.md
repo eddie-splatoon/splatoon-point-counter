@@ -76,6 +76,7 @@ flowchart LR
 - **言語**: TypeScript
 - **UI/スタイリング**: Material-UI (MUI), Tailwind CSS
 - **リアルタイム通信**: REST API (クライアントからのポーリング)
+- **永続化**: SQLite（Node 24 標準の [`node:sqlite`](https://nodejs.org/api/sqlite.html)。`data/overlay.db`、追加の依存なし）
 - **テスト**: Vitest, React Testing Library
 - **パッケージマネージャ**: [pnpm](https://pnpm.io/)
 - **文字起こし**: [mlx-whisper](https://github.com/ml-explore/mlx-examples/tree/main/whisper) + [Silero VAD](https://github.com/snakers4/silero-vad)（Python 3.12、Apple Silicon Mac でネイティブ実行）
