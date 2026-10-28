@@ -23,8 +23,18 @@ const summaryOf = (jobs: SalmonJob[]): SalmonSummary => ({
   jobs,
 });
 
-const mockGet = (summary: SalmonSummary, sessions: SalmonSessionWithTotals[] = [{ ...session, totals: summary.totals }, pastSession]) => {
+const runningSchedule = (stage: string) => ({
+  entries: [{ kind: 'regular', startTime: Date.now() - 60_000, endTime: Date.now() + 60 * 60_000, stage: { name: stage, image: '' }, weapons: [] }],
+  fetchedAt: Date.now(),
+});
+
+const mockGet = (
+  summary: SalmonSummary,
+  sessions: SalmonSessionWithTotals[] = [{ ...session, totals: summary.totals }, pastSession],
+  schedule: unknown = { entries: [], fetchedAt: 0 },
+) => {
   mockedAxios.get.mockImplementation(async (url: string) => {
+    if (url === '/api/salmon-schedule') return { data: schedule, status: 200 };
     if (url === '/api/salmon/sessions') return { data: sessions, status: 200 };
     if (url === `/api/salmon?sessionId=${pastSession.id}`) return { data: { ...summaryOf([job({ id: 9, sessionId: 1, goldenEggs: 40 })]), session: pastSession }, status: 200 };
     return { data: summary, status: 200 };
@@ -81,6 +91,43 @@ describe('SalmonRunPanel', () => {
     await waitFor(() => expect(within(screen.getByTestId('salmon-history')).getByText(/クリア \| 金イクラ 30/)).toBeInTheDocument());
     expect(screen.getByLabelText('金イクラ')).toHaveValue(null);
     expect(screen.getByLabelText('ステージ')).toHaveValue('アラマキ砦');
+  });
+
+  it('fills the stage from the running schedule', async () => {
+    mockGet(summaryOf([]), undefined, runningSchedule('ムニ・エール海洋発電所'));
+    render(<SalmonRunPanel />);
+
+    await waitFor(() => expect(screen.getByLabelText('ステージ')).toHaveValue('ムニ・エール海洋発電所'));
+  });
+
+  it('does not overwrite a stage typed before the schedule arrives', async () => {
+    let resolveSchedule: (value: unknown) => void = () => {};
+    mockGet(summaryOf([]));
+    const baseGet = mockedAxios.get.getMockImplementation()!;
+    mockedAxios.get.mockImplementation(async (url: string) =>
+      url === '/api/salmon-schedule' ? new Promise((resolve) => { resolveSchedule = resolve; }) : baseGet(url));
+    render(<SalmonRunPanel />);
+    await screen.findByText(/今のセッション/);
+
+    fireEvent.change(screen.getByLabelText('ステージ'), { target: { value: 'アラマキ砦' } });
+    await act(async () => resolveSchedule({ data: runningSchedule('ムニ・エール海洋発電所'), status: 200 }));
+
+    expect(screen.getByLabelText('ステージ')).toHaveValue('アラマキ砦');
+  });
+
+  it('can still record when the schedule is unavailable', async () => {
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    mockGet(summaryOf([]));
+    const baseGet = mockedAxios.get.getMockImplementation()!;
+    mockedAxios.get.mockImplementation(async (url: string) => {
+      if (url === '/api/salmon-schedule') throw new Error('502');
+      return baseGet(url);
+    });
+    render(<SalmonRunPanel />);
+    await screen.findByText(/今のセッション/);
+
+    expect(screen.getByLabelText('ステージ')).toHaveValue('');
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
   });
 
   it('records the wave of a failed job', async () => {

@@ -5,6 +5,8 @@ import {SalmonJob, SalmonTotals} from '../lib/salmonTypes';
 interface SalmonStatsProps {
     lastJob: SalmonJob | null;
     totals: SalmonTotals;
+    // スケジュールのカードがルール名（サーモンランなど）を出すので、こちらは「戦績」と名付けて区別する
+    title?: string;
 }
 
 const ROWS: {key: 'goldenEggs' | 'bossKills' | 'deaths'; label: string; color: string}[] = [
@@ -16,10 +18,10 @@ const ROWS: {key: 'goldenEggs' | 'bossKills' | 'deaths'; label: string; color: s
 const resultLabel = (job: SalmonJob) => (job.cleared ? 'クリア' : `WAVE${job.waveReached} 失敗`);
 
 /** サーモンランの「前回」と「本日（セッション）合計」。サイドパネルのスロット（幅 250px）向け */
-const SalmonStats: React.FC<SalmonStatsProps> = ({lastJob, totals}) => (
+const SalmonStats: React.FC<SalmonStatsProps> = ({lastJob, totals, title = '本日の戦績'}) => (
     <div className="w-[250px] bg-black/80 text-white rounded-2xl shadow-2xl border-2 border-white/20 p-3"
          data-testid="salmon-stats">
-        <p className="text-center font-bold" style={{color: '#FF6F00', fontSize: '20px'}}>サーモンラン</p>
+        <p className="text-center font-bold" style={{color: '#FF6F00', fontSize: '20px'}}>{title}</p>
 
         <table className="w-full mt-1" style={{fontSize: '18px'}}>
             <thead>
