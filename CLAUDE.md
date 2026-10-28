@@ -13,7 +13,7 @@
 3. **スコア＆メッセージオーバーレイ** (`/obs-overlay`) - メインのオーバーレイ表示
 4. **バーンダウンチャートオーバーレイ** (`/burndown-overlay`) - 進捗状況を可視化
 5. **字幕オーバーレイ** (`/caption-overlay`) - 配信者の音声をリアルタイムに字幕表示
-6. **サイドパネルオーバーレイ** (`/side-panel-overlay`) - 配信画面右側（250x584）。コントロールパネルで選んだスロットを表示
+6. **サイドパネルオーバーレイ** (`/side-panel-overlay`) - 配信画面右側（250x584）。上段にフォロワーゲージ、下段にコントロールパネルで選んだスロットを表示
 7. **バックエンドAPI** (`/api/stream-data`, `/api/caption`, `/api/twitch`, `/api/salmon`, `/api/side-panel`) - データ管理とクライアント間の同期
 8. **文字起こしスクリプト** (`tools/caption-stt/`) - マイク音声を文字起こしして `/api/caption` へ送信（Python, Mac ネイティブ実行）
 9. **Twitch連携スクリプト** (`tools/twitch-eventsub/`) - フォロワー数・フォロワー目標を EventSub で受信して `/api/twitch` へ送信（Node, 依存なし）
@@ -79,7 +79,8 @@
 │   ├── FireworksEffect.tsx       # 花火エフェクト
 │   ├── SalmonStats.tsx           # サーモンランの前回・本日合計
 │   ├── SalmonRunPanel.tsx        # コントロールパネルのサーモンランタブ
-│   └── SidePanelSettingsPanel.tsx # コントロールパネルのサイドパネルタブ
+│   ├── SidePanelSettingsPanel.tsx # コントロールパネルのサイドパネルタブ
+│   └── InkTankGauge.tsx          # インクタンク型フォロワーゲージ
 ├── lib/
 │   ├── localStorage.ts           # ローカルストレージのラッパー
 │   ├── db.ts                     # SQLite の接続とスキーマ
@@ -230,13 +231,16 @@ Twitch のフォロワー数とフォロワー目標を受け取る機能。
 
 ### `/app/side-panel-overlay/page.tsx` と `/app/api/side-panel/route.ts`
 
-配信画面右側（250x584）のサイドパネル。上段はフォロワーゲージ用（#61 で追加予定）、下段は「スロット」を表示する。
+配信画面右側（250x584）のサイドパネル。上段はインクタンク型フォロワーゲージ（`components/InkTankGauge.tsx`）、下段は「スロット」を表示する。
 
 - スロットの定義は `lib/sidePanelTypes.ts` の `SIDE_PANEL_SLOTS`（現在は `salmon` / `burndown`）。スロットを追加するときは、ここと `SIDE_PANEL_SLOT_LABELS`、オーバーレイの `renderSlot` に足す
 - 設定 `{activeSlot, autoRotate, rotateSeconds, enabledSlots}` は SQLite のキーバリュー `app_state`（`getAppState` / `setAppState`、キー `sidePanel`）に保存。保存値が不正（スロット削除後など）なら既定値を返す
 - オーバーレイは2秒ごとに `/api/side-panel`・`/api/salmon`・`/api/stream-data` をポーリングし（1つが失敗しても他は表示を続ける）、motion のクロスフェードでスロットを切り替える。自動ローテーションは `pickSlot` で `enabledSlots` を順に回す
 - コントロールパネルの「サイドパネル」タブ（`components/SidePanelSettingsPanel.tsx`）は変更をその場で保存する（「OBSに反映」は不要）
 - 既存の `/burndown-overlay` はそのまま残している（サイドパネルのバーンダウンスロットは花火エフェクトを出さない）
+- フォロワーゲージは `/api/twitch` もポーリングして表示する。値は `getFollowerProgress`（`lib/sidePanelTypes.ts`）で決める: Twitch のクリエイターゴール（フォロワー型）を優先し、無ければフォロワー総数と手入力の `followerGoal`（設定に保存、`null` は未設定）。どちらも無い、または Twitch 連携スクリプトが未起動（`followerTotal: null`）ならゲージを出さない
+- ゲージはフォローを受信すると（`lastFollowAt` の変化）インクを波打たせて `BubbleEffect` を出し、目標を変えずにフォロワー数が目標に届いたときだけ `FireworksEffect` を出す（目標の編集だけでは出さない。達成のたびに `key` で作り直して再生）。表示した時点の値では演出しない（オーバーレイの再読み込みで演出が出ないように）。泡と花火は vw / vh 基準なので、`absolute inset-0 z-50` でサイドパネルのルート（`relative`）全体を覆い、下段スロットより手前に出す
+- `followerGoal` は後から追加した項目なので、保存済みの設定に無ければ `null` として扱う（既存の設定を既定値に戻さないため）
 
 ### `/components/ScoreDisplay.tsx`
 

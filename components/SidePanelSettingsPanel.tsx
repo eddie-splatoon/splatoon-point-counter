@@ -16,6 +16,7 @@ import axios from 'axios';
 import React, {useCallback, useEffect, useState} from 'react';
 
 import {
+    MAX_FOLLOWER_GOAL,
     MAX_ROTATE_SECONDS,
     MIN_ROTATE_SECONDS,
     SIDE_PANEL_SLOTS,
@@ -29,10 +30,15 @@ const paperSx = {mb: 3, p: 3, bgcolor: 'background.paper', backdropFilter: 'blur
 const isValidSeconds = (value: string) =>
     /^\d+$/.test(value) && Number(value) >= MIN_ROTATE_SECONDS && Number(value) <= MAX_ROTATE_SECONDS;
 
+// 空欄は「手入力の目標なし」
+const isValidFollowerGoal = (value: string) =>
+    value === '' || (/^\d+$/.test(value) && Number(value) >= 1 && Number(value) <= MAX_FOLLOWER_GOAL);
+
 /** コントロールパネルの「サイドパネル」タブ。変更はその場で保存される（「OBSに反映」は不要） */
 const SidePanelSettingsPanel: React.FC = () => {
     const [settings, setSettings] = useState<SidePanelSettings | null>(null);
     const [secondsInput, setSecondsInput] = useState('');
+    const [followerGoalInput, setFollowerGoalInput] = useState('');
     const [error, setError] = useState('');
 
     const load = useCallback(async () => {
@@ -40,6 +46,7 @@ const SidePanelSettingsPanel: React.FC = () => {
             const res = await axios.get<SidePanelSettings>('/api/side-panel');
             setSettings(res.data);
             setSecondsInput(String(res.data.rotateSeconds));
+            setFollowerGoalInput(res.data.followerGoal === null ? '' : String(res.data.followerGoal));
         } catch {
             setError('サイドパネルの設定の読み込みに失敗しました。サーバーを確認してください。');
         }
@@ -79,9 +86,32 @@ const SidePanelSettingsPanel: React.FC = () => {
         if (isValidSeconds(value)) void save({rotateSeconds: Number(value)});
     };
 
+    const handleFollowerGoalChange = (value: string) => {
+        setFollowerGoalInput(value);
+        if (isValidFollowerGoal(value)) void save({followerGoal: value === '' ? null : Number(value)});
+    };
+
     return (
         <>
             {error && <Alert severity="error" sx={{mb: 2}}>{error}</Alert>}
+
+            <Paper elevation={12} sx={paperSx}>
+                <Typography variant="h6" gutterBottom>🦑 フォロワー目標（上段のゲージ）</Typography>
+                <TextField
+                    label="目標フォロワー数"
+                    type="number"
+                    value={followerGoalInput}
+                    onChange={(e) => handleFollowerGoalChange(e.target.value)}
+                    error={!isValidFollowerGoal(followerGoalInput)}
+                    helperText="Twitch でフォロワー目標を設定している場合はそちらを優先します。空欄で、Twitch の目標が無いときはゲージを表示しません。"
+                    slotProps={{htmlInput: {min: 1, max: MAX_FOLLOWER_GOAL, step: 1}}}
+                    fullWidth
+                    margin="normal"
+                />
+                <Typography variant="caption" sx={{display: 'block', color: 'text.secondary'}}>
+                    フォロワー数は Twitch 連携（<code>pnpm twitch</code>）から取得します。起動していないときはゲージを表示しません。
+                </Typography>
+            </Paper>
 
             <Paper elevation={12} sx={paperSx}>
                 <Typography variant="h6" gutterBottom>🧩 表示するスロット</Typography>

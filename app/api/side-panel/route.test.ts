@@ -14,7 +14,7 @@ const post = (body: unknown, contentType = 'application/json') =>
     body: typeof body === 'string' ? body : JSON.stringify(body),
   }));
 
-const settings = { activeSlot: 'burndown', autoRotate: true, rotateSeconds: 15, enabledSlots: ['salmon', 'burndown'] };
+const settings = { activeSlot: 'burndown', autoRotate: true, rotateSeconds: 15, enabledSlots: ['salmon', 'burndown'], followerGoal: 20 };
 
 beforeEach(() => {
   __TEST_ONLY_setDb(openDb(':memory:'));
@@ -31,6 +31,13 @@ describe('Side panel API', () => {
     expect(response.status).toBe(200);
     expect(await response.json()).toEqual(settings);
     expect(await (await GET()).json()).toEqual(settings);
+  });
+
+  it('keeps settings saved before followerGoal existed', async () => {
+    const saved: Record<string, unknown> = { ...settings };
+    delete saved.followerGoal;
+    setAppState('sidePanel', saved);
+    expect(await (await GET()).json()).toEqual({ ...settings, followerGoal: null });
   });
 
   it('falls back to the defaults when the saved settings are no longer valid', async () => {
