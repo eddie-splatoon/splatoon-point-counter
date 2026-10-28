@@ -78,6 +78,7 @@ flowchart LR
 - **テスト**: Vitest, React Testing Library
 - **パッケージマネージャ**: [pnpm](https://pnpm.io/)
 - **文字起こし**: [mlx-whisper](https://github.com/ml-explore/mlx-examples/tree/main/whisper) + [Silero VAD](https://github.com/snakers4/silero-vad)（Python 3.12、Apple Silicon Mac でネイティブ実行）
+- **Twitch 連携**: [EventSub WebSocket](https://dev.twitch.tv/docs/eventsub/handling-websocket-events/) + [Device Code Flow](https://dev.twitch.tv/docs/authentication/getting-tokens-oauth/#device-code-grant-flow)（Node 24 標準の `fetch` / `WebSocket` で実行。追加の依存なし）
 - **CI/CD**: GitHub Actions
 
 ## セットアップと起動方法
@@ -131,6 +132,8 @@ Twitch Developer Console でアプリ（クライアントの種類: 公開）�
 ```bash
 pnpm twitch
 ```
+
+スクリプトは Docker の外（ホスト側）で実行します。アプリを `docker-compose up` で起動している場合も、そのまま `http://localhost:3000/api/twitch` に送信されます。
 
 詳細は [tools/twitch-eventsub/README.md](tools/twitch-eventsub/README.md) を参照してください。
 
