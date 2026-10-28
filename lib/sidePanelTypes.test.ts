@@ -9,11 +9,11 @@ import {
   getDefaultSidePanelSettings,
   getFollowerProgress,
   parseSidePanelSettings,
-  pickSlot,
+  pickSlots,
 } from './sidePanelTypes';
 
 const challenges = [{ id: 1, text: 'キケン度MAXでクリア', done: false }, { id: 2, text: '新ブキで3クリア', done: true }];
-const valid = { activeSlot: 'burndown', autoRotate: true, rotateSeconds: 30, enabledSlots: ['salmon', 'burndown'], followerGoal: 20, challenges };
+const valid = { visibleSlots: ['burndown'], autoRotate: true, rotateSeconds: 30, enabledSlots: ['salmon', 'burndown'], followerGoal: 20, challenges };
 
 describe('parseSidePanelSettings', () => {
   it('accepts valid settings', () => {
@@ -29,6 +29,19 @@ describe('parseSidePanelSettings', () => {
     delete saved.followerGoal;
     delete saved.challenges;
     expect(parseSidePanelSettings(saved)).toEqual({ ...valid, followerGoal: null, challenges: [] });
+  });
+
+  it('reads settings saved with a single activeSlot as visibleSlots', () => {
+    const saved: Record<string, unknown> = { ...valid, activeSlot: 'challenges' };
+    delete saved.visibleSlots;
+    expect(parseSidePanelSettings(saved)).toMatchObject({ visibleSlots: ['challenges'] });
+    expect(parseSidePanelSettings(saved)).not.toHaveProperty('activeSlot');
+  });
+
+  it('shows several slots together in the slot order', () => {
+    expect(parseSidePanelSettings({ ...valid, visibleSlots: ['challenges', 'salmon', 'challenges'] })).toMatchObject({
+      visibleSlots: ['salmon', 'challenges'],
+    });
   });
 
   it('trims challenge text', () => {
@@ -61,7 +74,11 @@ describe('parseSidePanelSettings', () => {
 
   it.each([
     ['null', null],
-    ['an unknown active slot', { ...valid, activeSlot: 'schedule' }],
+    ['an unknown visible slot', { ...valid, visibleSlots: ['schedule'] }],
+    ['no visible slots', { ...valid, visibleSlots: [] }],
+    ['non-array visible slots', { ...valid, visibleSlots: 'salmon' }],
+    ['the burndown together with another slot', { ...valid, visibleSlots: ['salmon', 'burndown'] }],
+    ['neither visibleSlots nor a valid activeSlot', { ...valid, visibleSlots: undefined, activeSlot: 'schedule' }],
     ['a non-boolean autoRotate', { ...valid, autoRotate: 'yes' }],
     ['too short a rotation', { ...valid, rotateSeconds: MIN_ROTATE_SECONDS - 1 }],
     ['too long a rotation', { ...valid, rotateSeconds: MAX_ROTATE_SECONDS + 1 }],
@@ -85,14 +102,14 @@ describe('parseSidePanelSettings', () => {
   });
 });
 
-describe('pickSlot', () => {
-  it('shows the active slot when not rotating', () => {
-    expect(pickSlot({ ...getDefaultSidePanelSettings(), activeSlot: 'burndown', autoRotate: false }, 5)).toBe('burndown');
+describe('pickSlots', () => {
+  it('shows the visible slots when not rotating', () => {
+    expect(pickSlots({ ...getDefaultSidePanelSettings(), visibleSlots: ['salmon', 'challenges'], autoRotate: false }, 5)).toEqual(['salmon', 'challenges']);
   });
 
   it('cycles through the enabled slots when rotating', () => {
     const settings = { ...getDefaultSidePanelSettings(), autoRotate: true };
-    expect([0, 1, 2, 3].map((i) => pickSlot({ ...settings, enabledSlots: ['salmon', 'challenges', 'burndown'] }, i))).toEqual(['salmon', 'challenges', 'burndown', 'salmon']);
+    expect([0, 1, 2, 3].map((i) => pickSlots({ ...settings, enabledSlots: ['salmon', 'challenges', 'burndown'] }, i))).toEqual([['salmon'], ['challenges'], ['burndown'], ['salmon']]);
   });
 
   it('does not rotate through the challenges by default', () => {

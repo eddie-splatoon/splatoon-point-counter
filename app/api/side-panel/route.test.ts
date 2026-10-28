@@ -15,7 +15,7 @@ const post = (body: unknown, contentType = 'application/json') =>
   }));
 
 const settings = {
-  activeSlot: 'burndown',
+  visibleSlots: ['burndown'],
   autoRotate: true,
   rotateSeconds: 15,
   enabledSlots: ['salmon', 'challenges', 'burndown'],
@@ -48,8 +48,15 @@ describe('Side panel API', () => {
     expect(await (await GET()).json()).toEqual({ ...settings, followerGoal: null, challenges: [] });
   });
 
+  it('keeps the slot of settings saved with a single activeSlot', async () => {
+    const saved: Record<string, unknown> = { ...settings, activeSlot: 'challenges' };
+    delete saved.visibleSlots;
+    setAppState('sidePanel', saved);
+    expect(await (await GET()).json()).toEqual({ ...settings, visibleSlots: ['challenges'] });
+  });
+
   it('falls back to the defaults when the saved settings are no longer valid', async () => {
-    setAppState('sidePanel', { ...settings, activeSlot: 'removed-slot' });
+    setAppState('sidePanel', { ...settings, visibleSlots: ['removed-slot'] });
     expect(await (await GET()).json()).toEqual(getDefaultSidePanelSettings());
   });
 

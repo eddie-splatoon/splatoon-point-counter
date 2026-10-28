@@ -24,7 +24,7 @@ beforeEach(() => {
 
 describe('SidePanelSettingsPanel', () => {
   it('shows the saved settings', async () => {
-    await renderLoaded({ ...getDefaultSidePanelSettings(), activeSlot: 'burndown', rotateSeconds: 45 });
+    await renderLoaded({ ...getDefaultSidePanelSettings(), visibleSlots: ['burndown'], rotateSeconds: 45 });
 
     expect(screen.getByRole('button', { name: 'バーンダウン' })).toHaveAttribute('aria-pressed', 'true');
     expect(screen.getByLabelText('切り替え秒数')).toHaveValue(45);
@@ -35,8 +35,36 @@ describe('SidePanelSettingsPanel', () => {
 
     await act(async () => fireEvent.click(screen.getByRole('button', { name: 'バーンダウン' })));
 
-    expect(mockedAxios.post).toHaveBeenCalledWith('/api/side-panel', expect.objectContaining({ activeSlot: 'burndown' }));
+    expect(mockedAxios.post).toHaveBeenCalledWith('/api/side-panel', expect.objectContaining({ visibleSlots: ['burndown'] }));
     expect(screen.getByRole('button', { name: 'バーンダウン' })).toHaveAttribute('aria-pressed', 'true');
+    expect(screen.getByRole('button', { name: 'サーモンラン' })).toHaveAttribute('aria-pressed', 'false');
+  });
+
+  it('shows several slots together', async () => {
+    await renderLoaded();
+
+    await act(async () => fireEvent.click(screen.getByRole('button', { name: '本日のお題' })));
+
+    expect(lastPosted()).toMatchObject({ visibleSlots: ['salmon', 'challenges'] });
+    expect(screen.getByRole('button', { name: 'サーモンラン' })).toHaveAttribute('aria-pressed', 'true');
+    expect(screen.getByRole('button', { name: '本日のお題' })).toHaveAttribute('aria-pressed', 'true');
+  });
+
+  it('replaces the burndown when another slot is chosen', async () => {
+    await renderLoaded({ ...getDefaultSidePanelSettings(), visibleSlots: ['burndown'] });
+
+    await act(async () => fireEvent.click(screen.getByRole('button', { name: '本日のお題' })));
+
+    expect(lastPosted()).toMatchObject({ visibleSlots: ['challenges'] });
+  });
+
+  it('keeps at least one visible slot', async () => {
+    await renderLoaded();
+
+    await act(async () => fireEvent.click(screen.getByRole('button', { name: 'サーモンラン' })));
+
+    expect(mockedAxios.post).not.toHaveBeenCalled();
+    expect(screen.getByRole('button', { name: 'サーモンラン' })).toHaveAttribute('aria-pressed', 'true');
   });
 
   it('turns on auto rotation and disables the manual slot choice', async () => {

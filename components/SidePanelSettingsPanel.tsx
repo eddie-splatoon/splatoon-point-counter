@@ -21,6 +21,7 @@ import React, {useCallback, useEffect, useState} from 'react';
 
 import {
     Challenge,
+    FULL_HEIGHT_SLOTS,
     MAX_CHALLENGES,
     MAX_CHALLENGE_LENGTH,
     MAX_FOLLOWER_GOAL,
@@ -93,6 +94,16 @@ const SidePanelSettingsPanel: React.FC = () => {
         const id = Math.max(0, ...settings.challenges.map((c) => c.id)) + 1;
         saveChallenges([...settings.challenges, {id, text: newChallenge.trim(), done: false}]);
         setNewChallenge('');
+    };
+
+    // 下段全体を使うスロットは単独でしか表示できないので、新しく選んだ側を残して入れ替える
+    const handleVisibleSlotsChange = (value: SidePanelSlot[]) => {
+        const added = value.find((slot) => !settings.visibleSlots.includes(slot));
+        const next = added === undefined
+            ? value
+            : FULL_HEIGHT_SLOTS.includes(added) ? [added] : value.filter((slot) => !FULL_HEIGHT_SLOTS.includes(slot));
+        // 最低1つは残す。表示順はサーバーと同じく SIDE_PANEL_SLOTS の順にそろえる
+        if (next.length > 0) void save({visibleSlots: SIDE_PANEL_SLOTS.filter((slot) => next.includes(slot))});
     };
 
     const toggleEnabled = (slot: SidePanelSlot, checked: boolean) => {
@@ -181,9 +192,8 @@ const SidePanelSettingsPanel: React.FC = () => {
             <Paper elevation={12} sx={paperSx}>
                 <Typography variant="h6" gutterBottom>🧩 表示するスロット</Typography>
                 <ToggleButtonGroup
-                    value={settings.activeSlot}
-                    exclusive
-                    onChange={(e, value: SidePanelSlot | null) => value && save({activeSlot: value})}
+                    value={settings.visibleSlots}
+                    onChange={(e, value: SidePanelSlot[]) => handleVisibleSlotsChange(value)}
                     disabled={settings.autoRotate}
                     aria-label="表示するスロット"
                 >
@@ -192,7 +202,9 @@ const SidePanelSettingsPanel: React.FC = () => {
                     ))}
                 </ToggleButtonGroup>
                 <Typography variant="caption" sx={{display: 'block', mt: 1, color: 'text.secondary'}}>
-                    {settings.autoRotate ? '自動ローテーション中は、下で選んだスロットを順に表示します。' : 'サイドパネル下段に表示する内容です。'}
+                    {settings.autoRotate
+                        ? '自動ローテーション中は、下で選んだスロットを1つずつ順に表示します。'
+                        : `サイドパネル下段に、選んだものを上から順に並べて表示します。${FULL_HEIGHT_SLOTS.map((s) => SIDE_PANEL_SLOT_LABELS[s]).join('・')}は下段全体を使うため、他と同時には選べません。`}
                 </Typography>
             </Paper>
 
