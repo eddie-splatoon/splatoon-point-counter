@@ -9,7 +9,7 @@ import ChallengeList from '../../components/ChallengeList';
 import InkTankGauge from '../../components/InkTankGauge';
 import SalmonStats from '../../components/SalmonStats';
 import {SalmonSummary} from '../../lib/salmonTypes';
-import {SidePanelSettings, getFollowerProgress, pickSlot} from '../../lib/sidePanelTypes';
+import {FULL_HEIGHT_SLOTS, SidePanelSettings, SidePanelSlot, getFollowerProgress, pickSlots} from '../../lib/sidePanelTypes';
 import {StreamData} from '../api/stream-data/route';
 
 import type {TwitchData} from '../api/twitch/route';
@@ -65,11 +65,13 @@ const SidePanelOverlayPage: React.FC = () => {
 
     if (!settings) return <div className="w-[250px] h-[584px]"/>;
 
-    const slot = pickSlot(settings, rotationIndex);
+    const slots = pickSlots(settings, rotationIndex);
+    // 表示する組み合わせが変わったら、まとめてクロスフェードする
+    const slotsKey = slots.join('+');
     // Twitch 連携スクリプトが未起動、または目標が無いときはゲージを出さない
     const followerProgress = twitch && getFollowerProgress(twitch, settings.followerGoal);
 
-    const renderSlot = () => {
+    const renderSlot = (slot: SidePanelSlot) => {
         switch (slot) {
             case 'salmon':
                 return salmon && <SalmonStats lastJob={salmon.lastJob} totals={salmon.totals}/>;
@@ -89,19 +91,28 @@ const SidePanelOverlayPage: React.FC = () => {
             {followerProgress && twitch && (
                 <InkTankGauge current={followerProgress.current} target={followerProgress.target} lastFollowAt={twitch.lastFollowAt}/>
             )}
-            {/* 下段: コントロールパネルで選んだスロット */}
+            {/* 下段: コントロールパネルで選んだスロット（複数なら上から順に並べる） */}
             <div className="relative flex-1" data-testid="side-panel-slot">
                 <AnimatePresence>
                     <motion.div
-                        key={slot}
-                        className="absolute inset-0 flex flex-col items-center"
+                        key={slotsKey}
+                        className="absolute inset-0 flex flex-col items-center gap-3"
                         initial={{opacity: 0}}
                         animate={{opacity: 1}}
                         exit={{opacity: 0}}
                         transition={{duration: 0.8}}
-                        data-slot={slot}
+                        data-slots={slotsKey}
                     >
-                        {renderSlot()}
+                        {slots.map((slot) => (
+                            <div
+                                key={slot}
+                                // 下段全体を使うスロットは残りの高さいっぱいに広げる
+                                className={FULL_HEIGHT_SLOTS.includes(slot) ? 'flex-1 min-h-0 w-full flex justify-center' : 'shrink-0'}
+                                data-slot={slot}
+                            >
+                                {renderSlot(slot)}
+                            </div>
+                        ))}
                     </motion.div>
                 </AnimatePresence>
             </div>

@@ -235,8 +235,9 @@ Twitch のフォロワー数とフォロワー目標を受け取る機能。
 配信画面右側（250x584）のサイドパネル。上段はインクタンク型フォロワーゲージ（`components/InkTankGauge.tsx`）、下段は「スロット」を表示する。
 
 - スロットの定義は `lib/sidePanelTypes.ts` の `SIDE_PANEL_SLOTS`（現在は `salmon` / `challenges` / `burndown`。並び順が自動ローテーションの順）。スロットを追加するときは、ここと `SIDE_PANEL_SLOT_LABELS`、オーバーレイの `renderSlot` に足す
-- 設定 `{activeSlot, autoRotate, rotateSeconds, enabledSlots}` は SQLite のキーバリュー `app_state`（`getAppState` / `setAppState`、キー `sidePanel`）に保存。保存値が不正（スロット削除後など）なら既定値を返す
-- オーバーレイは2秒ごとに `/api/side-panel`・`/api/salmon`・`/api/stream-data` をポーリングし（1つが失敗しても他は表示を続ける）、motion のクロスフェードでスロットを切り替える。自動ローテーションは `pickSlot` で `enabledSlots` を順に回す
+- 設定 `{visibleSlots, autoRotate, rotateSeconds, enabledSlots, followerGoal, challenges}` は SQLite のキーバリュー `app_state`（`getAppState` / `setAppState`、キー `sidePanel`）に保存。保存値が不正（スロット削除後など）なら既定値を返す
+- オーバーレイは2秒ごとに `/api/side-panel`・`/api/salmon`・`/api/stream-data` をポーリングし（1つが失敗しても他は表示を続ける）、motion のクロスフェードでスロットを切り替える。表示するスロットは `pickSlots` で決める: 自動ローテーションが OFF なら `visibleSlots` を上から順に並べ、ON なら `enabledSlots` を1つずつ順に回す
+- `visibleSlots` は以前の `activeSlot`（1つだけ選ぶ方式）を置き換えた項目。保存済みの設定に無ければ `[activeSlot]` として読み込む。下段全体の高さを使うスロット（`FULL_HEIGHT_SLOTS`、現在は `burndown`）は他と同時に選べない（検証で拒否し、コントロールパネルでは新しく選んだ側に入れ替える）
 - コントロールパネルの「サイドパネル」タブ（`components/SidePanelSettingsPanel.tsx`）は変更をその場で保存する（「OBSに反映」は不要）
 - 既存の `/burndown-overlay` はそのまま残している（サイドパネルのバーンダウンスロットは花火エフェクトを出さない）
 - フォロワーゲージは `/api/twitch` もポーリングして表示する。値は `getFollowerProgress`（`lib/sidePanelTypes.ts`）で決める: Twitch のクリエイターゴール（フォロワー型）を優先し、無ければフォロワー総数と手入力の `followerGoal`（設定に保存、`null` は未設定）。どちらも無い、または Twitch 連携スクリプトが未起動（`followerTotal: null`）ならゲージを出さない

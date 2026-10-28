@@ -43,7 +43,7 @@ const mockApis = (settings: SidePanelSettings, failing: string[] = [], twitch: o
   });
 };
 
-const visibleSlot = () => screen.getByTestId('side-panel-slot').querySelector('[data-slot]:last-child')?.getAttribute('data-slot');
+const visibleSlot = () => screen.getByTestId('side-panel-slot').querySelector('[data-slots]:last-child')?.getAttribute('data-slots');
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -69,17 +69,27 @@ describe('SidePanelOverlayPage', () => {
   });
 
   it('shows the burndown slot when it is selected', async () => {
-    mockApis({ ...getDefaultSidePanelSettings(), activeSlot: 'burndown' });
+    mockApis({ ...getDefaultSidePanelSettings(), visibleSlots: ['burndown'] });
     render(<SidePanelOverlayPage />);
 
     expect(await screen.findByTestId('BurndownChart')).toHaveTextContent(getInitialStreamData().burndown.label);
   });
 
   it('shows the challenges slot when it is selected', async () => {
-    mockApis({ ...getDefaultSidePanelSettings(), activeSlot: 'challenges', challenges: [{ id: 1, text: 'キケン度MAXでクリア', done: false }] });
+    mockApis({ ...getDefaultSidePanelSettings(), visibleSlots: ['challenges'], challenges: [{ id: 1, text: 'キケン度MAXでクリア', done: false }] });
     render(<SidePanelOverlayPage />);
 
     expect(await screen.findByTestId('ChallengeList')).toHaveTextContent('キケン度MAXでクリア');
+  });
+
+  it('shows several slots together from top to bottom', async () => {
+    mockApis({ ...getDefaultSidePanelSettings(), visibleSlots: ['salmon', 'challenges'], challenges: [{ id: 1, text: 'お題', done: false }] });
+    render(<SidePanelOverlayPage />);
+
+    await screen.findByTestId('ChallengeList');
+    const order = [...screen.getByTestId('side-panel-slot').querySelectorAll('[data-slot]')].map((el) => el.getAttribute('data-slot'));
+    expect(order).toEqual(['salmon', 'challenges']);
+    expect(screen.getByTestId('SalmonStats')).toBeInTheDocument();
   });
 
   it('switches slots when the setting changes', async () => {
@@ -88,7 +98,7 @@ describe('SidePanelOverlayPage', () => {
     render(<SidePanelOverlayPage />);
     await screen.findByTestId('SalmonStats');
 
-    mockApis({ ...getDefaultSidePanelSettings(), activeSlot: 'burndown' });
+    mockApis({ ...getDefaultSidePanelSettings(), visibleSlots: ['burndown'] });
     await act(async () => vi.advanceTimersByTime(2000));
 
     expect(await screen.findByTestId('BurndownChart')).toBeInTheDocument();
@@ -118,7 +128,7 @@ describe('SidePanelOverlayPage', () => {
     await act(async () => vi.advanceTimersByTime(10_000));
     await waitFor(() => expect(visibleSlot()).toBe('burndown'));
 
-    mockApis({ ...rotating, autoRotate: false, activeSlot: 'burndown' });
+    mockApis({ ...rotating, autoRotate: false, visibleSlots: ['burndown'] });
     await act(async () => vi.advanceTimersByTime(2000));
     mockApis(rotating);
     await act(async () => vi.advanceTimersByTime(2000));
@@ -145,7 +155,7 @@ describe('SidePanelOverlayPage', () => {
   });
 
   it('keeps the last settings when fetching them fails', async () => {
-    mockApis({ ...getDefaultSidePanelSettings(), activeSlot: 'burndown' });
+    mockApis({ ...getDefaultSidePanelSettings(), visibleSlots: ['burndown'] });
     vi.useFakeTimers({ shouldAdvanceTime: true });
     render(<SidePanelOverlayPage />);
     await screen.findByTestId('BurndownChart');
