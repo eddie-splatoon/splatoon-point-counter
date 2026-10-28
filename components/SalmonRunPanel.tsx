@@ -17,7 +17,7 @@ import {
     Typography,
 } from '@mui/material';
 import axios from 'axios';
-import React, {useCallback, useEffect, useState} from 'react';
+import React, {useCallback, useEffect, useRef, useState} from 'react';
 
 import {MAX_WAVE, SalmonJob, SalmonSessionWithTotals, SalmonSummary} from '../lib/salmonTypes';
 
@@ -71,10 +71,17 @@ const SalmonRunPanel: React.FC = () => {
     const [pastSummary, setPastSummary] = useState<SalmonSummary | null>(null);
     const [error, setError] = useState('');
     const [saving, setSaving] = useState(false);
+    // 過去セッションを素早く切り替えたとき、古い応答で表示を上書きしないための最新の選択
+    const latestPastSessionId = useRef<number | ''>('');
 
+    // 一覧は表示の補助なので、失敗しても記録や削除の失敗としては扱わない（再操作による二重記録を防ぐ）
     const loadSessions = useCallback(async () => {
-        const res = await axios.get<SalmonSessionWithTotals[]>('/api/salmon/sessions');
-        setSessions(res.data);
+        try {
+            const res = await axios.get<SalmonSessionWithTotals[]>('/api/salmon/sessions');
+            setSessions(res.data);
+        } catch (e) {
+            console.error('Failed to load salmon sessions', e);
+        }
     }, []);
 
     const load = useCallback(async () => {
@@ -142,14 +149,15 @@ const SalmonRunPanel: React.FC = () => {
     };
 
     const handleSelectPastSession = async (id: number | '') => {
+        latestPastSessionId.current = id;
         setPastSessionId(id);
         setPastSummary(null);
         if (id === '') return;
         try {
             const res = await axios.get<SalmonSummary>(`/api/salmon?sessionId=${id}`);
-            setPastSummary(res.data);
+            if (latestPastSessionId.current === id) setPastSummary(res.data);
         } catch {
-            setError('セッションの読み込みに失敗しました。');
+            if (latestPastSessionId.current === id) setError('セッションの読み込みに失敗しました。');
         }
     };
 

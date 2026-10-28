@@ -120,6 +120,20 @@ describe('SalmonRunPanel', () => {
     expect(screen.getByLabelText('金イクラ')).toHaveValue(30);
   });
 
+  it('does not report a saved job as failed when only the session list fails to refresh', async () => {
+    mockedAxios.post.mockResolvedValue({ data: summaryOf([job()]), status: 200 });
+    render(<SalmonRunPanel />);
+    await screen.findByText(/今のセッション/);
+    mockedAxios.get.mockRejectedValue(new Error('500'));
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+
+    fillNumbers('30', '12', '1');
+    await act(async () => fireEvent.click(screen.getByRole('button', { name: '記録' })));
+
+    expect(screen.queryByText(/記録に失敗しました/)).not.toBeInTheDocument();
+    expect(within(screen.getByTestId('salmon-history')).getByText(/金イクラ 30/)).toBeInTheDocument();
+  });
+
   it('deletes a job from the history', async () => {
     mockGet(summaryOf([job({ id: 5 })]));
     mockedAxios.delete.mockResolvedValue({ data: summaryOf([]), status: 200 });
@@ -153,6 +167,29 @@ describe('SalmonRunPanel', () => {
     expect(mockedAxios.get).toHaveBeenCalledWith('/api/salmon?sessionId=1');
     expect(await within(await screen.findByTestId('salmon-past-history')).findByText(/金イクラ 40/)).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /#2/ })).not.toBeInTheDocument();
+  });
+
+  it('ignores a stale response when the past session selection changes quickly', async () => {
+    const sessions = [{ ...session, totals: totals() }, pastSession, { ...pastSession, id: 3, title: '三番目' }];
+    mockGet(summaryOf([]), sessions);
+    let resolveFirst: (value: unknown) => void = () => {};
+    const baseGet = mockedAxios.get.getMockImplementation()!;
+    mockedAxios.get.mockImplementation(async (url: string) => {
+      if (url === '/api/salmon?sessionId=1') return new Promise((resolve) => { resolveFirst = resolve; });
+      if (url === '/api/salmon?sessionId=3') return { data: { ...summaryOf([job({ id: 30, sessionId: 3, goldenEggs: 77 })]), session: sessions[2] }, status: 200 };
+      return baseGet(url);
+    });
+    render(<SalmonRunPanel />);
+    await screen.findByText(/今のセッション/);
+
+    await selectOption('セッションを選択', /#1 /);
+    await selectOption('セッションを選択', /三番目/);
+    await screen.findByText(/金イクラ 77/);
+    await act(async () => resolveFirst({ data: { ...summaryOf([job({ id: 9, sessionId: 1, goldenEggs: 40 })]), session: pastSession }, status: 200 }));
+
+    const history = screen.getByTestId('salmon-past-history');
+    expect(within(history).getByText(/金イクラ 77/)).toBeInTheDocument();
+    expect(within(history).queryByText(/金イクラ 40/)).not.toBeInTheDocument();
   });
 
   it('shows an error when loading fails', async () => {
