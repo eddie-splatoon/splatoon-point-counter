@@ -5,6 +5,7 @@ import {AnimatePresence, motion} from 'motion/react';
 import React, {useCallback, useEffect, useState} from 'react';
 
 import BurndownChart from '../../components/BurndownChart';
+import ChallengeList from '../../components/ChallengeList';
 import InkTankGauge from '../../components/InkTankGauge';
 import SalmonStats from '../../components/SalmonStats';
 import {SalmonSummary} from '../../lib/salmonTypes';
@@ -72,6 +73,8 @@ const SidePanelOverlayPage: React.FC = () => {
         switch (slot) {
             case 'salmon':
                 return salmon && <SalmonStats lastJob={salmon.lastJob} totals={salmon.totals}/>;
+            case 'challenges':
+                return <ChallengeList challenges={settings.challenges}/>;
             case 'burndown':
                 return streamData?.burndown && <BurndownChart data={streamData.burndown}/>;
         }

@@ -1,10 +1,14 @@
 'use client';
 
+import RemoveCircleIcon from '@mui/icons-material/RemoveCircle';
 import {
     Alert,
+    Box,
+    Button,
     Checkbox,
     FormControlLabel,
     FormGroup,
+    IconButton,
     Paper,
     Switch,
     TextField,
@@ -16,6 +20,9 @@ import axios from 'axios';
 import React, {useCallback, useEffect, useState} from 'react';
 
 import {
+    Challenge,
+    MAX_CHALLENGES,
+    MAX_CHALLENGE_LENGTH,
     MAX_FOLLOWER_GOAL,
     MAX_ROTATE_SECONDS,
     MIN_ROTATE_SECONDS,
@@ -39,6 +46,7 @@ const SidePanelSettingsPanel: React.FC = () => {
     const [settings, setSettings] = useState<SidePanelSettings | null>(null);
     const [secondsInput, setSecondsInput] = useState('');
     const [followerGoalInput, setFollowerGoalInput] = useState('');
+    const [newChallenge, setNewChallenge] = useState('');
     const [error, setError] = useState('');
 
     const load = useCallback(async () => {
@@ -76,6 +84,17 @@ const SidePanelSettingsPanel: React.FC = () => {
         return error ? <Alert severity="error">{error}</Alert> : <Typography>読み込み中...</Typography>;
     }
 
+    const saveChallenges = (challenges: Challenge[]) => void save({challenges});
+
+    const canAddChallenge = newChallenge.trim() !== '' && settings.challenges.length < MAX_CHALLENGES;
+
+    const handleAddChallenge = () => {
+        if (!canAddChallenge) return;
+        const id = Math.max(0, ...settings.challenges.map((c) => c.id)) + 1;
+        saveChallenges([...settings.challenges, {id, text: newChallenge.trim(), done: false}]);
+        setNewChallenge('');
+    };
+
     const toggleEnabled = (slot: SidePanelSlot, checked: boolean) => {
         const enabledSlots = checked ? [...settings.enabledSlots, slot] : settings.enabledSlots.filter((s) => s !== slot);
         void save({enabledSlots});
@@ -110,6 +129,52 @@ const SidePanelSettingsPanel: React.FC = () => {
                 />
                 <Typography variant="caption" sx={{display: 'block', color: 'text.secondary'}}>
                     フォロワー数は Twitch 連携（<code>pnpm twitch</code>）から取得します。起動していないときはゲージを表示しません。
+                </Typography>
+            </Paper>
+
+            <Paper elevation={12} sx={paperSx}>
+                <Typography variant="h6" gutterBottom>📝 本日のお題</Typography>
+                <Box data-testid="challenge-editor" sx={{my: 1}}>
+                    {settings.challenges.length === 0 ? (
+                        <Typography variant="body2" sx={{color: 'text.secondary', p: 1}}>お題がありません</Typography>
+                    ) : (
+                        settings.challenges.map((challenge) => (
+                            <Box key={challenge.id} sx={{display: 'flex', alignItems: 'center', borderBottom: '1px dotted rgba(255,255,255,0.2)'}}>
+                                <FormControlLabel
+                                    sx={{flex: 1, mr: 0}}
+                                    label={challenge.text}
+                                    control={
+                                        <Checkbox
+                                            checked={challenge.done}
+                                            onChange={(e) => saveChallenges(settings.challenges.map((c) => c.id === challenge.id ? {...c, done: e.target.checked} : c))}
+                                        />
+                                    }
+                                />
+                                <IconButton
+                                    size="small"
+                                    color="error"
+                                    onClick={() => saveChallenges(settings.challenges.filter((c) => c.id !== challenge.id))}
+                                    aria-label={`お題「${challenge.text}」を削除`}
+                                >
+                                    <RemoveCircleIcon fontSize="small"/>
+                                </IconButton>
+                            </Box>
+                        ))
+                    )}
+                </Box>
+                <Box sx={{display: 'flex', gap: 1, alignItems: 'center'}}>
+                    <TextField
+                        label="新しいお題"
+                        value={newChallenge}
+                        onChange={(e) => setNewChallenge(e.target.value)}
+                        onKeyDown={(e) => e.key === 'Enter' && handleAddChallenge()}
+                        slotProps={{htmlInput: {maxLength: MAX_CHALLENGE_LENGTH}}}
+                        fullWidth
+                    />
+                    <Button variant="contained" onClick={handleAddChallenge} disabled={!canAddChallenge} sx={{minWidth: '100px'}}>追加</Button>
+                </Box>
+                <Typography variant="caption" sx={{display: 'block', mt: 1, color: 'text.secondary'}}>
+                    最大 {MAX_CHALLENGES} 個（2〜4 個がおすすめ）。チェックを入れると、オーバーレイでスタンプが押されます。サイドパネルに出すには、下のスロットで「本日のお題」を選んでください。
                 </Typography>
             </Paper>
 

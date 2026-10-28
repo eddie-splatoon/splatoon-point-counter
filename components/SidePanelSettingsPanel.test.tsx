@@ -2,7 +2,7 @@ import { act, fireEvent, render, screen } from '@testing-library/react';
 import axios from 'axios';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { getDefaultSidePanelSettings } from '../lib/sidePanelTypes';
+import { MAX_CHALLENGES, getDefaultSidePanelSettings } from '../lib/sidePanelTypes';
 
 import SidePanelSettingsPanel from './SidePanelSettingsPanel';
 
@@ -61,7 +61,7 @@ describe('SidePanelSettingsPanel', () => {
   });
 
   it('keeps at least one slot in the rotation', async () => {
-    await renderLoaded();
+    await renderLoaded({ ...getDefaultSidePanelSettings(), enabledSlots: ['salmon', 'burndown'] });
     const salmon = screen.getByRole('checkbox', { name: 'サーモンラン' });
 
     await act(async () => fireEvent.click(salmon));
@@ -104,6 +104,73 @@ describe('SidePanelSettingsPanel', () => {
 
     expect(mockedAxios.post).not.toHaveBeenCalled();
     expect(input).toHaveAttribute('aria-invalid', 'true');
+  });
+
+  describe('challenges', () => {
+    const challenges = [
+      { id: 1, text: 'キケン度MAXでクリア', done: false },
+      { id: 3, text: '新ブキで3クリア', done: true },
+    ];
+
+    it('shows the saved challenges', async () => {
+      await renderLoaded({ ...getDefaultSidePanelSettings(), challenges });
+
+      expect(screen.getByRole('checkbox', { name: 'キケン度MAXでクリア' })).not.toBeChecked();
+      expect(screen.getByRole('checkbox', { name: '新ブキで3クリア' })).toBeChecked();
+    });
+
+    it('adds a challenge with the next id', async () => {
+      await renderLoaded({ ...getDefaultSidePanelSettings(), challenges });
+
+      fireEvent.change(screen.getByLabelText('新しいお題'), { target: { value: '  オカシラを倒す ' } });
+      await act(async () => fireEvent.click(screen.getByRole('button', { name: '追加' })));
+
+      expect(lastPosted()).toMatchObject({ challenges: [...challenges, { id: 4, text: 'オカシラを倒す', done: false }] });
+      expect(screen.getByLabelText('新しいお題')).toHaveValue('');
+    });
+
+    it('adds a challenge with the Enter key', async () => {
+      await renderLoaded();
+
+      fireEvent.change(screen.getByLabelText('新しいお題'), { target: { value: 'オカシラを倒す' } });
+      await act(async () => fireEvent.keyDown(screen.getByLabelText('新しいお題'), { key: 'Enter' }));
+
+      expect(lastPosted()).toMatchObject({ challenges: [{ id: 1, text: 'オカシラを倒す', done: false }] });
+    });
+
+    it('does not add an empty challenge', async () => {
+      await renderLoaded();
+
+      fireEvent.change(screen.getByLabelText('新しいお題'), { target: { value: '   ' } });
+
+      expect(screen.getByRole('button', { name: '追加' })).toBeDisabled();
+    });
+
+    it('does not add more than the maximum', async () => {
+      const full = Array.from({ length: MAX_CHALLENGES }, (_, i) => ({ id: i + 1, text: `お題${i + 1}`, done: false }));
+      await renderLoaded({ ...getDefaultSidePanelSettings(), challenges: full });
+
+      fireEvent.change(screen.getByLabelText('新しいお題'), { target: { value: 'もう1つ' } });
+
+      expect(screen.getByRole('button', { name: '追加' })).toBeDisabled();
+    });
+
+    it('checks a challenge as cleared', async () => {
+      await renderLoaded({ ...getDefaultSidePanelSettings(), challenges });
+
+      await act(async () => fireEvent.click(screen.getByRole('checkbox', { name: 'キケン度MAXでクリア' })));
+
+      expect(lastPosted()).toMatchObject({ challenges: [{ ...challenges[0], done: true }, challenges[1]] });
+    });
+
+    it('deletes a challenge', async () => {
+      await renderLoaded({ ...getDefaultSidePanelSettings(), challenges });
+
+      await act(async () => fireEvent.click(screen.getByRole('button', { name: 'お題「キケン度MAXでクリア」を削除' })));
+
+      expect(lastPosted()).toMatchObject({ challenges: [challenges[1]] });
+      expect(screen.queryByText('キケン度MAXでクリア')).not.toBeInTheDocument();
+    });
   });
 
   it('shows an error when loading fails', async () => {

@@ -14,7 +14,14 @@ const post = (body: unknown, contentType = 'application/json') =>
     body: typeof body === 'string' ? body : JSON.stringify(body),
   }));
 
-const settings = { activeSlot: 'burndown', autoRotate: true, rotateSeconds: 15, enabledSlots: ['salmon', 'burndown'], followerGoal: 20 };
+const settings = {
+  activeSlot: 'burndown',
+  autoRotate: true,
+  rotateSeconds: 15,
+  enabledSlots: ['salmon', 'challenges', 'burndown'],
+  followerGoal: 20,
+  challenges: [{ id: 1, text: 'キケン度MAXでクリア', done: true }],
+};
 
 beforeEach(() => {
   __TEST_ONLY_setDb(openDb(':memory:'));
@@ -33,11 +40,12 @@ describe('Side panel API', () => {
     expect(await (await GET()).json()).toEqual(settings);
   });
 
-  it('keeps settings saved before followerGoal existed', async () => {
+  it('keeps settings saved before followerGoal and challenges existed', async () => {
     const saved: Record<string, unknown> = { ...settings };
     delete saved.followerGoal;
+    delete saved.challenges;
     setAppState('sidePanel', saved);
-    expect(await (await GET()).json()).toEqual({ ...settings, followerGoal: null });
+    expect(await (await GET()).json()).toEqual({ ...settings, followerGoal: null, challenges: [] });
   });
 
   it('falls back to the defaults when the saved settings are no longer valid', async () => {

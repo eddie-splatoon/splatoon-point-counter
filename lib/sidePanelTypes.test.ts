@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest';
 
 import {
+  MAX_CHALLENGES,
+  MAX_CHALLENGE_LENGTH,
   MAX_FOLLOWER_GOAL,
   MAX_ROTATE_SECONDS,
   MIN_ROTATE_SECONDS,
@@ -10,7 +12,8 @@ import {
   pickSlot,
 } from './sidePanelTypes';
 
-const valid = { activeSlot: 'burndown', autoRotate: true, rotateSeconds: 30, enabledSlots: ['salmon', 'burndown'], followerGoal: 20 };
+const challenges = [{ id: 1, text: 'キケン度MAXでクリア', done: false }, { id: 2, text: '新ブキで3クリア', done: true }];
+const valid = { activeSlot: 'burndown', autoRotate: true, rotateSeconds: 30, enabledSlots: ['salmon', 'burndown'], followerGoal: 20, challenges };
 
 describe('parseSidePanelSettings', () => {
   it('accepts valid settings', () => {
@@ -21,10 +24,22 @@ describe('parseSidePanelSettings', () => {
     expect(parseSidePanelSettings(getDefaultSidePanelSettings())).toEqual(getDefaultSidePanelSettings());
   });
 
-  it('treats settings saved before followerGoal existed as having no follower goal', () => {
+  it('treats settings saved before followerGoal and challenges existed as having neither', () => {
     const saved: Record<string, unknown> = { ...valid };
     delete saved.followerGoal;
-    expect(parseSidePanelSettings(saved)).toEqual({ ...valid, followerGoal: null });
+    delete saved.challenges;
+    expect(parseSidePanelSettings(saved)).toEqual({ ...valid, followerGoal: null, challenges: [] });
+  });
+
+  it('trims challenge text', () => {
+    expect(parseSidePanelSettings({ ...valid, challenges: [{ id: 1, text: '  お題  ', done: false }] })).toMatchObject({
+      challenges: [{ id: 1, text: 'お題', done: false }],
+    });
+  });
+
+  it('accepts the maximum number and length of challenges', () => {
+    const many = Array.from({ length: MAX_CHALLENGES }, (_, i) => ({ id: i + 1, text: 'あ'.repeat(MAX_CHALLENGE_LENGTH), done: false }));
+    expect(parseSidePanelSettings({ ...valid, challenges: many })).not.toBeTypeOf('string');
   });
 
   it('accepts the follower goal bounds and null', () => {
@@ -46,7 +61,7 @@ describe('parseSidePanelSettings', () => {
 
   it.each([
     ['null', null],
-    ['an unknown active slot', { ...valid, activeSlot: 'challenges' }],
+    ['an unknown active slot', { ...valid, activeSlot: 'schedule' }],
     ['a non-boolean autoRotate', { ...valid, autoRotate: 'yes' }],
     ['too short a rotation', { ...valid, rotateSeconds: MIN_ROTATE_SECONDS - 1 }],
     ['too long a rotation', { ...valid, rotateSeconds: MAX_ROTATE_SECONDS + 1 }],
@@ -58,6 +73,13 @@ describe('parseSidePanelSettings', () => {
     ['too large a follower goal', { ...valid, followerGoal: MAX_FOLLOWER_GOAL + 1 }],
     ['a fractional follower goal', { ...valid, followerGoal: 1.5 }],
     ['a string follower goal', { ...valid, followerGoal: '20' }],
+    ['non-array challenges', { ...valid, challenges: 'お題' }],
+    ['too many challenges', { ...valid, challenges: Array.from({ length: MAX_CHALLENGES + 1 }, (_, i) => ({ id: i + 1, text: 'お題', done: false })) }],
+    ['an empty challenge', { ...valid, challenges: [{ id: 1, text: '   ', done: false }] }],
+    ['too long a challenge', { ...valid, challenges: [{ id: 1, text: 'あ'.repeat(MAX_CHALLENGE_LENGTH + 1), done: false }] }],
+    ['a challenge without done', { ...valid, challenges: [{ id: 1, text: 'お題' }] }],
+    ['a challenge with an invalid id', { ...valid, challenges: [{ id: 0, text: 'お題', done: false }] }],
+    ['duplicate challenge ids', { ...valid, challenges: [{ id: 1, text: 'a', done: false }, { id: 1, text: 'b', done: false }] }],
   ])('rejects %s', (_, input) => {
     expect(parseSidePanelSettings(input)).toBeTypeOf('string');
   });
@@ -70,7 +92,11 @@ describe('pickSlot', () => {
 
   it('cycles through the enabled slots when rotating', () => {
     const settings = { ...getDefaultSidePanelSettings(), autoRotate: true };
-    expect([0, 1, 2, 3].map((i) => pickSlot(settings, i))).toEqual(['salmon', 'burndown', 'salmon', 'burndown']);
+    expect([0, 1, 2, 3].map((i) => pickSlot({ ...settings, enabledSlots: ['salmon', 'challenges', 'burndown'] }, i))).toEqual(['salmon', 'challenges', 'burndown', 'salmon']);
+  });
+
+  it('does not rotate through the challenges by default', () => {
+    expect(getDefaultSidePanelSettings().enabledSlots).not.toContain('challenges');
   });
 });
 
