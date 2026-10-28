@@ -29,6 +29,7 @@
 - **スコア表示**: メインスコアのラベルや値を更新します。
 - **バーンダウン**: 目標値に対する進捗（例: ポイント、視聴者数など）を管理します。
 - **メッセージ**: オーバーレイに表示するスクロールメッセージを複数プリセットから選択・管理します。
+- **サーモンラン**: バイトごとの金イクラ納品数・オオモノ処理数・デス数・クリア/失敗を記録し、「前回」と「本日（配信セッション）合計」を集計します。記録は SQLite（`data/overlay.db`）に保存されるため、再起動後も過去のセッションを参照できます。
 - **共通設定**: オーバーレイ全体のフォントや、音声認識によるエフェクト（「ナイス！」などのキーワードでハートを表示）の有効/無効を切り替えます。
 
 <img width="1428" height="743" alt="image" src="https://github.com/user-attachments/assets/602c7504-c7ae-4834-b7ca-901b0de2dc69" />
@@ -75,6 +76,7 @@ flowchart LR
 - **言語**: TypeScript
 - **UI/スタイリング**: Material-UI (MUI), Tailwind CSS
 - **リアルタイム通信**: REST API (クライアントからのポーリング)
+- **永続化**: SQLite（Node 24 標準の [`node:sqlite`](https://nodejs.org/api/sqlite.html)。`data/overlay.db`、追加の依存なし）
 - **テスト**: Vitest, React Testing Library
 - **パッケージマネージャ**: [pnpm](https://pnpm.io/)
 - **文字起こし**: [mlx-whisper](https://github.com/ml-explore/mlx-examples/tree/main/whisper) + [Silero VAD](https://github.com/snakers4/silero-vad)（Python 3.12、Apple Silicon Mac でネイティブ実行）
@@ -111,6 +113,8 @@ flowchart LR
     docker-compose up
     ```
 3.  ブラウザで `http://localhost:3000` を開きます。
+
+サーモンランの記録などのデータは `data/overlay.db`（SQLite）に保存されます。`docker-compose` はリポジトリをコンテナにマウントしているため、コンテナを作り直してもデータはホスト側に残ります。
 
 > [!NOTE]
 > `node_modules` は匿名ボリュームとしてマウントされるため、npm を使用していた頃のボリュームが残っていると古い依存関係がそのまま使われ続けます。pnpm 移行後に初めて起動する場合は、一度 `docker-compose down -v` でボリュームを破棄してからビルドし直してください。

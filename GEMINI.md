@@ -84,6 +84,9 @@ export interface StreamData {
 #### `/app/api/twitch/route.ts`
 -   **目的**: Twitch のフォロワー数とフォロワー目標（`{followerTotal, goal, lastFollowAt, updatedAt, revision}`）をインメモリで保持するAPIルート。`tools/twitch-eventsub/` のスクリプトが `POST` し、オーバーレイが `GET` します。フォロワー名は保持しません。
 
+#### `/app/api/salmon/route.ts` と `/app/api/salmon/sessions/route.ts`
+-   **目的**: サーモンランの成績（金イクラ・オオモノ・デス・クリア/失敗・ステージ）を配信セッション単位で記録・集計するAPIルート。データは `lib/db.ts` の SQLite（`data/overlay.db`）に保存され、再起動後も残ります。データアクセスは `lib/salmon.ts`、クライアントからも使う型・定数は `lib/salmonTypes.ts` にあります。コントロールパネルの「サーモンラン」タブ（`components/SalmonRunPanel.tsx`）から操作し、表示は `components/SalmonStats.tsx` が担います。
+
 ### `/tools/twitch-eventsub`
 -   **目的**: `pnpm twitch` で起動する常駐スクリプト。Device Code Flow で認証し、EventSub WebSocket でフォローとゴールの通知を受信して `/api/twitch` へ送信します。トークンは `data/twitch-token.json`（Git 管理外）に保存されます。詳細は同ディレクトリの README を参照。
 
