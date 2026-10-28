@@ -171,8 +171,12 @@ const SidePanelSettingsPanel: React.FC = () => {
                         label="新しいお題"
                         value={newChallenge}
                         onChange={(e) => setNewChallenge(e.target.value)}
-                        // Enter は改行。Ctrl / ⌘ + Enter で追加する
-                        onKeyDown={(e) => e.key === 'Enter' && (e.ctrlKey || e.metaKey) && handleAddChallenge()}
+                        // Enter は改行。Ctrl / ⌘ + Enter で追加する（変換中は追加しない。追加時はブラウザが改行を入れないよう止める）
+                        onKeyDown={(e) => {
+                            if (e.key !== 'Enter' || !(e.ctrlKey || e.metaKey) || e.nativeEvent.isComposing) return;
+                            e.preventDefault();
+                            handleAddChallenge();
+                        }}
                         error={newChallenge.trim() !== '' && normalizedChallenge === null}
                         helperText={`改行を入れると、その位置で折り返して表示します（${MAX_CHALLENGE_LINES} 行・改行を除いて ${MAX_CHALLENGE_LENGTH} 文字まで）。Ctrl / ⌘ + Enter で追加できます。`}
                         multiline

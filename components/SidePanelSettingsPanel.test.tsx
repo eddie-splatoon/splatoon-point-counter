@@ -138,6 +138,15 @@ describe('SidePanelSettingsPanel', () => {
       expect(lastPosted()).toMatchObject({ challenges: [{ id: 1, text: 'オカシラを倒す', done: false }] });
     });
 
+    it('does not add a challenge while the IME is composing', async () => {
+      await renderLoaded();
+
+      fireEvent.change(screen.getByLabelText('新しいお題'), { target: { value: 'オカシラ' } });
+      await act(async () => fireEvent.keyDown(screen.getByLabelText('新しいお題'), { key: 'Enter', ctrlKey: true, isComposing: true }));
+
+      expect(mockedAxios.post).not.toHaveBeenCalled();
+    });
+
     it('does not add a challenge with Enter alone, which starts a new line', async () => {
       await renderLoaded();
 
