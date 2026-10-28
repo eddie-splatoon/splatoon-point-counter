@@ -47,7 +47,8 @@ const ChallengeList: React.FC<ChallengeListProps> = ({challenges}) => {
                             style={{borderColor: challenge.done ? STAMP_COLOR : 'rgba(255,255,255,0.6)', backgroundColor: challenge.done ? STAMP_COLOR : 'transparent'}}
                             aria-hidden
                         />
-                        <span className={challenge.done ? 'text-gray-400' : undefined} style={{fontSize: '16px', lineHeight: 1.3}}>
+                        {/* 改行は配信者が折り返したい位置。そこで改行して表示する */}
+                        <span className={challenge.done ? 'text-gray-400' : undefined} style={{fontSize: '16px', lineHeight: 1.3, whiteSpace: 'pre-line'}}>
                             {challenge.text}
                         </span>
                         {challenge.done && (

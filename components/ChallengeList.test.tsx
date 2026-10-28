@@ -67,6 +67,13 @@ describe('ChallengeList', () => {
     expect(stamp(3)).toHaveAttribute('data-animated', 'false');
   });
 
+  it('keeps the line breaks chosen by the streamer', () => {
+    render(<ChallengeList challenges={[{ id: 1, text: 'キケン度MAXで\n3連続クリア', done: false }]} />);
+
+    const text = screen.getByText((_, el) => el?.textContent === 'キケン度MAXで\n3連続クリア' && el.tagName === 'SPAN');
+    expect(text).toHaveStyle({ whiteSpace: 'pre-line' });
+  });
+
   it('renders nothing without challenges', () => {
     const { container } = render(<ChallengeList challenges={[]} />);
     expect(container).toBeEmptyDOMElement();

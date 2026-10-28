@@ -15,7 +15,8 @@ export const MIN_ROTATE_SECONDS = 5;
 export const MAX_ROTATE_SECONDS = 600;
 export const MAX_FOLLOWER_GOAL = 1_000_000;
 export const MAX_CHALLENGES = 8;
-export const MAX_CHALLENGE_LENGTH = 40;
+export const MAX_CHALLENGE_LENGTH = 40; // 改行を除いた文字数
+export const MAX_CHALLENGE_LINES = 3;
 
 export interface Challenge {
     id: number;
@@ -68,16 +69,27 @@ export function parseSidePanelSettings(body: unknown): SidePanelSettings | strin
     return {activeSlot, autoRotate, rotateSeconds, enabledSlots: slots, followerGoal, challenges: parsedChallenges};
 }
 
+/**
+ * お題の文字列を整える。改行は配信者が折り返したい位置として残し、各行の前後の空白と空行は除く。
+ * 空、または行数・文字数（改行を除く）が上限を超えるなら null
+ */
+export function normalizeChallengeText(text: string): string | null {
+    const lines = text.replace(/\r\n?/g, '\n').split('\n').map((line) => line.trim()).filter((line) => line !== '');
+    const length = lines.join('').length;
+    if (lines.length === 0 || lines.length > MAX_CHALLENGE_LINES || length > MAX_CHALLENGE_LENGTH) return null;
+    return lines.join('\n');
+}
+
 function parseChallenges(value: unknown): Challenge[] | string {
-    const invalid = `challenges must be an array of up to ${MAX_CHALLENGES} {id, text, done} with unique ids and 1-${MAX_CHALLENGE_LENGTH} characters of text.`;
+    const invalid = `challenges must be an array of up to ${MAX_CHALLENGES} {id, text, done} with unique ids and text of 1-${MAX_CHALLENGE_LENGTH} characters in up to ${MAX_CHALLENGE_LINES} lines.`;
     if (!Array.isArray(value) || value.length > MAX_CHALLENGES) return invalid;
     const challenges: Challenge[] = [];
     for (const item of value) {
         const {id, text, done} = (item ?? {}) as Record<string, unknown>;
         if (typeof id !== 'number' || !Number.isInteger(id) || id < 1 || typeof done !== 'boolean' || typeof text !== 'string') return invalid;
-        const trimmed = text.trim();
-        if (trimmed === '' || trimmed.length > MAX_CHALLENGE_LENGTH || challenges.some((c) => c.id === id)) return invalid;
-        challenges.push({id, text: trimmed, done});
+        const normalized = normalizeChallengeText(text);
+        if (normalized === null || challenges.some((c) => c.id === id)) return invalid;
+        challenges.push({id, text: normalized, done});
     }
     return challenges;
 }

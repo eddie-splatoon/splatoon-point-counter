@@ -23,6 +23,7 @@ import {
     Challenge,
     MAX_CHALLENGES,
     MAX_CHALLENGE_LENGTH,
+    MAX_CHALLENGE_LINES,
     MAX_FOLLOWER_GOAL,
     MAX_ROTATE_SECONDS,
     MIN_ROTATE_SECONDS,
@@ -30,6 +31,7 @@ import {
     SIDE_PANEL_SLOT_LABELS,
     SidePanelSettings,
     SidePanelSlot,
+    normalizeChallengeText,
 } from '../lib/sidePanelTypes';
 
 const paperSx = {mb: 3, p: 3, bgcolor: 'background.paper', backdropFilter: 'blur(10px)', border: '1px solid rgba(255, 255, 255, 0.1)'};
@@ -86,12 +88,14 @@ const SidePanelSettingsPanel: React.FC = () => {
 
     const saveChallenges = (challenges: Challenge[]) => void save({challenges});
 
-    const canAddChallenge = newChallenge.trim() !== '' && settings.challenges.length < MAX_CHALLENGES;
+    // 改行は配信画面で折り返したい位置としてそのまま残す（各行の前後の空白と空行は除く）
+    const normalizedChallenge = normalizeChallengeText(newChallenge);
+    const canAddChallenge = normalizedChallenge !== null && settings.challenges.length < MAX_CHALLENGES;
 
     const handleAddChallenge = () => {
         if (!canAddChallenge) return;
         const id = Math.max(0, ...settings.challenges.map((c) => c.id)) + 1;
-        saveChallenges([...settings.challenges, {id, text: newChallenge.trim(), done: false}]);
+        saveChallenges([...settings.challenges, {id, text: normalizedChallenge, done: false}]);
         setNewChallenge('');
     };
 
@@ -142,7 +146,7 @@ const SidePanelSettingsPanel: React.FC = () => {
                             <Box key={challenge.id} sx={{display: 'flex', alignItems: 'center', borderBottom: '1px dotted rgba(255,255,255,0.2)'}}>
                                 <FormControlLabel
                                     sx={{flex: 1, mr: 0}}
-                                    label={challenge.text}
+                                    label={<span style={{whiteSpace: 'pre-line'}}>{challenge.text}</span>}
                                     control={
                                         <Checkbox
                                             checked={challenge.done}
@@ -154,7 +158,7 @@ const SidePanelSettingsPanel: React.FC = () => {
                                     size="small"
                                     color="error"
                                     onClick={() => saveChallenges(settings.challenges.filter((c) => c.id !== challenge.id))}
-                                    aria-label={`お題「${challenge.text}」を削除`}
+                                    aria-label={`お題「${challenge.text.replace(/\n/g, ' ')}」を削除`}
                                 >
                                     <RemoveCircleIcon fontSize="small"/>
                                 </IconButton>
@@ -162,13 +166,18 @@ const SidePanelSettingsPanel: React.FC = () => {
                         ))
                     )}
                 </Box>
-                <Box sx={{display: 'flex', gap: 1, alignItems: 'center'}}>
+                <Box sx={{display: 'flex', gap: 1, alignItems: 'flex-start'}}>
                     <TextField
                         label="新しいお題"
                         value={newChallenge}
                         onChange={(e) => setNewChallenge(e.target.value)}
-                        onKeyDown={(e) => e.key === 'Enter' && handleAddChallenge()}
-                        slotProps={{htmlInput: {maxLength: MAX_CHALLENGE_LENGTH}}}
+                        // Enter は改行。Ctrl / ⌘ + Enter で追加する
+                        onKeyDown={(e) => e.key === 'Enter' && (e.ctrlKey || e.metaKey) && handleAddChallenge()}
+                        error={newChallenge.trim() !== '' && normalizedChallenge === null}
+                        helperText={`改行を入れると、その位置で折り返して表示します（${MAX_CHALLENGE_LINES} 行・改行を除いて ${MAX_CHALLENGE_LENGTH} 文字まで）。Ctrl / ⌘ + Enter で追加できます。`}
+                        multiline
+                        minRows={2}
+                        maxRows={MAX_CHALLENGE_LINES}
                         fullWidth
                     />
                     <Button variant="contained" onClick={handleAddChallenge} disabled={!canAddChallenge} sx={{minWidth: '100px'}}>追加</Button>
