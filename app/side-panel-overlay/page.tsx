@@ -21,7 +21,8 @@ const SidePanelOverlayPage: React.FC = () => {
     const [settings, setSettings] = useState<SidePanelSettings | null>(null);
     const [salmon, setSalmon] = useState<SalmonSummary | null>(null);
     const [streamData, setStreamData] = useState<StreamData | null>(null);
-    const [rotationIndex, setRotationIndex] = useState(0);
+    // ローテーションの位置。key（ローテーションの設定）が変わったら先頭からやり直す
+    const [rotation, setRotation] = useState({key: '', index: 0});
 
     const fetchData = useCallback(async () => {
         // 1つの API が落ちていても、他のスロットは表示し続ける
@@ -44,11 +45,16 @@ const SidePanelOverlayPage: React.FC = () => {
 
     const autoRotate = settings?.autoRotate ?? false;
     const rotateSeconds = settings?.rotateSeconds ?? 0;
+    const rotationKey = autoRotate ? `${rotateSeconds}:${settings?.enabledSlots.join(',')}` : '';
+    // OFF を挟んだ場合も含め、設定が変わったらレンダー中に位置を戻す（React の「props の変化に合わせて state を調整する」パターン）
+    if (rotation.key !== rotationKey) setRotation({key: rotationKey, index: 0});
+    const rotationIndex = rotation.key === rotationKey ? rotation.index : 0;
     useEffect(() => {
-        if (!autoRotate) return;
-        const timer = setInterval(() => setRotationIndex((i) => i + 1), rotateSeconds * 1000);
+        if (!rotationKey) return;
+        // 設定が変わるとタイマーも作り直すので、新しい設定の最初の周期は満了まで待つ
+        const timer = setInterval(() => setRotation((r) => ({...r, index: r.index + 1})), rotateSeconds * 1000);
         return () => clearInterval(timer);
-    }, [autoRotate, rotateSeconds]);
+    }, [rotationKey, rotateSeconds]);
 
     if (!settings) return <div className="w-[250px] h-[584px]"/>;
 
@@ -69,6 +75,7 @@ const SidePanelOverlayPage: React.FC = () => {
             style={{backgroundColor: 'transparent', fontFamily: streamData?.fontFamily || 'sans-serif'}}
         >
             {/* 上段: フォロワーゲージ（#61 で追加） */}
+            {/* 下段: コントロールパネルで選んだスロット */}
             <div className="relative flex-1" data-testid="side-panel-slot">
                 <AnimatePresence>
                     <motion.div

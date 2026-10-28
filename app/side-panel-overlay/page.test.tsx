@@ -93,6 +93,53 @@ describe('SidePanelOverlayPage', () => {
     await waitFor(() => expect(visibleSlot()).toBe('salmon'));
   });
 
+  it('restarts the rotation from the first slot when auto rotation is turned back on', async () => {
+    const rotating = { ...getDefaultSidePanelSettings(), autoRotate: true, rotateSeconds: 10 };
+    mockApis(rotating);
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    render(<SidePanelOverlayPage />);
+    await screen.findByTestId('SalmonStats');
+    await act(async () => vi.advanceTimersByTime(10_000));
+    await waitFor(() => expect(visibleSlot()).toBe('burndown'));
+
+    mockApis({ ...rotating, autoRotate: false, activeSlot: 'burndown' });
+    await act(async () => vi.advanceTimersByTime(2000));
+    mockApis(rotating);
+    await act(async () => vi.advanceTimersByTime(2000));
+
+    await waitFor(() => expect(visibleSlot()).toBe('salmon'));
+  });
+
+  it('restarts the rotation when the enabled slots change', async () => {
+    const rotating = { ...getDefaultSidePanelSettings(), autoRotate: true, rotateSeconds: 10 };
+    mockApis(rotating);
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    render(<SidePanelOverlayPage />);
+    await screen.findByTestId('SalmonStats');
+    await act(async () => vi.advanceTimersByTime(10_000));
+    await waitFor(() => expect(visibleSlot()).toBe('burndown'));
+
+    mockApis({ ...rotating, enabledSlots: ['burndown'] });
+    await act(async () => vi.advanceTimersByTime(2000));
+    await waitFor(() => expect(visibleSlot()).toBe('burndown'));
+
+    // 1スロットだけなら、周期が来ても同じスロットのまま
+    await act(async () => vi.advanceTimersByTime(10_000));
+    expect(visibleSlot()).toBe('burndown');
+  });
+
+  it('keeps the last settings when fetching them fails', async () => {
+    mockApis({ ...getDefaultSidePanelSettings(), activeSlot: 'burndown' });
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    render(<SidePanelOverlayPage />);
+    await screen.findByTestId('BurndownChart');
+
+    mockApis(getDefaultSidePanelSettings(), ['/api/side-panel']);
+    await act(async () => vi.advanceTimersByTime(2000));
+
+    expect(visibleSlot()).toBe('burndown');
+  });
+
   it('keeps showing a slot when another API fails', async () => {
     mockApis(getDefaultSidePanelSettings(), ['/api/stream-data']);
     render(<SidePanelOverlayPage />);
