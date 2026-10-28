@@ -147,6 +147,19 @@ export async function saveToken(path: string, token: Token): Promise<void> {
 
 // ---- Helix API ----
 
+export class HelixError extends Error {
+  status: number;
+
+  constructor(status: number, message: string) {
+    super(message);
+    this.status = status;
+  }
+}
+
+/** 再試行で直る失敗か（通信断・5xx・429）。スコープ不足などそれ以外の 4xx は再試行しても直らない */
+export const isRetryable = (error: unknown): boolean =>
+  !(error instanceof HelixError) || error.status === 429 || error.status >= 500;
+
 interface TwitchClientOptions {
   clientId: string;
   tokenPath: string;
@@ -202,7 +215,7 @@ export class TwitchClient {
       await this.refresh();
       res = await this.fetchFn(`${HELIX_URL}${path}`, this.withAuth(init));
     }
-    if (!res.ok) throw new Error(`Helix ${init.method ?? 'GET'} ${path} が失敗しました: ${res.status} ${await res.text()}`);
+    if (!res.ok) throw new HelixError(res.status, `Helix ${init.method ?? 'GET'} ${path} が失敗しました: ${res.status} ${await res.text()}`);
     return res;
   }
 
@@ -353,7 +366,11 @@ export class EventSubConnection {
     const socket = this.createSocket(url);
     socket.onmessage = (event) => {
       if (socket !== this.socket && socket !== this.pending) return;
-      this.handleMessage(socket, JSON.parse(String(event.data)) as EventSubMessage);
+      try {
+        this.handleMessage(socket, JSON.parse(String(event.data)) as EventSubMessage);
+      } catch (error) {
+        this.log(`EventSub のメッセージを処理できませんでした: ${(error as Error).message}`);
+      }
     };
     socket.onclose = () => {
       if (socket === this.pending) this.pending = null;
@@ -378,8 +395,17 @@ export class EventSubConnection {
           this.pending = null;
           previous?.close();
         } else {
-          this.reconnectDelay = INITIAL_RECONNECT_DELAY_MS;
-          this.handlers.onWelcome(session.id).catch((error) => this.handlers.onError(error as Error));
+          this.handlers.onWelcome(session.id).then(
+            () => {
+              this.reconnectDelay = INITIAL_RECONNECT_DELAY_MS;
+            },
+            (error: Error) => {
+              if (!isRetryable(error)) return this.handlers.onError(error);
+              if (socket !== this.socket) return;
+              this.log(`購読に失敗しました。再接続します: ${error.message}`);
+              this.restart();
+            },
+          );
         }
         this.resetKeepalive();
         break;
@@ -416,8 +442,11 @@ export class EventSubConnection {
     this.clearKeepalive();
     this.keepaliveMs = 0;
     const previous = this.socket;
+    const pending = this.pending;
     this.socket = null;
+    this.pending = null;
     previous?.close();
+    pending?.close();
     const delay = this.reconnectDelay;
     this.reconnectDelay = Math.min(delay * 2, MAX_RECONNECT_DELAY_MS);
     setTimeout(() => {
@@ -457,11 +486,19 @@ async function main(): Promise<void> {
   await publish();
   log(`フォロワー数: ${state.followerTotal}${state.goal ? ` / 目標: ${state.goal.target}` : ''}`);
 
+  let syncing = false;
   setInterval(async () => {
+    if (syncing) return;
+    syncing = true;
     try {
-      state = { ...state, followerTotal: await client.getFollowerTotal(), goal: await client.getFollowerGoal() };
+      const followerTotal = await client.getFollowerTotal();
+      const goal = await client.getFollowerGoal();
+      // await 中に届いた通知（lastFollowAt など）を消さないよう、取得後の最新の state に反映する
+      state = { ...state, followerTotal, goal };
     } catch (error) {
       log(`同期に失敗しました: ${(error as Error).message}`);
+    } finally {
+      syncing = false;
     }
     await publish();
   }, RESYNC_INTERVAL_MS);

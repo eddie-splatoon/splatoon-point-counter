@@ -8,6 +8,7 @@ import { describe, it, expect, vi, beforeEach, afterEach, type Mock } from 'vite
 import {
   EVENTSUB_URL,
   EventSubConnection,
+  HelixError,
   SCOPES,
   TwitchClient,
   applyNotification,
@@ -182,6 +183,31 @@ describe('TwitchClient', () => {
       expect(fetchFn.mock.calls[3][1].headers.Authorization).toBe('Bearer a2');
     });
 
+    it('refreshes only once when concurrent requests get 401', async () => {
+      const fetchFn = vi.fn();
+      const client = await authenticated(fetchFn);
+      fetchFn.mockImplementation(async (url: string, init: RequestInit) => {
+        if (url.endsWith('/oauth2/token')) return json({ access_token: 'a2', refresh_token: 'r2' });
+        const authorized = (init.headers as Record<string, string>).Authorization === 'Bearer a2';
+        return authorized ? json({ total: 7, data: [] }) : json({ status: 401 }, 401);
+      });
+
+      await Promise.all([client.getFollowerTotal(), client.getFollowerGoal()]);
+
+      const refreshes = fetchFn.mock.calls.filter(([url]) => String(url).endsWith('/oauth2/token'));
+      expect(refreshes).toHaveLength(1);
+    });
+
+    it('throws a HelixError with the status code', async () => {
+      const fetchFn = vi.fn();
+      const client = await authenticated(fetchFn);
+      fetchFn.mockResolvedValueOnce(json({ message: 'unavailable' }, 503));
+
+      const error = await client.getFollowerTotal().catch((e) => e);
+      expect(error).toBeInstanceOf(HelixError);
+      expect(error.status).toBe(503);
+    });
+
     it('picks the follower goal from creator goals', async () => {
       const fetchFn = vi.fn();
       const client = await authenticated(fetchFn);
@@ -299,12 +325,71 @@ describe('EventSubConnection', () => {
     expect(handlers.onNotification).toHaveBeenCalledWith('channel.follow', { user_id: '1' });
   });
 
-  it('reports subscription failures', async () => {
+  it('reports subscription failures that retrying cannot fix', async () => {
     const { sockets, handlers } = setup();
-    handlers.onWelcome.mockRejectedValueOnce(new Error('403'));
+    const error = new HelixError(403, 'missing scope');
+    handlers.onWelcome.mockRejectedValueOnce(error);
 
     sockets[0].receive(welcome('s1'));
-    await vi.waitFor(() => expect(handlers.onError).toHaveBeenCalledWith(new Error('403')));
+    await vi.waitFor(() => expect(handlers.onError).toHaveBeenCalledWith(error));
+    expect(sockets[0].closed).toBe(false);
+  });
+
+  it.each([
+    ['a network error', new TypeError('fetch failed')],
+    ['a server error', new HelixError(503, 'unavailable')],
+    ['rate limiting', new HelixError(429, 'too many requests')],
+  ])('reconnects and subscribes again after %s', async (_, error) => {
+    const { sockets, handlers } = setup();
+    handlers.onWelcome.mockRejectedValueOnce(error);
+
+    sockets[0].receive(welcome('s1'));
+    await vi.waitFor(() => expect(sockets[0].closed).toBe(true));
+    vi.advanceTimersByTime(1_000);
+    sockets[1].receive(welcome('s2'));
+
+    expect(handlers.onError).not.toHaveBeenCalled();
+    expect(handlers.onWelcome).toHaveBeenLastCalledWith('s2');
+  });
+
+  it('ignores messages that are not valid JSON', () => {
+    const { sockets, handlers } = setup();
+
+    sockets[0].onmessage?.({ data: 'not json' } as MessageEvent);
+    sockets[0].receive({ metadata: { message_type: 'session_welcome' }, payload: {} });
+    sockets[0].receive(welcome('s1'));
+
+    expect(handlers.onWelcome).toHaveBeenCalledWith('s1');
+  });
+
+  it('drops a pending reconnect when the connection is restarted', () => {
+    const { sockets, handlers } = setup();
+    sockets[0].receive(welcome('s1'));
+    sockets[0].receive({ metadata: { message_type: 'session_reconnect' }, payload: { session: { id: 's1', reconnect_url: 'wss://reconnect' } } });
+
+    vi.advanceTimersByTime(15_000);
+    expect(sockets[1].closed).toBe(true);
+    vi.advanceTimersByTime(1_000);
+    expect(sockets).toHaveLength(3);
+
+    sockets[1].receive(welcome('s1'));
+    sockets[2].receive(welcome('s2'));
+    expect(sockets[2].closed).toBe(false);
+    expect(handlers.onWelcome).toHaveBeenLastCalledWith('s2');
+  });
+
+  it('keeps the current connection when a pending reconnect closes before welcome', () => {
+    const { sockets, handlers } = setup();
+    sockets[0].receive(welcome('s1'));
+    sockets[0].receive({ metadata: { message_type: 'session_reconnect' }, payload: { session: { id: 's1', reconnect_url: 'wss://reconnect' } } });
+
+    sockets[1].close();
+    vi.advanceTimersByTime(5_000);
+
+    expect(sockets).toHaveLength(2);
+    expect(sockets[0].closed).toBe(false);
+    sockets[0].receive({ metadata: { message_type: 'notification', subscription_type: 'channel.follow' }, payload: { event: {} } });
+    expect(handlers.onNotification).toHaveBeenCalledTimes(1);
   });
 
   it('switches to the reconnect URL without subscribing again', () => {
