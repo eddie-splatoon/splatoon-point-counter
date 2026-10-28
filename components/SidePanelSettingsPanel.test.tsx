@@ -80,6 +80,32 @@ describe('SidePanelSettingsPanel', () => {
     expect(screen.getByRole('button', { name: 'サーモンラン' })).toHaveAttribute('aria-pressed', 'true');
   });
 
+  it('shows the saved follower goal', async () => {
+    await renderLoaded({ ...getDefaultSidePanelSettings(), followerGoal: 20 });
+    expect(screen.getByLabelText('目標フォロワー数')).toHaveValue(20);
+  });
+
+  it('saves the follower goal, and clears it when the field is emptied', async () => {
+    await renderLoaded();
+    const input = screen.getByLabelText('目標フォロワー数');
+
+    await act(async () => fireEvent.change(input, { target: { value: '20' } }));
+    expect(lastPosted()).toMatchObject({ followerGoal: 20 });
+
+    await act(async () => fireEvent.change(input, { target: { value: '' } }));
+    expect(lastPosted()).toMatchObject({ followerGoal: null });
+  });
+
+  it('does not save an invalid follower goal', async () => {
+    await renderLoaded();
+    const input = screen.getByLabelText('目標フォロワー数');
+
+    await act(async () => fireEvent.change(input, { target: { value: '0' } }));
+
+    expect(mockedAxios.post).not.toHaveBeenCalled();
+    expect(input).toHaveAttribute('aria-invalid', 'true');
+  });
+
   it('shows an error when loading fails', async () => {
     mockedAxios.get.mockRejectedValue(new Error('500'));
     render(<SidePanelSettingsPanel />);

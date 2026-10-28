@@ -10,6 +10,9 @@ import SidePanelOverlayPage from './page';
 vi.mock('../../components/SalmonStats', () => ({
   default: ({ totals }: { totals: { goldenEggs: number } }) => <div data-testid="SalmonStats">金イクラ {totals.goldenEggs}</div>,
 }));
+vi.mock('../../components/InkTankGauge', () => ({
+  default: ({ current, target }: { current: number; target: number }) => <div data-testid="InkTankGauge">{current} / {target}</div>,
+}));
 vi.mock('../../components/BurndownChart', () => ({
   default: ({ data }: { data: { label: string } }) => <div data-testid="BurndownChart">{data.label}</div>,
 }));
@@ -24,12 +27,15 @@ const salmonSummary = {
   jobs: [],
 };
 
-const mockApis = (settings: SidePanelSettings, failing: string[] = []) => {
+const noTwitch = { followerTotal: null, goal: null, lastFollowAt: null, updatedAt: null, revision: 0 };
+
+const mockApis = (settings: SidePanelSettings, failing: string[] = [], twitch: object = noTwitch) => {
   mockedAxios.get.mockImplementation(async (url: string) => {
     if (failing.includes(url)) throw new Error('500');
     if (url === '/api/side-panel') return { data: settings, status: 200 };
     if (url === '/api/salmon') return { data: salmonSummary, status: 200 };
     if (url === '/api/stream-data') return { data: getInitialStreamData(), status: 200 };
+    if (url === '/api/twitch') return { data: twitch, status: 200 };
     throw new Error(`unexpected ${url}`);
   });
 };
@@ -145,5 +151,39 @@ describe('SidePanelOverlayPage', () => {
     render(<SidePanelOverlayPage />);
 
     expect(await screen.findByTestId('SalmonStats')).toBeInTheDocument();
+  });
+
+  describe('follower gauge', () => {
+    const twitch = { ...noTwitch, followerTotal: 10, updatedAt: 1, revision: 1 };
+
+    it('shows the Twitch follower goal', async () => {
+      mockApis({ ...getDefaultSidePanelSettings(), followerGoal: 50 }, [], { ...twitch, goal: { current: 12, target: 30 } });
+      render(<SidePanelOverlayPage />);
+
+      expect(await screen.findByTestId('InkTankGauge')).toHaveTextContent('12 / 30');
+    });
+
+    it('uses the manual goal when Twitch has no follower goal', async () => {
+      mockApis({ ...getDefaultSidePanelSettings(), followerGoal: 50 }, [], twitch);
+      render(<SidePanelOverlayPage />);
+
+      expect(await screen.findByTestId('InkTankGauge')).toHaveTextContent('10 / 50');
+    });
+
+    it('is hidden without any goal', async () => {
+      mockApis(getDefaultSidePanelSettings(), [], twitch);
+      render(<SidePanelOverlayPage />);
+
+      await screen.findByTestId('SalmonStats');
+      expect(screen.queryByTestId('InkTankGauge')).not.toBeInTheDocument();
+    });
+
+    it('is hidden while the Twitch script is not running', async () => {
+      mockApis({ ...getDefaultSidePanelSettings(), followerGoal: 50 });
+      render(<SidePanelOverlayPage />);
+
+      await screen.findByTestId('SalmonStats');
+      expect(screen.queryByTestId('InkTankGauge')).not.toBeInTheDocument();
+    });
   });
 });
