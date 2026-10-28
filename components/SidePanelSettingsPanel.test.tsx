@@ -37,7 +37,7 @@ describe('SidePanelSettingsPanel', () => {
 
     expect(mockedAxios.post).toHaveBeenCalledWith('/api/side-panel', expect.objectContaining({ visibleSlots: ['burndown'] }));
     expect(screen.getByRole('button', { name: 'バーンダウン' })).toHaveAttribute('aria-pressed', 'true');
-    expect(screen.getByRole('button', { name: 'サーモンラン' })).toHaveAttribute('aria-pressed', 'false');
+    expect(screen.getByRole('button', { name: '本日の戦績' })).toHaveAttribute('aria-pressed', 'false');
   });
 
   it('shows several slots together', async () => {
@@ -46,7 +46,7 @@ describe('SidePanelSettingsPanel', () => {
     await act(async () => fireEvent.click(screen.getByRole('button', { name: '本日のお題' })));
 
     expect(lastPosted()).toMatchObject({ visibleSlots: ['salmon', 'challenges'] });
-    expect(screen.getByRole('button', { name: 'サーモンラン' })).toHaveAttribute('aria-pressed', 'true');
+    expect(screen.getByRole('button', { name: '本日の戦績' })).toHaveAttribute('aria-pressed', 'true');
     expect(screen.getByRole('button', { name: '本日のお題' })).toHaveAttribute('aria-pressed', 'true');
   });
 
@@ -61,10 +61,10 @@ describe('SidePanelSettingsPanel', () => {
   it('keeps at least one visible slot', async () => {
     await renderLoaded();
 
-    await act(async () => fireEvent.click(screen.getByRole('button', { name: 'サーモンラン' })));
+    await act(async () => fireEvent.click(screen.getByRole('button', { name: '本日の戦績' })));
 
     expect(mockedAxios.post).not.toHaveBeenCalled();
-    expect(screen.getByRole('button', { name: 'サーモンラン' })).toHaveAttribute('aria-pressed', 'true');
+    expect(screen.getByRole('button', { name: '本日の戦績' })).toHaveAttribute('aria-pressed', 'true');
   });
 
   it('turns on auto rotation and disables the manual slot choice', async () => {
@@ -90,7 +90,7 @@ describe('SidePanelSettingsPanel', () => {
 
   it('keeps at least one slot in the rotation', async () => {
     await renderLoaded({ ...getDefaultSidePanelSettings(), enabledSlots: ['salmon', 'burndown'] });
-    const salmon = screen.getByRole('checkbox', { name: 'サーモンラン' });
+    const salmon = screen.getByRole('checkbox', { name: '本日の戦績' });
 
     await act(async () => fireEvent.click(salmon));
     expect(lastPosted()).toMatchObject({ enabledSlots: ['burndown'] });
@@ -105,7 +105,7 @@ describe('SidePanelSettingsPanel', () => {
     await act(async () => fireEvent.click(screen.getByRole('button', { name: 'バーンダウン' })));
 
     expect(screen.getByText('設定の保存に失敗しました。')).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'サーモンラン' })).toHaveAttribute('aria-pressed', 'true');
+    expect(screen.getByRole('button', { name: '本日の戦績' })).toHaveAttribute('aria-pressed', 'true');
   });
 
   it('shows the saved follower goal', async () => {

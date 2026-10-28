@@ -276,7 +276,7 @@ const SalmonRunPanel: React.FC = () => {
                 )}
                 {pastSummary && (
                     <Box sx={{display: 'flex', gap: 2, alignItems: 'flex-start', flexWrap: 'wrap', mt: 1}}>
-                        <SalmonStats lastJob={pastSummary.lastJob} totals={pastSummary.totals}/>
+                        <SalmonStats lastJob={pastSummary.lastJob} totals={pastSummary.totals} title="セッションの戦績"/>
                         <Box data-testid="salmon-past-history" sx={{...listSx, my: 0, flex: 1, minWidth: 260}}>
                             {pastSummary.jobs.map((job, i) => (
                                 <JobRow key={job.id} job={job} index={pastSummary.jobs.length - i}/>

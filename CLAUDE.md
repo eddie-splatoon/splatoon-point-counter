@@ -79,7 +79,7 @@
 │   ├── BubbleEffect.tsx          # バブルエフェクト
 │   ├── SparkleEffect.tsx         # スパークルエフェクト
 │   ├── FireworksEffect.tsx       # 花火エフェクト
-│   ├── SalmonStats.tsx           # サーモンランの前回・本日合計
+│   ├── SalmonStats.tsx           # サーモンランの前回・本日合計（タイトルは「本日の戦績」）
 │   ├── SalmonRunPanel.tsx        # コントロールパネルのサーモンランタブ
 │   ├── SidePanelSettingsPanel.tsx # コントロールパネルのサイドパネルタブ
 │   ├── InkTankGauge.tsx          # インクタンク型フォロワーゲージ

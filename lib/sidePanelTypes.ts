@@ -10,7 +10,7 @@ export const FULL_HEIGHT_SLOTS: readonly SidePanelSlot[] = ['burndown'];
 
 export const SIDE_PANEL_SLOT_LABELS: Record<SidePanelSlot, string> = {
     schedule: 'スケジュール',
-    salmon: 'サーモンラン',
+    salmon: '本日の戦績',
     challenges: '本日のお題',
     burndown: 'バーンダウン',
 };

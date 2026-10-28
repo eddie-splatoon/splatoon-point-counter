@@ -20,6 +20,17 @@ describe('SalmonStats', () => {
     expect(screen.getByText('前回: クリア')).toBeInTheDocument();
   });
 
+  it('is titled as today\'s results so it does not repeat the schedule\'s rule name', () => {
+    render(<SalmonStats lastJob={lastJob} totals={totals} />);
+    expect(screen.getByText('本日の戦績')).toBeInTheDocument();
+    expect(screen.queryByText('サーモンラン')).not.toBeInTheDocument();
+  });
+
+  it('accepts another title, such as for a past session', () => {
+    render(<SalmonStats lastJob={lastJob} totals={totals} title="セッションの戦績" />);
+    expect(screen.getByText('セッションの戦績')).toBeInTheDocument();
+  });
+
   it('shows the wave of a failed last job', () => {
     render(<SalmonStats lastJob={{ ...lastJob, cleared: false, waveReached: 2 }} totals={totals} />);
     expect(screen.getByText('前回: WAVE2 失敗')).toBeInTheDocument();
