@@ -2,7 +2,7 @@ import { act, fireEvent, render, screen } from '@testing-library/react';
 import axios from 'axios';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { MAX_CHALLENGES, getDefaultSidePanelSettings } from '../lib/sidePanelTypes';
+import { MAX_CHALLENGES, MAX_CHALLENGE_LINES, getDefaultSidePanelSettings } from '../lib/sidePanelTypes';
 
 import SidePanelSettingsPanel from './SidePanelSettingsPanel';
 
@@ -157,13 +157,50 @@ describe('SidePanelSettingsPanel', () => {
       expect(screen.getByLabelText('新しいお題')).toHaveValue('');
     });
 
-    it('adds a challenge with the Enter key', async () => {
+    it.each([['Ctrl', { ctrlKey: true }], ['⌘', { metaKey: true }]])('adds a challenge with %s + Enter', async (_, modifier) => {
+      await renderLoaded();
+
+      fireEvent.change(screen.getByLabelText('新しいお題'), { target: { value: 'オカシラを倒す' } });
+      await act(async () => fireEvent.keyDown(screen.getByLabelText('新しいお題'), { key: 'Enter', ...modifier }));
+
+      expect(lastPosted()).toMatchObject({ challenges: [{ id: 1, text: 'オカシラを倒す', done: false }] });
+    });
+
+    it('does not add a challenge while the IME is composing', async () => {
+      await renderLoaded();
+
+      fireEvent.change(screen.getByLabelText('新しいお題'), { target: { value: 'オカシラ' } });
+      await act(async () => fireEvent.keyDown(screen.getByLabelText('新しいお題'), { key: 'Enter', ctrlKey: true, isComposing: true }));
+
+      expect(mockedAxios.post).not.toHaveBeenCalled();
+    });
+
+    it('does not add a challenge with Enter alone, which starts a new line', async () => {
       await renderLoaded();
 
       fireEvent.change(screen.getByLabelText('新しいお題'), { target: { value: 'オカシラを倒す' } });
       await act(async () => fireEvent.keyDown(screen.getByLabelText('新しいお題'), { key: 'Enter' }));
 
-      expect(lastPosted()).toMatchObject({ challenges: [{ id: 1, text: 'オカシラを倒す', done: false }] });
+      expect(mockedAxios.post).not.toHaveBeenCalled();
+    });
+
+    it('keeps line breaks in a new challenge', async () => {
+      await renderLoaded();
+
+      fireEvent.change(screen.getByLabelText('新しいお題'), { target: { value: 'キケン度MAXで\n 3連続クリア \n\n' } });
+      await act(async () => fireEvent.click(screen.getByRole('button', { name: '追加' })));
+
+      expect(lastPosted()).toMatchObject({ challenges: [{ id: 1, text: 'キケン度MAXで\n3連続クリア', done: false }] });
+    });
+
+    it('does not add a challenge with too many lines', async () => {
+      await renderLoaded();
+      const input = screen.getByLabelText('新しいお題');
+
+      fireEvent.change(input, { target: { value: Array.from({ length: MAX_CHALLENGE_LINES + 1 }, (_, i) => `行${i}`).join('\n') } });
+
+      expect(screen.getByRole('button', { name: '追加' })).toBeDisabled();
+      expect(input).toHaveAttribute('aria-invalid', 'true');
     });
 
     it('does not add an empty challenge', async () => {

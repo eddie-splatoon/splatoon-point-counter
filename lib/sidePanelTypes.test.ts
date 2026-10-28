@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import {
   MAX_CHALLENGES,
   MAX_CHALLENGE_LENGTH,
+  MAX_CHALLENGE_LINES,
   MAX_FOLLOWER_GOAL,
   MAX_ROTATE_SECONDS,
   MIN_ROTATE_SECONDS,
@@ -50,6 +51,17 @@ describe('parseSidePanelSettings', () => {
     });
   });
 
+  it('keeps line breaks in challenge text, trimming each line and dropping empty lines', () => {
+    expect(parseSidePanelSettings({ ...valid, challenges: [{ id: 1, text: ' キケン度MAXで \r\n\n 3連続クリア ', done: false }] })).toMatchObject({
+      challenges: [{ id: 1, text: 'キケン度MAXで\n3連続クリア', done: false }],
+    });
+  });
+
+  it('does not count line breaks toward the challenge length', () => {
+    const text = ['あ'.repeat(MAX_CHALLENGE_LENGTH - 1), 'い'].join('\n');
+    expect(parseSidePanelSettings({ ...valid, challenges: [{ id: 1, text, done: false }] })).not.toBeTypeOf('string');
+  });
+
   it('accepts the maximum number and length of challenges', () => {
     const many = Array.from({ length: MAX_CHALLENGES }, (_, i) => ({ id: i + 1, text: 'あ'.repeat(MAX_CHALLENGE_LENGTH), done: false }));
     expect(parseSidePanelSettings({ ...valid, challenges: many })).not.toBeTypeOf('string');
@@ -94,6 +106,8 @@ describe('parseSidePanelSettings', () => {
     ['too many challenges', { ...valid, challenges: Array.from({ length: MAX_CHALLENGES + 1 }, (_, i) => ({ id: i + 1, text: 'お題', done: false })) }],
     ['an empty challenge', { ...valid, challenges: [{ id: 1, text: '   ', done: false }] }],
     ['too long a challenge', { ...valid, challenges: [{ id: 1, text: 'あ'.repeat(MAX_CHALLENGE_LENGTH + 1), done: false }] }],
+    ['too many lines in a challenge', { ...valid, challenges: [{ id: 1, text: Array.from({ length: MAX_CHALLENGE_LINES + 1 }, () => 'a').join('\n'), done: false }] }],
+    ['a challenge of only line breaks', { ...valid, challenges: [{ id: 1, text: '\n \n', done: false }] }],
     ['a challenge without done', { ...valid, challenges: [{ id: 1, text: 'お題' }] }],
     ['a challenge with an invalid id', { ...valid, challenges: [{ id: 0, text: 'お題', done: false }] }],
     ['duplicate challenge ids', { ...valid, challenges: [{ id: 1, text: 'a', done: false }, { id: 1, text: 'b', done: false }] }],
