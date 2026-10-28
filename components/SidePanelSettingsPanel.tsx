@@ -29,7 +29,9 @@ import {
     SIDE_PANEL_SLOTS,
     SIDE_PANEL_SLOT_LABELS,
     SidePanelSettings,
+    SLOT_AREA_HEIGHT,
     SidePanelSlot,
+    exceedsSlotArea,
     normalizeChallengeText,
 } from '../lib/sidePanelTypes';
 
@@ -108,6 +110,8 @@ const SidePanelSettingsPanel: React.FC = () => {
     };
 
     const fixedFullHeight = settings.fixedSlots.some((slot) => FULL_HEIGHT_SLOTS.includes(slot));
+    // 配信画面では見切れに気づきにくいので、収まらない見込みの組み合わせはここで知らせる
+    const overflows = exceedsSlotArea(settings);
 
     const handleFixedSlotsChange = (value: SidePanelSlot[]) => {
         const added = value.find((slot) => !settings.fixedSlots.includes(slot));
@@ -249,6 +253,11 @@ const SidePanelSettingsPanel: React.FC = () => {
                         ? `${settings.fixedSlots.map((s) => SIDE_PANEL_SLOT_LABELS[s]).join('・')}を固定している間は、ローテーション枠は使えません。`
                         : '固定枠の下の残りのスペースで、選んだものを1つずつ順に切り替えます。固定枠で選んでいるものは選べません。何も選ばなければ切り替えません。'}
                 </Typography>
+                {overflows && (
+                    <Alert severity="warning" sx={{mt: 2}}>
+                        固定枠とローテーション枠を合わせると、サイドパネル下段（約 {SLOT_AREA_HEIGHT}px）に収まらず、下が見切れる可能性があります。固定枠を減らすか、ローテーション枠に移してください（高さは目安です）。
+                    </Alert>
+                )}
                 <TextField
                     label="切り替え秒数"
                     type="number"

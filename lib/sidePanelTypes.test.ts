@@ -10,6 +10,7 @@ import {
   getDefaultSidePanelSettings,
   getFollowerProgress,
   parseSidePanelSettings,
+  exceedsSlotArea,
   pickRotationSlot,
   type SidePanelSettings,
 } from './sidePanelTypes';
@@ -46,6 +47,18 @@ describe('parseSidePanelSettings', () => {
       expect(parseSidePanelSettings({ ...legacy, visibleSlots: ['schedule', 'salmon'], autoRotate: false, enabledSlots: ['salmon', 'burndown'] })).toMatchObject({
         fixedSlots: ['schedule', 'salmon'], rotationSlots: [],
       });
+    });
+
+    it.each([
+      ['auto rotation without enabledSlots', { visibleSlots: ['salmon'], autoRotate: true }],
+      ['auto rotation with no enabledSlots', { visibleSlots: ['salmon'], autoRotate: true, enabledSlots: [] }],
+      ['no rotation without visibleSlots or activeSlot', { autoRotate: false, enabledSlots: ['salmon'] }],
+    ])('rejects %s, so the defaults are used instead', (_, slots) => {
+      expect(parseSidePanelSettings({ ...legacy, ...slots })).toBeTypeOf('string');
+    });
+
+    it('treats a null area in the new format as empty', () => {
+      expect(parseSidePanelSettings({ ...legacy, fixedSlots: null, rotationSlots: ['salmon'] })).toMatchObject({ fixedSlots: [], rotationSlots: ['salmon'] });
     });
 
     it('reads a single activeSlot as a fixed slot', () => {
@@ -158,6 +171,34 @@ describe('pickRotationSlot', () => {
 
   it('shows the stats fixed and rotates nothing by default', () => {
     expect(getDefaultSidePanelSettings()).toMatchObject({ fixedSlots: ['salmon'], rotationSlots: [] });
+  });
+});
+
+describe('exceedsSlotArea', () => {
+  const settings = (fixedSlots: SidePanelSettings['fixedSlots'], rotationSlots: SidePanelSettings['rotationSlots'], challengeCount = 0) => ({
+    fixedSlots,
+    rotationSlots,
+    challenges: Array.from({ length: challengeCount }, (_, i) => ({ id: i + 1, text: 'お題', done: false })),
+  });
+
+  it.each([
+    ['the stats alone', settings(['salmon'], [])],
+    ['the schedule with the stats rotating below', settings(['schedule'], ['salmon', 'challenges'], 3)],
+    ['the burndown rotating alone', settings([], ['burndown'])],
+  ])('fits %s', (_, s) => {
+    expect(exceedsSlotArea(s)).toBe(false);
+  });
+
+  it.each([
+    ['three fixed slots', settings(['schedule', 'salmon', 'challenges'], [], 4)],
+    ['the burndown rotating below two fixed slots', settings(['schedule', 'salmon'], ['burndown'])],
+    ['many challenges rotating below the schedule', settings(['schedule'], ['challenges'], 8)],
+  ])('does not fit %s', (_, s) => {
+    expect(exceedsSlotArea(s)).toBe(true);
+  });
+
+  it('ignores challenges with nothing to show', () => {
+    expect(exceedsSlotArea(settings(['schedule', 'salmon', 'challenges'], [], 0))).toBe(false);
   });
 });
 

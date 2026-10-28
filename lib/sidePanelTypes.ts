@@ -134,3 +134,33 @@ export function getFollowerProgress(
     if (twitch.followerTotal === null || followerGoal === null) return null;
     return {current: twitch.followerTotal, target: followerGoal};
 }
+
+// ---- 下段の高さの目安（コントロールパネルの警告用） ----
+
+// フォロワーゲージを表示しているときの下段の高さ（584px からゲージ分を引いたもの）
+export const SLOT_AREA_HEIGHT = 440;
+const SLOT_GAP = 12;
+
+/** スロットの高さの目安（px）。お題は個数で変わり、0 個なら何も表示しない。バーンダウンは読める最低限の高さ */
+export function estimateSlotHeight(slot: SidePanelSlot, challengeCount: number): number {
+    switch (slot) {
+        case 'schedule':
+            return 200;
+        case 'salmon':
+            return 190;
+        case 'challenges':
+            return challengeCount === 0 ? 0 : 50 + 50 * challengeCount;
+        case 'burndown':
+            return 300;
+    }
+}
+
+/** 固定枠と、ローテーション枠で一番高いスロットを合わせて、下段に収まらない見込みか */
+export function exceedsSlotArea(settings: Pick<SidePanelSettings, 'fixedSlots' | 'rotationSlots' | 'challenges'>): boolean {
+    const heights = (slots: SidePanelSlot[]) => slots.map((slot) => estimateSlotHeight(slot, settings.challenges.length)).filter((h) => h > 0);
+    const fixed = heights(settings.fixedSlots);
+    const rotation = Math.max(0, ...heights(settings.rotationSlots));
+    const parts = rotation > 0 ? [...fixed, rotation] : fixed;
+    const total = parts.reduce((sum, h) => sum + h, 0) + SLOT_GAP * Math.max(0, parts.length - 1);
+    return total > SLOT_AREA_HEIGHT;
+}

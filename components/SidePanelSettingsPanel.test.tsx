@@ -112,6 +112,16 @@ describe('SidePanelSettingsPanel', () => {
     expect(lastPosted()).toMatchObject({ fixedSlots: [], rotationSlots: ['challenges'] });
   });
 
+  it('warns when the slots may not fit in the panel', async () => {
+    await renderLoaded({ ...getDefaultSidePanelSettings(), fixedSlots: ['schedule'], rotationSlots: [] });
+    expect(screen.queryByText(/収まらず/)).not.toBeInTheDocument();
+
+    await act(async () => fireEvent.click(fixedButton('本日の戦績')));
+    await act(async () => fireEvent.click(rotationButton('バーンダウン')));
+
+    expect(screen.getByText(/収まらず/)).toBeInTheDocument();
+  });
+
   it('saves the rotation seconds only when they are valid', async () => {
     await renderLoaded();
     const input = screen.getByLabelText('切り替え秒数');
