@@ -22,6 +22,11 @@ CREATE TABLE IF NOT EXISTS salmon_jobs (
     stage TEXT NOT NULL DEFAULT ''
 );
 CREATE INDEX IF NOT EXISTS salmon_jobs_session_id ON salmon_jobs(session_id);
+-- 画面ごとの設定など、1つの値を JSON で丸ごと保存するキーバリュー
+CREATE TABLE IF NOT EXISTS app_state (
+    key TEXT PRIMARY KEY,
+    value TEXT NOT NULL
+);
 `;
 
 export function openDb(path: string): DatabaseSync {
@@ -37,6 +42,22 @@ let db: DatabaseSync | null = null;
 export function getDb(): DatabaseSync {
     db ??= openDb(process.env.OVERLAY_DB_PATH ?? resolve(process.cwd(), 'data/overlay.db'));
     return db;
+}
+
+/** app_state から JSON の値を読む。未保存なら null */
+export function getAppState(key: string): unknown {
+    const row = getDb().prepare('SELECT value FROM app_state WHERE key = ?').get(key) as {value: string} | undefined;
+    if (!row) return null;
+    try {
+        return JSON.parse(row.value);
+    } catch {
+        return null;
+    }
+}
+
+export function setAppState(key: string, value: unknown): void {
+    getDb().prepare('INSERT INTO app_state (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value')
+        .run(key, JSON.stringify(value));
 }
 
 /**

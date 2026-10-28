@@ -13,9 +13,10 @@
 3. **スコア＆メッセージオーバーレイ** (`/obs-overlay`) - メインのオーバーレイ表示
 4. **バーンダウンチャートオーバーレイ** (`/burndown-overlay`) - 進捗状況を可視化
 5. **字幕オーバーレイ** (`/caption-overlay`) - 配信者の音声をリアルタイムに字幕表示
-6. **バックエンドAPI** (`/api/stream-data`, `/api/caption`, `/api/twitch`, `/api/salmon`) - データ管理とクライアント間の同期
-7. **文字起こしスクリプト** (`tools/caption-stt/`) - マイク音声を文字起こしして `/api/caption` へ送信（Python, Mac ネイティブ実行）
-8. **Twitch連携スクリプト** (`tools/twitch-eventsub/`) - フォロワー数・フォロワー目標を EventSub で受信して `/api/twitch` へ送信（Node, 依存なし）
+6. **サイドパネルオーバーレイ** (`/side-panel-overlay`) - 配信画面右側（250x584）。コントロールパネルで選んだスロットを表示
+7. **バックエンドAPI** (`/api/stream-data`, `/api/caption`, `/api/twitch`, `/api/salmon`, `/api/side-panel`) - データ管理とクライアント間の同期
+8. **文字起こしスクリプト** (`tools/caption-stt/`) - マイク音声を文字起こしして `/api/caption` へ送信（Python, Mac ネイティブ実行）
+9. **Twitch連携スクリプト** (`tools/twitch-eventsub/`) - フォロワー数・フォロワー目標を EventSub で受信して `/api/twitch` へ送信（Node, 依存なし）
 
 ## 技術スタック
 
@@ -51,6 +52,8 @@
 │   │   └── page.tsx              # バーンダウンチャート
 │   ├── caption-overlay/
 │   │   └── page.tsx              # 字幕オーバーレイ
+│   ├── side-panel-overlay/
+│   │   └── page.tsx              # サイドパネルオーバーレイ
 │   └── api/
 │       ├── stream-data/
 │       │   └── route.ts          # データ管理API
@@ -58,10 +61,12 @@
 │       │   └── route.ts          # 字幕API
 │       ├── twitch/
 │       │   └── route.ts          # Twitch API（フォロワー数・目標）
-│       └── salmon/
-│           ├── route.ts          # サーモンラン記録API
-│           └── sessions/
-│               └── route.ts      # サーモンランのセッションAPI
+│       ├── salmon/
+│       │   ├── route.ts          # サーモンラン記録API
+│       │   └── sessions/
+│       │       └── route.ts      # サーモンランのセッションAPI
+│       └── side-panel/
+│           └── route.ts          # サイドパネル設定API
 ├── components/                    # 再利用可能なReactコンポーネント
 │   ├── ScoreDisplay.tsx          # スコア表示
 │   ├── BurndownChart.tsx         # バーンダウンチャート
@@ -73,12 +78,14 @@
 │   ├── SparkleEffect.tsx         # スパークルエフェクト
 │   ├── FireworksEffect.tsx       # 花火エフェクト
 │   ├── SalmonStats.tsx           # サーモンランの前回・本日合計
-│   └── SalmonRunPanel.tsx        # コントロールパネルのサーモンランタブ
+│   ├── SalmonRunPanel.tsx        # コントロールパネルのサーモンランタブ
+│   └── SidePanelSettingsPanel.tsx # コントロールパネルのサイドパネルタブ
 ├── lib/
 │   ├── localStorage.ts           # ローカルストレージのラッパー
 │   ├── db.ts                     # SQLite の接続とスキーマ
 │   ├── salmon.ts                 # サーモンラン記録のデータアクセス・入力検証（サーバー専用）
-│   └── salmonTypes.ts            # サーモンラン記録の型・定数（クライアントからも使う）
+│   ├── salmonTypes.ts            # サーモンラン記録の型・定数（クライアントからも使う）
+│   └── sidePanelTypes.ts         # サイドパネルのスロット定義・設定の検証（クライアントからも使う）
 ├── data/                          # SQLite・Twitch トークン（Git / Docker イメージ管理外）
 ├── public/                        # 静的アセット
 │   └── tips.tsv                  # Tips データ
@@ -220,6 +227,16 @@ Twitch のフォロワー数とフォロワー目標を受け取る機能。
 - `lib/salmon.ts` は `node:sqlite` に依存するのでクライアントコンポーネントから import しない。型と定数は `lib/salmonTypes.ts` から import する
 - コントロールパネルの「サーモンラン」タブ（`components/SalmonRunPanel.tsx`）は API に直接保存する（「OBSに反映」ボタンや localStorage は使わない）
 - テストは `vite.config.mts` の `OVERLAY_DB_PATH=:memory:` で実データに触れない。各テストで `__TEST_ONLY_setDb(openDb(':memory:'))` してから使う
+
+### `/app/side-panel-overlay/page.tsx` と `/app/api/side-panel/route.ts`
+
+配信画面右側（250x584）のサイドパネル。上段はフォロワーゲージ用（#61 で追加予定）、下段は「スロット」を表示する。
+
+- スロットの定義は `lib/sidePanelTypes.ts` の `SIDE_PANEL_SLOTS`（現在は `salmon` / `burndown`）。スロットを追加するときは、ここと `SIDE_PANEL_SLOT_LABELS`、オーバーレイの `renderSlot` に足す
+- 設定 `{activeSlot, autoRotate, rotateSeconds, enabledSlots}` は SQLite のキーバリュー `app_state`（`getAppState` / `setAppState`、キー `sidePanel`）に保存。保存値が不正（スロット削除後など）なら既定値を返す
+- オーバーレイは2秒ごとに `/api/side-panel`・`/api/salmon`・`/api/stream-data` をポーリングし（1つが失敗しても他は表示を続ける）、motion のクロスフェードでスロットを切り替える。自動ローテーションは `pickSlot` で `enabledSlots` を順に回す
+- コントロールパネルの「サイドパネル」タブ（`components/SidePanelSettingsPanel.tsx`）は変更をその場で保存する（「OBSに反映」は不要）
+- 既存の `/burndown-overlay` はそのまま残している（サイドパネルのバーンダウンスロットは花火エフェクトを出さない）
 
 ### `/components/ScoreDisplay.tsx`
 
