@@ -522,6 +522,25 @@ export async function publishSpeech(speechUrl: string, text: string, fetchFn: Fe
   return true;
 }
 
+/**
+ * チャットのメッセージを読み上げキューに送る。視聴者への挨拶を送れなかったとき（読み上げが無効・送信に失敗）は、
+ * 挨拶済みから外して次のコメントでもう一度挨拶する（読み上げを途中で有効にしても、その前にコメントした人を取りこぼさない）
+ */
+export async function speakChatMessage(event: unknown, context: ChatSpeechContext, send: (text: string) => Promise<boolean>): Promise<void> {
+  const userId = ((event ?? {}) as ChatMessageEvent).chatter_user_id ?? '';
+  const greetedBefore = context.greeted.has(userId);
+  const text = chatToSpeech(event, context);
+  if (!text) return;
+  // 送信中に同じ人がまたコメントしても二重に挨拶しないよう、挨拶済みには先に入れておき、送れなかったら外す
+  const isGreeting = !greetedBefore && context.greeted.has(userId);
+  let delivered = false;
+  try {
+    delivered = await send(text);
+  } finally {
+    if (isGreeting && !delivered) context.greeted.delete(userId);
+  }
+}
+
 // ---- アプリへの送信 ----
 
 export async function publishState(apiUrl: string, state: TwitchState, fetchFn: FetchFn = fetch): Promise<void> {
@@ -583,12 +602,9 @@ async function main(): Promise<void> {
       onNotification: (type, event) => {
         if (type === 'channel.chat.message') {
           // 視聴者の名前やコメントはログに出さない
-          const text = chatToSpeech(event, chatContext);
-          if (text) {
-            publishSpeech(speechUrl, text).catch((error) => {
-              log(`警告: 読み上げを送信できませんでした: ${(error as Error).message}`);
-            });
-          }
+          speakChatMessage(event, chatContext, (text) => publishSpeech(speechUrl, text)).catch((error) => {
+            log(`警告: 読み上げを送信できませんでした: ${(error as Error).message}`);
+          });
           return;
         }
         state = applyNotification(state, type, event, Date.now());

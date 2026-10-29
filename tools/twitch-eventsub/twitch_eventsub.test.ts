@@ -16,6 +16,7 @@ import {
   loadToken,
   parseIgnoredLogins,
   publishSpeech,
+  speakChatMessage,
   pollDeviceToken,
   publishState,
   refreshAccessToken,
@@ -528,6 +529,59 @@ describe('chatToSpeech', () => {
   it('ignores events without a chatter', () => {
     expect(chatToSpeech({}, context())).toBeNull();
     expect(chatToSpeech(null, context())).toBeNull();
+  });
+});
+
+describe('speakChatMessage', () => {
+  const context = (): ChatSpeechContext => ({ broadcasterId: '123', greeted: new Set(), ignoredLogins: new Set() });
+  const viewer = { chatter_user_id: '999', chatter_user_login: 'viewer_a', chatter_user_name: 'ViewerA', message: { text: 'こんにちは' } };
+
+  it('sends the greeting and remembers the viewer', async () => {
+    const ctx = context();
+    const send = vi.fn().mockResolvedValue(true);
+
+    await speakChatMessage(viewer, ctx, send);
+    await speakChatMessage(viewer, ctx, send);
+
+    expect(send).toHaveBeenCalledTimes(1);
+    expect(send).toHaveBeenCalledWith('ViewerAさん、いらっしゃい！');
+  });
+
+  it('greets again next time when reading aloud was disabled', async () => {
+    const ctx = context();
+    const send = vi.fn().mockResolvedValueOnce(false).mockResolvedValueOnce(true);
+
+    await speakChatMessage(viewer, ctx, send);
+    expect(ctx.greeted.has('999')).toBe(false);
+
+    await speakChatMessage(viewer, ctx, send);
+    expect(send).toHaveBeenCalledTimes(2);
+    expect(ctx.greeted.has('999')).toBe(true);
+  });
+
+  it('greets again next time when sending failed', async () => {
+    const ctx = context();
+    await expect(speakChatMessage(viewer, ctx, vi.fn().mockRejectedValue(new Error('500')))).rejects.toThrow('500');
+    expect(ctx.greeted.has('999')).toBe(false);
+  });
+
+  it('does not greet twice while the first greeting is being sent', async () => {
+    const ctx = context();
+    let finish: (value: boolean) => void = () => {};
+    const send = vi.fn().mockImplementationOnce(() => new Promise<boolean>((resolve) => { finish = resolve; }));
+
+    const first = speakChatMessage(viewer, ctx, send);
+    await speakChatMessage(viewer, ctx, send);
+    finish(true);
+    await first;
+
+    expect(send).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not touch the greeted list for the broadcaster\'s own messages', async () => {
+    const ctx = context();
+    await speakChatMessage({ chatter_user_id: '123', message: { text: '次いきます' } }, ctx, vi.fn().mockResolvedValue(false));
+    expect(ctx.greeted.size).toBe(0);
   });
 });
 
