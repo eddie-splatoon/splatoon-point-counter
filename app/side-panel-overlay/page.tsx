@@ -94,7 +94,8 @@ const SidePanelOverlayPage: React.FC = () => {
 
     return (
         <div
-            className="relative overflow-hidden w-[250px] h-[584px] flex flex-col"
+            // 左右に少し余白を取り、配信画面の枠にぴったり付かないようにする（カードは max-w-full で縮む）
+            className="relative overflow-hidden w-[250px] h-[584px] flex flex-col px-2"
             style={{backgroundColor: 'transparent', fontFamily: streamData?.fontFamily || 'sans-serif'}}
         >
             {/* 上段: フォロワーゲージ（泡と花火はパネル全体を覆う） */}
@@ -107,7 +108,7 @@ const SidePanelOverlayPage: React.FC = () => {
                     <div
                         key={slot}
                         // 残りの高さいっぱいを使うスロットは広げる（固定枠では単独のときだけ選べる）
-                        className={FULL_HEIGHT_SLOTS.includes(slot) ? 'flex-1 min-h-0 w-full flex justify-center' : 'shrink-0'}
+                        className={FULL_HEIGHT_SLOTS.includes(slot) ? 'flex-1 min-h-0 w-full flex justify-center' : 'shrink-0 w-full flex justify-center'}
                         data-slot={slot}
                         data-area="fixed"
                     >

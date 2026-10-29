@@ -34,7 +34,7 @@ const ChallengeList: React.FC<ChallengeListProps> = ({challenges}) => {
     const clearedCount = challenges.filter((c) => c.done).length;
 
     return (
-        <div className="w-[250px] bg-black/80 text-white rounded-2xl shadow-2xl border-2 border-white/20 p-3" data-testid="challenge-list">
+        <div className="w-[250px] max-w-full bg-black/80 text-white rounded-2xl shadow-2xl border-2 border-white/20 p-3" data-testid="challenge-list">
             <div className="flex justify-between items-baseline">
                 <p className="font-bold" style={{color: STAMP_COLOR, fontSize: '20px'}}>本日のお題</p>
                 <p className="text-gray-400 tabular-nums" style={{fontSize: '14px'}}>{clearedCount} / {challenges.length}</p>
