@@ -47,6 +47,11 @@ describe('Home Page', () => {
     expect(telopOverlayButton).toHaveAttribute('href', '/telop-overlay');
     expect(telopOverlayButton).toHaveAttribute('target', '_blank');
 
+    // Check for Voice Overlay button
+    const voiceOverlayButton = screen.getByRole('link', { name: /読み上げ（音声専用）オーバーレイ \(Preview\)/i });
+    expect(voiceOverlayButton).toHaveAttribute('href', '/voice-overlay');
+    expect(voiceOverlayButton).toHaveAttribute('target', '_blank');
+
     // Check for copyright text
     expect(screen.getByText(/© 2025 eddie-splatoon/i)).toBeInTheDocument();
   });

@@ -100,6 +100,18 @@ describe('ControlPanelPage', () => {
         await waitFor(() => expect(screen.getByText('SidePanelSettingsPanel')).toBeInTheDocument());
     });
 
+    it('shows dropdown menus on an opaque background', async () => {
+        render(<ControlPanelPage />);
+        await waitFor(() => expect(screen.getByText('スコア設定')).toBeInTheDocument());
+
+        fireEvent.click(screen.getByRole('tab', { name: 'メッセージ' }));
+        fireEvent.mouseDown(await screen.findByRole('combobox'));
+
+        // カード用の紙の背景（ほぼ透明）ではなく、不透明な背景で表示する
+        const menuPaper = (await screen.findByRole('listbox')).closest('.MuiPaper-root');
+        expect(menuPaper).toHaveStyle({ backgroundColor: '#2A2A2A' });
+    });
+
     it('updates score fields and sends correct payload on submit', async () => {
         render(<ControlPanelPage />);
         await waitFor(() => expect(screen.getByLabelText('値')).toHaveValue(mockData.scoreValue));

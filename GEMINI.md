@@ -93,12 +93,16 @@ export interface StreamData {
 #### `/app/telop-overlay/page.tsx` と `/app/api/telop/route.ts`
 -   **目的**: 実況テロップ。コントロールパネルの「テロップ」タブ（`components/TelopPanel.tsx`）のボタンかキーボードの 1〜9, 0 で `POST /api/telop`（`{presetId}` または `{text}`）し、オーバーレイが出してから 4 秒間だけ大きく表示します。いま出ているテロップはインメモリ、プリセット（`{id, text, speak, followFont}`。`followFont` は共通設定のフォントで表示するか）は SQLite の `app_state`（キー `telop`、`PUT /api/telop` で保存）に保持します。型と検証は `lib/telopTypes.ts` にあります。
 
+#### `/app/voice-overlay/page.tsx` と `/app/api/speech/route.ts` / `/app/api/voice/route.ts`
+-   **目的**: 合成音声（VOICEVOX）の読み上げ。`/api/speech` はインメモリの読み上げキュー（`POST {text}` で追加。読み上げが無効なら 409）、`/api/speech/audio?id=` はキューの 1 件を VOICEVOX（`VOICEVOX_URL`、既定 `http://localhost:50021`）で wav にして返します。`/api/voice` は読み上げの設定（有効/無効・話者・速度・音量。SQLite の `app_state` キー `voice`）、`/api/voice/speakers` は VOICEVOX の話者一覧の中継です。音声専用オーバーレイがキューをポーリングして 1 件ずつ順に再生します。キュー・設定・VOICEVOX との通信は `lib/speech.ts`（サーバー専用）、型と検証は `lib/voiceTypes.ts` にあります。設定 UI は `components/VoiceSettingsPanel.tsx`（コントロールパネルの「テロップ」タブ）。
+
 ### `/tools/twitch-eventsub`
 -   **目的**: `pnpm twitch` で起動する常駐スクリプト。Device Code Flow で認証し、EventSub WebSocket でフォローとゴールの通知を受信して `/api/twitch` へ送信します。トークンは `data/twitch-token.json`（Git 管理外）に保存されます。詳細は同ディレクトリの README を参照。
 
 ### `/components`
 このディレクトリには、再利用可能なReactコンポーネントが格納されています。
 
+-   `VoiceSettingsPanel.tsx`: コントロールパネルの読み上げ（VOICEVOX）の設定。話者の選択、速度・音量、テスト再生、クレジット表記の表示を扱います。
 -   `TelopPanel.tsx`: コントロールパネルの「テロップ」タブ。プリセットのボタン、自由入力、プリセットの編集と、キーボードショートカット（1〜9, 0）を扱います。
 -   `ScoreDisplay.tsx`: メインスコアとラベルをレンダリングします。スコア値が変更されたときにアニメーションを含みます。
 -   `BurndownChart.tsx`: 目標、残り値、折れ線グラフの可視化、バーンアッププログレスバーを含むバーンダウンチャートをレンダリングします。

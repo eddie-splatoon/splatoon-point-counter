@@ -15,9 +15,10 @@
 5. **字幕オーバーレイ** (`/caption-overlay`) - 配信者の音声をリアルタイムに字幕表示
 6. **サイドパネルオーバーレイ** (`/side-panel-overlay`) - 配信画面右側（250x584）。上段にフォロワーゲージ、下段にコントロールパネルで選んだスロットを表示
 7. **実況テロップオーバーレイ** (`/telop-overlay`) - コントロールパネルのボタン・キーボードで出す定型文を数秒だけ大きく表示
-8. **バックエンドAPI** (`/api/stream-data`, `/api/caption`, `/api/twitch`, `/api/salmon`, `/api/side-panel`, `/api/salmon-schedule`, `/api/telop`) - データ管理とクライアント間の同期
-9. **文字起こしスクリプト** (`tools/caption-stt/`) - マイク音声を文字起こしして `/api/caption` へ送信（Python, Mac ネイティブ実行）
-10. **Twitch連携スクリプト** (`tools/twitch-eventsub/`) - フォロワー数・フォロワー目標を EventSub で受信して `/api/twitch` へ送信（Node, 依存なし）
+8. **読み上げ（音声専用）オーバーレイ** (`/voice-overlay`) - 読み上げキューの文を VOICEVOX で音声にして順に再生（画面には何も出さない）
+9. **バックエンドAPI** (`/api/stream-data`, `/api/caption`, `/api/twitch`, `/api/salmon`, `/api/side-panel`, `/api/salmon-schedule`, `/api/telop`, `/api/speech`, `/api/voice`) - データ管理とクライアント間の同期
+10. **文字起こしスクリプト** (`tools/caption-stt/`) - マイク音声を文字起こしして `/api/caption` へ送信（Python, Mac ネイティブ実行）
+11. **Twitch連携スクリプト** (`tools/twitch-eventsub/`) - フォロワー数・フォロワー目標を EventSub で受信して `/api/twitch` へ送信（Node, 依存なし）
 
 ## 技術スタック
 
@@ -31,6 +32,7 @@
 - **文字起こし**: mlx-whisper + Silero VAD (Python 3.12, `tools/caption-stt/`)
 - **Twitch連携**: EventSub WebSocket + Device Code Flow（Node 24 標準の `fetch` / `WebSocket` と型除去で実行, `tools/twitch-eventsub/`）
 - **永続化**: SQLite（Node 24 標準の `node:sqlite`, `lib/db.ts`。`data/overlay.db`）
+- **合成音声**: VOICEVOX（配信 PC で別途起動。`VOICEVOX_URL`、既定 `http://localhost:50021`）
 - **テスト**: Vitest + React Testing Library + @testing-library/jest-dom
 - **Linting**: ESLint 9 (Flat Config)
 - **CI/CD**: GitHub Actions
@@ -57,6 +59,8 @@
 │   │   └── page.tsx              # サイドパネルオーバーレイ
 │   ├── telop-overlay/
 │   │   └── page.tsx              # 実況テロップオーバーレイ
+│   ├── voice-overlay/
+│   │   └── page.tsx              # 読み上げ（音声専用）オーバーレイ
 │   └── api/
 │       ├── stream-data/
 │       │   └── route.ts          # データ管理API
@@ -72,8 +76,16 @@
 │       │   └── route.ts          # サイドパネル設定API
 │       ├── salmon-schedule/
 │       │   └── route.ts          # サーモンランのスケジュール（外部 API の中継・キャッシュ）
-│       └── telop/
-│           └── route.ts          # 実況テロップAPI（いま出ているテロップ・プリセット）
+│       ├── telop/
+│       │   └── route.ts          # 実況テロップAPI（いま出ているテロップ・プリセット）
+│       ├── speech/
+│       │   ├── route.ts          # 読み上げキューAPI
+│       │   └── audio/
+│       │       └── route.ts      # キューの1件を VOICEVOX で wav にして返す
+│       └── voice/
+│           ├── route.ts          # 読み上げの設定API
+│           └── speakers/
+│               └── route.ts      # VOICEVOX の話者一覧の中継
 ├── components/                    # 再利用可能なReactコンポーネント
 │   ├── ScoreDisplay.tsx          # スコア表示
 │   ├── BurndownChart.tsx         # バーンダウンチャート
@@ -90,7 +102,8 @@
 │   ├── InkTankGauge.tsx          # インクタンク型フォロワーゲージ
 │   ├── ChallengeList.tsx         # 本日のお題（サイドパネルのスロット）
 │   ├── SalmonSchedule.tsx        # サーモンランのスケジュール（サイドパネルのスロット）
-│   └── TelopPanel.tsx            # コントロールパネルのテロップタブ
+│   ├── TelopPanel.tsx            # コントロールパネルのテロップタブ
+│   └── VoiceSettingsPanel.tsx    # 読み上げ（VOICEVOX）の設定（テロップタブ内）
 ├── lib/
 │   ├── localStorage.ts           # ローカルストレージのラッパー
 │   ├── db.ts                     # SQLite の接続とスキーマ
@@ -98,7 +111,9 @@
 │   ├── salmonTypes.ts            # サーモンラン記録の型・定数（クライアントからも使う）
 │   ├── sidePanelTypes.ts         # サイドパネルのスロット定義・設定の検証（クライアントからも使う）
 │   ├── salmonSchedule.ts         # サーモンランのスケジュールの型・変換（クライアントからも使う）
-│   └── telopTypes.ts             # 実況テロップの型・プリセットの検証（クライアントからも使う）
+│   ├── telopTypes.ts             # 実況テロップの型・プリセットの検証（クライアントからも使う）
+│   ├── voiceTypes.ts             # 読み上げの型・設定の検証（クライアントからも使う）
+│   └── speech.ts                 # 読み上げキュー・設定・VOICEVOX との通信（サーバー専用）
 ├── data/                          # SQLite・Twitch トークン（Git / Docker イメージ管理外）
 ├── public/                        # 静的アセット
 │   └── tips.tsv                  # Tips データ
@@ -278,10 +293,21 @@ Twitch のフォロワー数とフォロワー目標を受け取る機能。
 
 - `POST /api/telop` に `{presetId}` か `{text, followFont?}`（1 行・30 文字まで。`normalizeTelopText` で改行と連続する空白を空白 1 つにまとめる）を送るとテロップを出す。Stream Deck などからも同じ形で送れる（JSON 以外は 415、無いプリセットは 404）
 - いま出ているテロップ `{id, text, followFont, timestamp}` はインメモリ（再起動で消えてよい）。プリセット `{id, text, speak, followFont}`（最大 12 個）は SQLite の `app_state`（キー `telop`）に保存し、`PUT /api/telop {presets}` で更新する。保存値が不正なら既定のプリセットを返す。`__TEST_ONLY_resetTelop()` はテスト用
-- 型・定数・検証は `lib/telopTypes.ts`（クライアントからも使う）。`speak` は合成音声で読み上げるかの設定で、読み上げは別 Issue（#76）で対応する
+- 型・定数・検証は `lib/telopTypes.ts`（クライアントからも使う）。`speak` は合成音声で読み上げるかの設定。`speak` が true のプリセット（自由入力は `speak: true` を付けたもの）は、出すと同時に `enqueueSpeech` で読み上げキューに入れる（読み上げが無効なら入れない）
 - `followFont` は共通設定のフォント（`/api/stream-data` の `fontFamily`）で表示するか。そのフォントに無い文字が化けるテロップは false にして `sans-serif` で出す。後から追加した項目なので、保存済みのプリセットに無ければ true とみなす（自由入力で省略したときも true）
 - オーバーレイは 0.5 秒ごとにポーリングし（フォントは 2 秒ごとに `/api/stream-data` から取得）、出してから `TELOP_DISPLAY_DURATION`（4 秒）以内のものだけ表示する（開き直したときに古いテロップを出さない）。テロップごとにインクの色を変える
 - コントロールパネルの「テロップ」タブ（`components/TelopPanel.tsx`）は、プリセットのボタン・自由入力・プリセットの編集（変更はその場で保存）。タブを開いている間は `window` の keydown で 1〜9, 0 を受け、並び順のプリセットを出す（入力欄にフォーカスがあるとき・IME 変換中・修飾キー付き・キーリピートは無視）
+
+### `/app/voice-overlay/page.tsx` と `/app/api/speech/` / `/app/api/voice/`
+
+合成音声（VOICEVOX）で、テロップなどを読み上げて配信に声を入れる機能。
+
+- 読み上げキュー（`lib/speech.ts`、サーバー専用）はインメモリ。`/api/speech` と `/api/telop` など複数のルートから使うので、ルートごとにモジュールが別に読み込まれても共有できるよう `globalThis` に置く。1 件 100 文字まで（超えたら切り詰め）・最大 20 件・60 秒で破棄。ID は起動時刻から振る（サーバーを再起動しても、開いたままのオーバーレイが新しい読み上げを再生済みと取り違えないように）。`enqueueSpeech` は読み上げが無効・話者が未選択なら追加せず null を返す（`POST /api/speech` は 409）。`__TEST_ONLY_resetSpeechQueue()` はテスト用
+- `/api/speech/audio?id=` はキューにある id だけを受け付け、VOICEVOX の `audio_query` → `synthesis` を中継して wav を返す（任意の文を読ませないため）。合成は ID ごとに 1 回だけ（`synthesizeSpeech` が結果をキャッシュし、失敗したら次の要求で合成し直す。合成後に速度・音量を変えても、合成済みのものはそのまま）。VOICEVOX との通信は 10 秒（`VOICEVOX_TIMEOUT_MS`）で打ち切り、応答は `audio_query` 1 MB・wav 20 MB を超えた時点で読むのをやめる。失敗したら 502
+- 設定 `{enabled, speakerId, speakerName, speedScale, volumeScale}` は SQLite の `app_state`（キー `voice`）。既定は無効。`speakerId` は VOICEVOX のスタイル ID、`speakerName` はクレジット表記（`voiceCredit` → `VOICEVOX:キャラ名`）用のキャラクター名。`/api/voice/speakers` は VOICEVOX の `/speakers` の中継で、歌唱用（`type` が `talk` 以外）のスタイルは除く（`parseSpeakers`）
+- オーバーレイは 0.5 秒ごとにキューを取得し、開いた時点でキューにあったものは再生しない。新しいものを 1 件ずつ順に `Audio` で再生し、再生できなかったとき（VOICEVOX 未起動・自動再生の拒否など）も止まらずに次へ進む
+- コントロールパネルの「テロップ」タブの下に `components/VoiceSettingsPanel.tsx`（有効/無効・話者・速度・音量・テスト再生・クレジット表記）。VOICEVOX に接続できなくても保存済みの話者は表示する
+- テストでは `fetch` を `vi.stubGlobal` で差し替える（実際の VOICEVOX には接続しない）
 
 ### `/components/ScoreDisplay.tsx`
 

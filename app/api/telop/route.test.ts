@@ -3,6 +3,7 @@ import { NextRequest } from 'next/server';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { __TEST_ONLY_setDb, openDb, setAppState } from '../../../lib/db';
+import { VOICE_STATE_KEY, __TEST_ONLY_resetSpeechQueue, listSpeech } from '../../../lib/speech';
 import { getDefaultTelopSettings } from '../../../lib/telopTypes';
 
 import { GET, POST, PUT, __TEST_ONLY_resetTelop } from './route';
@@ -19,6 +20,7 @@ const NOW = 1_700_000_000_000;
 beforeEach(() => {
   __TEST_ONLY_setDb(openDb(':memory:'));
   __TEST_ONLY_resetTelop();
+  __TEST_ONLY_resetSpeechQueue();
   vi.spyOn(Date, 'now').mockReturnValue(NOW);
 });
 
@@ -85,5 +87,37 @@ describe('Telop API', () => {
   it('falls back to the default presets when the saved ones are invalid', async () => {
     setAppState('telop', { presets: 'broken' });
     expect((await (await GET()).json()).presets).toEqual(getDefaultTelopSettings().presets);
+  });
+
+  describe('reading aloud', () => {
+    beforeEach(() => {
+      setAppState(VOICE_STATE_KEY, { enabled: true, speakerId: 3, speakerName: 'ずんだもん', speedScale: 1, volumeScale: 1 });
+    });
+
+    it('queues presets that are read aloud', async () => {
+      await POST(request('POST', { presetId: 1 })); // ナイス! (speak: true)
+      await POST(request('POST', { presetId: 2 })); // カタパッド残った… (speak: false)
+
+      expect(listSpeech().map((item) => item.text)).toEqual(['ナイス!']);
+    });
+
+    it('queues free text only when speak is true', async () => {
+      await POST(request('POST', { text: '読まない' }));
+      await POST(request('POST', { text: '読む', speak: true }));
+
+      expect(listSpeech().map((item) => item.text)).toEqual(['読む']);
+    });
+
+    it('rejects a non-boolean speak', async () => {
+      expect((await POST(request('POST', { text: 'a', speak: 'yes' }))).status).toBe(400);
+    });
+
+    it('shows the telop without queuing while speech is disabled', async () => {
+      setAppState(VOICE_STATE_KEY, { enabled: false, speakerId: 3, speakerName: 'ずんだもん', speedScale: 1, volumeScale: 1 });
+      const response = await POST(request('POST', { presetId: 1 }));
+
+      expect(response.status).toBe(200);
+      expect(listSpeech()).toEqual([]);
+    });
   });
 });

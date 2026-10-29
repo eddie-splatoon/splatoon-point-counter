@@ -26,6 +26,7 @@ import React, {useState, useEffect, useRef, useMemo, useCallback} from 'react';
 import SalmonRunPanel from '../../components/SalmonRunPanel';
 import SidePanelSettingsPanel from '../../components/SidePanelSettingsPanel';
 import TelopPanel from '../../components/TelopPanel';
+import VoiceSettingsPanel from '../../components/VoiceSettingsPanel';
 import {getItem, setItem, removeItem} from '../../lib/localStorage';
 import {StreamData, MessagePreset, BurndownData} from '../api/stream-data/route';
 
@@ -76,6 +77,16 @@ const darkTheme = createTheme({
         },
     },
     components: {
+        // 紙の背景（background.paper）はカード用にほぼ透明なので、プルダウンなどのメニューは不透明にして背景と重ならないようにする
+        MuiPopover: {
+            styleOverrides: {
+                paper: {
+                    backgroundColor: '#2A2A2A',
+                    backgroundImage: 'none',
+                    border: '1px solid rgba(255, 255, 255, 0.15)',
+                },
+            },
+        },
         MuiOutlinedInput: {
             styleOverrides: {
                 root: {
@@ -600,7 +611,12 @@ const ControlPanelPage: React.FC = () => {
 
                     {formData.activeTab === 'sidePanel' && <SidePanelSettingsPanel/>}
 
-                    {formData.activeTab === 'telop' && <TelopPanel/>}
+                    {formData.activeTab === 'telop' && (
+                        <>
+                            <TelopPanel/>
+                            <VoiceSettingsPanel/>
+                        </>
+                    )}
 
                     {formData.activeTab === 'common' && (
                         <>
