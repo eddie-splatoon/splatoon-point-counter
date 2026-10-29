@@ -10,7 +10,7 @@ export const TELOP_SHORTCUT_KEYS = ['1', '2', '3', '4', '5', '6', '7', '8', '9',
 export interface TelopPreset {
     id: number;
     text: string;
-    speak: boolean; // 合成音声でも読み上げるか（読み上げは別 Issue で対応）
+    speak: boolean; // 合成音声（VOICEVOX）でも読み上げるか
     followFont: boolean; // 共通設定のフォントで表示するか。そのフォントに無い文字が化けるときは外して既定のフォントで出す
 }
 

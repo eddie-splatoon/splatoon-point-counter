@@ -26,6 +26,7 @@ import React, {useState, useEffect, useRef, useMemo, useCallback} from 'react';
 import SalmonRunPanel from '../../components/SalmonRunPanel';
 import SidePanelSettingsPanel from '../../components/SidePanelSettingsPanel';
 import TelopPanel from '../../components/TelopPanel';
+import VoiceSettingsPanel from '../../components/VoiceSettingsPanel';
 import {getItem, setItem, removeItem} from '../../lib/localStorage';
 import {StreamData, MessagePreset, BurndownData} from '../api/stream-data/route';
 
@@ -600,7 +601,12 @@ const ControlPanelPage: React.FC = () => {
 
                     {formData.activeTab === 'sidePanel' && <SidePanelSettingsPanel/>}
 
-                    {formData.activeTab === 'telop' && <TelopPanel/>}
+                    {formData.activeTab === 'telop' && (
+                        <>
+                            <TelopPanel/>
+                            <VoiceSettingsPanel/>
+                        </>
+                    )}
 
                     {formData.activeTab === 'common' && (
                         <>

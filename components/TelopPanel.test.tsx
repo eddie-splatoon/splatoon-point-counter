@@ -63,7 +63,7 @@ describe('TelopPanel', () => {
     fireEvent.change(input, { target: { value: ' ありがとう ' } });
     await act(async () => fireEvent.keyDown(input, { key: 'Enter' }));
 
-    expect(lastPosted()).toEqual({ text: 'ありがとう', followFont: true });
+    expect(lastPosted()).toEqual({ text: 'ありがとう', followFont: true, speak: false });
     expect(input).toHaveValue('');
   });
 
@@ -74,7 +74,17 @@ describe('TelopPanel', () => {
     fireEvent.change(screen.getByLabelText('自由入力'), { target: { value: 'ありがとう' } });
     await act(async () => fireEvent.click(screen.getByRole('button', { name: '出す' })));
 
-    expect(lastPosted()).toEqual({ text: 'ありがとう', followFont: false });
+    expect(lastPosted()).toEqual({ text: 'ありがとう', followFont: false, speak: false });
+  });
+
+  it('reads free text aloud when checked', async () => {
+    await renderLoaded();
+
+    fireEvent.click(screen.getByLabelText('読み上げる'));
+    fireEvent.change(screen.getByLabelText('自由入力'), { target: { value: 'ありがとう' } });
+    await act(async () => fireEvent.click(screen.getByRole('button', { name: '出す' })));
+
+    expect(lastPosted()).toEqual({ text: 'ありがとう', followFont: true, speak: true });
   });
 
   it('keeps the free text when showing it fails', async () => {

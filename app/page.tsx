@@ -218,6 +218,17 @@ export default function Home() {
                         >
                             実況テロップオーバーレイ (Preview)
                         </Button>
+                        <Button
+                            variant="contained"
+                            color="secondary"
+                            href="/voice-overlay"
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            fullWidth
+                            size="large"
+                        >
+                            読み上げ（音声専用）オーバーレイ (Preview)
+                        </Button>
                     </Box>
                 </Box>
                 <Typography variant="caption" sx={{mt: 4, color: 'text.secondary', zIndex: 1}}>
