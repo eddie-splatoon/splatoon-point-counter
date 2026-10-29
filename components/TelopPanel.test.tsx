@@ -67,6 +67,18 @@ describe('TelopPanel', () => {
     expect(input).toHaveValue('');
   });
 
+  it('keeps the free text when showing it fails', async () => {
+    await renderLoaded();
+    mockedAxios.post.mockRejectedValueOnce(new Error('network'));
+    const input = screen.getByLabelText('自由入力');
+
+    fireEvent.change(input, { target: { value: 'ありがとう' } });
+    await act(async () => fireEvent.click(screen.getByRole('button', { name: '出す' })));
+
+    expect(screen.getByText('テロップを出せませんでした。')).toBeInTheDocument();
+    expect(input).toHaveValue('ありがとう');
+  });
+
   it('does not show free text on Enter during IME composition', async () => {
     await renderLoaded();
     const input = screen.getByLabelText('自由入力');
@@ -107,6 +119,20 @@ describe('TelopPanel', () => {
 
     await act(async () => fireEvent.click(screen.getByRole('button', { name: 'プリセット「ナイス!」を削除' })));
     expect(lastPut().presets.map((p) => p.text)).toEqual(['カタパッド残った…', '満潮きた', 'ヘルプ感謝']);
+  });
+
+  it('sends preset saves one at a time in order', async () => {
+    await renderLoaded();
+    let finishFirst: () => void = () => {};
+    mockedAxios.put.mockImplementationOnce(() => new Promise((resolve) => { finishFirst = () => resolve({ data: {}, status: 200 }); }));
+
+    await act(async () => fireEvent.click(screen.getByLabelText('「ナイス!」を読み上げる')));
+    await act(async () => fireEvent.click(screen.getByLabelText('「満潮きた」を読み上げる')));
+    expect(mockedAxios.put).toHaveBeenCalledTimes(1);
+
+    await act(async () => finishFirst());
+    expect(mockedAxios.put).toHaveBeenCalledTimes(2);
+    expect(lastPut().presets.map((p) => p.speak)).toEqual([false, false, true, true]);
   });
 
   it('reloads the presets when saving fails', async () => {

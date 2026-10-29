@@ -15,7 +15,7 @@ import {
     Typography,
 } from '@mui/material';
 import axios from 'axios';
-import React, {useCallback, useEffect, useState} from 'react';
+import React, {useCallback, useEffect, useRef, useState} from 'react';
 
 import {
     MAX_TELOP_LENGTH,
@@ -38,6 +38,8 @@ const TelopPanel: React.FC = () => {
     const [freeText, setFreeText] = useState('');
     const [newPreset, setNewPreset] = useState('');
     const [error, setError] = useState('');
+    // プリセットの保存は1件ずつ順に送る（並行して送ると、後の変更より先の変更が後に届いて残ることがある）
+    const saveQueue = useRef<Promise<void>>(Promise.resolve());
 
     const load = useCallback(async () => {
         try {
@@ -54,12 +56,15 @@ const TelopPanel: React.FC = () => {
         void load();
     }, [load]);
 
-    const show = useCallback(async (body: {presetId: number} | {text: string}) => {
+    /** テロップを出す。出せたかを返す */
+    const show = useCallback(async (body: {presetId: number} | {text: string}): Promise<boolean> => {
         setError('');
         try {
             await axios.post('/api/telop', body);
+            return true;
         } catch {
             setError('テロップを出せませんでした。');
+            return false;
         }
     }, []);
 
@@ -78,16 +83,20 @@ const TelopPanel: React.FC = () => {
         return () => window.removeEventListener('keydown', handleKeyDown);
     }, [presets, show]);
 
-    const savePresets = async (next: TelopPreset[]) => {
+    const savePresets = (next: TelopPreset[]) => {
         setPresets(next);
         setError('');
         // 表示は送信前に更新しておく。応答で上書きすると、素早い連続操作で古い応答が新しい状態を戻してしまう
-        try {
-            await axios.put('/api/telop', {presets: next});
-        } catch {
-            setError('プリセットの保存に失敗しました。');
-            await load();
-        }
+        const save = saveQueue.current.then(async () => {
+            try {
+                await axios.put('/api/telop', {presets: next});
+            } catch {
+                setError('プリセットの保存に失敗しました。');
+                await load();
+            }
+        });
+        saveQueue.current = save;
+        return save;
     };
 
     if (!presets) {
@@ -95,10 +104,10 @@ const TelopPanel: React.FC = () => {
     }
 
     const normalizedFreeText = normalizeTelopText(freeText);
-    const handleShowFreeText = () => {
+    const handleShowFreeText = async () => {
         if (normalizedFreeText === null) return;
-        void show({text: normalizedFreeText});
-        setFreeText('');
+        // 出せなかったときは入力を残して、そのまま再送できるようにする
+        if (await show({text: normalizedFreeText})) setFreeText('');
     };
 
     const normalizedNewPreset = normalizeTelopText(newPreset);
@@ -155,13 +164,13 @@ const TelopPanel: React.FC = () => {
                         onKeyDown={(e) => {
                             if (e.key !== 'Enter' || e.nativeEvent.isComposing) return;
                             e.preventDefault();
-                            handleShowFreeText();
+                            void handleShowFreeText();
                         }}
                         error={freeText.trim() !== '' && normalizedFreeText === null}
                         helperText={`${MAX_TELOP_LENGTH} 文字まで。Enter で出します。`}
                         fullWidth
                     />
-                    <Button variant="contained" onClick={handleShowFreeText} disabled={normalizedFreeText === null} sx={{minWidth: '100px'}}>出す</Button>
+                    <Button variant="contained" onClick={() => void handleShowFreeText()} disabled={normalizedFreeText === null} sx={{minWidth: '100px'}}>出す</Button>
                 </Box>
             </Paper>
 
