@@ -97,7 +97,7 @@ export interface StreamData {
 -   **目的**: 合成音声（VOICEVOX）の読み上げ。`/api/speech` はインメモリの読み上げキュー（`POST {text}` で追加。読み上げが無効なら 409）、`/api/speech/audio?id=` はキューの 1 件を VOICEVOX（`VOICEVOX_URL`、既定 `http://localhost:50021`）で wav にして返します。`/api/voice` は読み上げの設定（有効/無効・話者・速度・音量。SQLite の `app_state` キー `voice`）、`/api/voice/speakers` は VOICEVOX の話者一覧の中継です。音声専用オーバーレイがキューをポーリングして 1 件ずつ順に再生します。キュー・設定・VOICEVOX との通信は `lib/speech.ts`（サーバー専用）、型と検証は `lib/voiceTypes.ts` にあります。設定 UI は `components/VoiceSettingsPanel.tsx`（コントロールパネルの「テロップ」タブ）。
 
 ### `/tools/twitch-eventsub`
--   **目的**: `pnpm twitch` で起動する常駐スクリプト。Device Code Flow で認証し、EventSub WebSocket でフォローとゴールの通知を受信して `/api/twitch` へ送信します。トークンは `data/twitch-token.json`（Git 管理外）に保存されます。詳細は同ディレクトリの README を参照。
+-   **目的**: `pnpm twitch` で起動する常駐スクリプト。Device Code Flow で認証し、EventSub WebSocket でフォローとゴールの通知を受信して `/api/twitch` へ送信します。チャットも受信し、初めてコメントした視聴者への挨拶（本文は読まない）と配信者自身のコメントを `/api/speech`（読み上げキュー）へ送ります（`chatToSpeech`）。トークンは `data/twitch-token.json`（Git 管理外）に保存されます。詳細は同ディレクトリの README を参照。
 
 ### `/components`
 このディレクトリには、再利用可能なReactコンポーネントが格納されています。

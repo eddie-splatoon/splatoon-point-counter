@@ -12,11 +12,15 @@ import {
   SCOPES,
   TwitchClient,
   applyNotification,
+  chatToSpeech,
   loadToken,
+  parseIgnoredLogins,
+  publishSpeech,
   pollDeviceToken,
   publishState,
   refreshAccessToken,
   saveToken,
+  type ChatSpeechContext,
   type SocketLike,
   type TwitchState,
 } from './twitch_eventsub';
@@ -237,12 +241,23 @@ describe('TwitchClient', () => {
       await client.subscribeAll('session-1');
 
       const bodies = fetchFn.mock.calls.slice(1).map(([, init]) => JSON.parse(init.body));
-      expect(bodies.map((b) => b.type)).toEqual(['channel.follow', 'channel.goal.begin', 'channel.goal.progress', 'channel.goal.end']);
+      expect(bodies.map((b) => b.type)).toEqual(['channel.follow', 'channel.goal.begin', 'channel.goal.progress', 'channel.goal.end', 'channel.chat.message']);
       expect(bodies[0]).toMatchObject({
         version: '2',
         condition: { broadcaster_user_id: '123', moderator_user_id: '123' },
         transport: { method: 'websocket', session_id: 'session-1' },
       });
+    });
+
+    it('subscribes to the chat as the broadcaster', async () => {
+      const fetchFn = vi.fn();
+      const client = await authenticated(fetchFn);
+      fetchFn.mockImplementation(async () => json({ data: [] }, 202));
+
+      await client.subscribeAll('session-1');
+
+      const chat = fetchFn.mock.calls.slice(1).map(([, init]) => JSON.parse(init.body)).find((b) => b.type === 'channel.chat.message');
+      expect(chat).toMatchObject({ version: '1', condition: { broadcaster_user_id: '123', user_id: '123' } });
     });
 
     it('throws when a subscription is rejected', async () => {
@@ -453,6 +468,95 @@ describe('EventSubConnection', () => {
     vi.advanceTimersByTime(120_000);
 
     expect(sockets).toHaveLength(1);
+  });
+});
+
+describe('chatToSpeech', () => {
+  const context = (): ChatSpeechContext => ({ broadcasterId: '123', greeted: new Set(), ignoredLogins: new Set(['nightbot']) });
+  const chat = (overrides: Record<string, unknown> = {}) => ({
+    chatter_user_id: '999',
+    chatter_user_login: 'viewer_a',
+    chatter_user_name: 'ViewerA',
+    message: { text: 'こんにちは！初見です' },
+    source_broadcaster_user_id: null,
+    ...overrides,
+  });
+
+  it('greets a viewer by name on their first message without reading the message', () => {
+    expect(chatToSpeech(chat(), context())).toBe('ViewerAさん、いらっしゃい！');
+  });
+
+  it('greets each viewer only once', () => {
+    const ctx = context();
+    chatToSpeech(chat(), ctx);
+
+    expect(chatToSpeech(chat({ message: { text: '2回目' } }), ctx)).toBeNull();
+    expect(chatToSpeech(chat({ chatter_user_id: '1000', chatter_user_name: 'ViewerB' }), ctx)).toBe('ViewerBさん、いらっしゃい！');
+  });
+
+  it('falls back to the login name when the display name is empty', () => {
+    expect(chatToSpeech(chat({ chatter_user_name: '' }), context())).toBe('viewer_aさん、いらっしゃい！');
+  });
+
+  it('ignores bots in the ignore list regardless of case', () => {
+    expect(chatToSpeech(chat({ chatter_user_login: 'Nightbot' }), context())).toBeNull();
+  });
+
+  it('reads the broadcaster\'s own message', () => {
+    expect(chatToSpeech(chat({ chatter_user_id: '123', message: { text: '  次は\nキケン度MAX  ' } }), context())).toBe('次は キケン度MAX');
+  });
+
+  it('truncates long messages from the broadcaster', () => {
+    expect(chatToSpeech(chat({ chatter_user_id: '123', message: { text: 'あ'.repeat(150) } }), context())).toBe('あ'.repeat(100));
+  });
+
+  it.each([
+    ['a command', '!uptime'],
+    ['a URL', '配信はこちら https://example.com'],
+    ['a bare domain', 'twitch.tv/eddie を見てね'],
+    ['an empty message', '  '],
+  ])('does not read the broadcaster\'s message with %s', (_, text) => {
+    expect(chatToSpeech(chat({ chatter_user_id: '123', message: { text } }), context())).toBeNull();
+  });
+
+  it('ignores messages from other channels in a shared chat', () => {
+    const ctx = context();
+    expect(chatToSpeech(chat({ source_broadcaster_user_id: '555' }), ctx)).toBeNull();
+    expect(ctx.greeted.size).toBe(0);
+  });
+
+  it('ignores events without a chatter', () => {
+    expect(chatToSpeech({}, context())).toBeNull();
+    expect(chatToSpeech(null, context())).toBeNull();
+  });
+});
+
+describe('parseIgnoredLogins', () => {
+  it('splits, trims and lowercases the logins', () => {
+    expect(parseIgnoredLogins(' Nightbot, StreamElements ,,')).toEqual(new Set(['nightbot', 'streamelements']));
+    expect(parseIgnoredLogins(undefined)).toEqual(new Set());
+  });
+});
+
+describe('publishSpeech', () => {
+  it('posts the text as JSON', async () => {
+    const fetchFn = vi.fn().mockImplementation(async () => json({}));
+
+    expect(await publishSpeech('http://localhost:3000/api/speech', 'こんにちは', fetchFn)).toBe(true);
+    const [url, init] = fetchFn.mock.calls[0];
+    expect(url).toBe('http://localhost:3000/api/speech');
+    expect(init.headers).toEqual({ 'Content-Type': 'application/json' });
+    expect(JSON.parse(init.body)).toEqual({ text: 'こんにちは' });
+  });
+
+  it('returns false when reading aloud is disabled in the app', async () => {
+    const fetchFn = vi.fn().mockImplementation(async () => json({}, 409));
+    expect(await publishSpeech('http://x', 'a', fetchFn)).toBe(false);
+  });
+
+  it('throws when the app rejects the request', async () => {
+    const fetchFn = vi.fn().mockImplementation(async () => json({}, 500));
+    await expect(publishSpeech('http://x', 'a', fetchFn)).rejects.toThrow('500');
   });
 });
 

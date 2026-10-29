@@ -99,10 +99,13 @@ flowchart LR
 
 Twitch のフォロワー数とフォロワー目標（クリエイターゴール）をリアルタイムに受信し、`/api/twitch` で提供します。受信は Node のスクリプト（`tools/twitch-eventsub/`）が EventSub WebSocket で行うため、公開 URL は不要です。フォロワーの名前は扱いません。
 
+チャットも受信し、合成音声で読み上げます（読み上げを有効にしているときだけ）。配信中に初めてコメントした視聴者には「〇〇さん、いらっしゃい！」と名前で挨拶し、コメント本文は読みません。本文を読み上げるのは配信者自身のコメントだけです（`!` で始まるコマンドと URL を含むものは除く）。視聴者の名前やコメントは画面に出さず、保存もしません。
+
 ```mermaid
 flowchart LR
     TW["Twitch<br/>Helix / EventSub"] --> SCR["twitch_eventsub.ts"]
     SCR -- "POST {followerTotal, goal, lastFollowAt}" --> API["/api/twitch"]
+    SCR -- "POST {text}（挨拶・配信者のコメント）" --> SP["/api/speech"]
 ```
 
 
