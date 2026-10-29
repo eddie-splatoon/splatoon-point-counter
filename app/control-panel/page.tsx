@@ -77,6 +77,16 @@ const darkTheme = createTheme({
         },
     },
     components: {
+        // 紙の背景（background.paper）はカード用にほぼ透明なので、プルダウンなどのメニューは不透明にして背景と重ならないようにする
+        MuiPopover: {
+            styleOverrides: {
+                paper: {
+                    backgroundColor: '#2A2A2A',
+                    backgroundImage: 'none',
+                    border: '1px solid rgba(255, 255, 255, 0.15)',
+                },
+            },
+        },
         MuiOutlinedInput: {
             styleOverrides: {
                 root: {

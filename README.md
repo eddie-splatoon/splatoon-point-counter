@@ -83,7 +83,7 @@ curl -X POST http://localhost:3000/api/telop -H "Content-Type: application/json"
 
 合成音声（[VOICEVOX](https://voicevox.hiroshiba.jp/)）で読み上げた音声を流すオーバーレイです（`/voice-overlay`。画面には何も表示しません）。読み上げキュー（`/api/speech`）に入った文を、1 件ずつ順に VOICEVOX で音声にして再生します。開いた時点でキューにあったもの（再読み込み時など）は再生しません。
 
-OBS のブラウザソースに `http://localhost:3000/voice-overlay` を追加し、「OBS で音声を制御する」を ON にします（音量は OBS の音声ミキサーでも調整できます）。通常のブラウザのタブで開くと、ページを一度クリックするまで自動再生が止められることがあります。
+OBS のブラウザソースに `http://localhost:3000/voice-overlay` を追加し、「OBS で音声を制御する」を ON にします（音量は OBS の音声ミキサーでも調整できます）。通常のブラウザのタブで開くと、ページを一度クリックするまで自動再生が止められることがあります。開いている `/voice-overlay` はそれぞれ再生するので、ブラウザのタブと OBS の両方で開いていると声が二重に聞こえます。試し終わったらブラウザのタブは閉じてください。
 
 ```mermaid
 flowchart LR
