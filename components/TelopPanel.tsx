@@ -36,6 +36,7 @@ const isEditableTarget = (target: EventTarget | null) =>
 const TelopPanel: React.FC = () => {
     const [presets, setPresets] = useState<TelopPreset[] | null>(null);
     const [freeText, setFreeText] = useState('');
+    const [freeTextFollowFont, setFreeTextFollowFont] = useState(true);
     const [newPreset, setNewPreset] = useState('');
     const [error, setError] = useState('');
     // プリセットの保存は1件ずつ順に送る（並行して送ると、後の変更より先の変更が後に届いて残ることがある）
@@ -57,7 +58,7 @@ const TelopPanel: React.FC = () => {
     }, [load]);
 
     /** テロップを出す。出せたかを返す */
-    const show = useCallback(async (body: {presetId: number} | {text: string}): Promise<boolean> => {
+    const show = useCallback(async (body: {presetId: number} | {text: string; followFont: boolean}): Promise<boolean> => {
         setError('');
         try {
             await axios.post('/api/telop', body);
@@ -108,7 +109,7 @@ const TelopPanel: React.FC = () => {
         if (normalizedFreeText === null) return;
         // 出せなかったときは入力を残して、そのまま再送できるようにする。送信中に打ち直した文は消さない
         const sent = normalizedFreeText;
-        if (await show({text: sent})) setFreeText((current) => normalizeTelopText(current) === sent ? '' : current);
+        if (await show({text: sent, followFont: freeTextFollowFont})) setFreeText((current) => normalizeTelopText(current) === sent ? '' : current);
     };
 
     const normalizedNewPreset = normalizeTelopText(newPreset);
@@ -116,7 +117,7 @@ const TelopPanel: React.FC = () => {
     const handleAddPreset = () => {
         if (!canAddPreset) return;
         const id = Math.max(0, ...presets.map((p) => p.id)) + 1;
-        void savePresets([...presets, {id, text: normalizedNewPreset, speak: false}]);
+        void savePresets([...presets, {id, text: normalizedNewPreset, speak: false, followFont: true}]);
         setNewPreset('');
     };
 
@@ -173,6 +174,10 @@ const TelopPanel: React.FC = () => {
                     />
                     <Button variant="contained" onClick={() => void handleShowFreeText()} disabled={normalizedFreeText === null} sx={{minWidth: '100px'}}>出す</Button>
                 </Box>
+                <FormControlLabel
+                    label="共通設定のフォントで表示"
+                    control={<Checkbox checked={freeTextFollowFont} onChange={(e) => setFreeTextFollowFont(e.target.checked)}/>}
+                />
             </Paper>
 
             <Paper elevation={12} sx={paperSx}>
@@ -188,6 +193,16 @@ const TelopPanel: React.FC = () => {
                                         checked={preset.speak}
                                         onChange={(e) => void savePresets(presets.map((p) => p.id === preset.id ? {...p, speak: e.target.checked} : p))}
                                         slotProps={{input: {'aria-label': `「${preset.text}」を読み上げる`}}}
+                                    />
+                                }
+                            />
+                            <FormControlLabel
+                                label="共通フォント"
+                                control={
+                                    <Checkbox
+                                        checked={preset.followFont}
+                                        onChange={(e) => void savePresets(presets.map((p) => p.id === preset.id ? {...p, followFont: e.target.checked} : p))}
+                                        slotProps={{input: {'aria-label': `「${preset.text}」を共通設定のフォントで表示`}}}
                                     />
                                 }
                             />
@@ -225,7 +240,7 @@ const TelopPanel: React.FC = () => {
                     <Button variant="contained" onClick={handleAddPreset} disabled={!canAddPreset} sx={{minWidth: '100px'}}>追加</Button>
                 </Box>
                 <Typography variant="caption" sx={{display: 'block', mt: 1, color: 'text.secondary'}}>
-                    最大 {MAX_TELOP_PRESETS} 個。上から順に 1〜9, 0 のキーが割り当てられます。「読み上げ」は合成音声（VOICEVOX）対応後に使われます。変更はすぐに保存されます。
+                    最大 {MAX_TELOP_PRESETS} 個。上から順に 1〜9, 0 のキーが割り当てられます。「共通フォント」を外すと、共通設定のフォントではなく既定のフォントで表示します（そのフォントに無い文字が化けるとき用）。「読み上げ」は合成音声（VOICEVOX）対応後に使われます。変更はすぐに保存されます。
                 </Typography>
             </Paper>
         </>

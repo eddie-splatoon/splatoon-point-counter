@@ -276,10 +276,11 @@ Twitch のフォロワー数とフォロワー目標を受け取る機能。
 
 サーモンラン中などチャットを打てないときに、定型文の「実況テロップ」をワンボタンで出す機能。
 
-- `POST /api/telop` に `{presetId}` か `{text}`（1 行・30 文字まで。`normalizeTelopText` で改行と連続する空白を空白 1 つにまとめる）を送るとテロップを出す。Stream Deck などからも同じ形で送れる（JSON 以外は 415、無いプリセットは 404）
-- いま出ているテロップ `{id, text, timestamp}` はインメモリ（再起動で消えてよい）。プリセット `{id, text, speak}`（最大 12 個）は SQLite の `app_state`（キー `telop`）に保存し、`PUT /api/telop {presets}` で更新する。保存値が不正なら既定のプリセットを返す。`__TEST_ONLY_resetTelop()` はテスト用
+- `POST /api/telop` に `{presetId}` か `{text, followFont?}`（1 行・30 文字まで。`normalizeTelopText` で改行と連続する空白を空白 1 つにまとめる）を送るとテロップを出す。Stream Deck などからも同じ形で送れる（JSON 以外は 415、無いプリセットは 404）
+- いま出ているテロップ `{id, text, followFont, timestamp}` はインメモリ（再起動で消えてよい）。プリセット `{id, text, speak, followFont}`（最大 12 個）は SQLite の `app_state`（キー `telop`）に保存し、`PUT /api/telop {presets}` で更新する。保存値が不正なら既定のプリセットを返す。`__TEST_ONLY_resetTelop()` はテスト用
 - 型・定数・検証は `lib/telopTypes.ts`（クライアントからも使う）。`speak` は合成音声で読み上げるかの設定で、読み上げは別 Issue（#76）で対応する
-- オーバーレイは 0.5 秒ごとにポーリングし、出してから `TELOP_DISPLAY_DURATION`（4 秒）以内のものだけ表示する（開き直したときに古いテロップを出さない）。テロップごとにインクの色を変える
+- `followFont` は共通設定のフォント（`/api/stream-data` の `fontFamily`）で表示するか。そのフォントに無い文字が化けるテロップは false にして `sans-serif` で出す。後から追加した項目なので、保存済みのプリセットに無ければ true とみなす（自由入力で省略したときも true）
+- オーバーレイは 0.5 秒ごとにポーリングし（フォントは 2 秒ごとに `/api/stream-data` から取得）、出してから `TELOP_DISPLAY_DURATION`（4 秒）以内のものだけ表示する（開き直したときに古いテロップを出さない）。テロップごとにインクの色を変える
 - コントロールパネルの「テロップ」タブ（`components/TelopPanel.tsx`）は、プリセットのボタン・自由入力・プリセットの編集（変更はその場で保存）。タブを開いている間は `window` の keydown で 1〜9, 0 を受け、並び順のプリセットを出す（入力欄にフォーカスがあるとき・IME 変換中・修飾キー付き・キーリピートは無視）
 
 ### `/components/ScoreDisplay.tsx`

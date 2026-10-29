@@ -35,7 +35,7 @@ describe('Telop API', () => {
     const response = await POST(request('POST', { presetId: 3 }));
 
     expect(response.status).toBe(200);
-    expect((await response.json()).current).toEqual({ id: 1, text: '満潮きた', timestamp: NOW });
+    expect((await response.json()).current).toEqual({ id: 1, text: '満潮きた', followFont: true, timestamp: NOW });
     expect(await (await GET()).json()).toMatchObject({ current: { id: 1, text: '満潮きた' }, revision: 1 });
   });
 
@@ -43,7 +43,13 @@ describe('Telop API', () => {
     await POST(request('POST', { presetId: 1 }));
     const data = await (await POST(request('POST', { text: '  ありがとう\nございます ' }))).json();
 
-    expect(data.current).toEqual({ id: 2, text: 'ありがとう ございます', timestamp: NOW });
+    expect(data.current).toEqual({ id: 2, text: 'ありがとう ございます', followFont: true, timestamp: NOW });
+  });
+
+  it('shows free text without the common font when followFont is false', async () => {
+    const data = await (await POST(request('POST', { text: 'ありがとう', followFont: false }))).json();
+
+    expect(data.current).toMatchObject({ text: 'ありがとう', followFont: false });
   });
 
   it('returns 404 for an unknown preset', async () => {
@@ -51,7 +57,7 @@ describe('Telop API', () => {
     expect((await (await GET()).json()).current).toBeNull();
   });
 
-  it.each([[{}], [{ text: '' }], [{ text: 'あ'.repeat(31) }], [{ text: 1 }]])('rejects %j', async (body) => {
+  it.each([[{}], [{ text: '' }], [{ text: 'あ'.repeat(31) }], [{ text: 1 }], [{ text: 'a', followFont: 'no' }]])('rejects %j', async (body) => {
     expect((await POST(request('POST', body))).status).toBe(400);
   });
 
@@ -62,12 +68,12 @@ describe('Telop API', () => {
   });
 
   it('saves presets and uses them for showing', async () => {
-    const presets = [{ id: 7, text: 'カンスト!', speak: true }];
+    const presets = [{ id: 7, text: 'カンスト!', speak: true, followFont: false }];
     const response = await PUT(request('PUT', { presets }));
 
     expect(response.status).toBe(200);
     expect((await (await GET()).json()).presets).toEqual(presets);
-    expect((await (await POST(request('POST', { presetId: 7 }))).json()).current.text).toBe('カンスト!');
+    expect((await (await POST(request('POST', { presetId: 7 }))).json()).current).toMatchObject({ text: 'カンスト!', followFont: false });
     expect((await POST(request('POST', { presetId: 1 }))).status).toBe(404);
   });
 

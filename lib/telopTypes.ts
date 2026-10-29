@@ -11,6 +11,7 @@ export interface TelopPreset {
     id: number;
     text: string;
     speak: boolean; // 合成音声でも読み上げるか（読み上げは別 Issue で対応）
+    followFont: boolean; // 共通設定のフォントで表示するか。そのフォントに無い文字が化けるときは外して既定のフォントで出す
 }
 
 export interface TelopSettings {
@@ -20,6 +21,7 @@ export interface TelopSettings {
 export interface Telop {
     id: number;
     text: string;
+    followFont: boolean;
     timestamp: number;
 }
 
@@ -32,10 +34,10 @@ export interface TelopData {
 
 export const getDefaultTelopSettings = (): TelopSettings => ({
     presets: [
-        {id: 1, text: 'ナイス!', speak: true},
-        {id: 2, text: 'カタパッド残った…', speak: false},
-        {id: 3, text: '満潮きた', speak: false},
-        {id: 4, text: 'ヘルプ感謝', speak: true},
+        {id: 1, text: 'ナイス!', speak: true, followFont: true},
+        {id: 2, text: 'カタパッド残った…', speak: false, followFont: true},
+        {id: 3, text: '満潮きた', speak: false, followFont: true},
+        {id: 4, text: 'ヘルプ感謝', speak: true, followFont: true},
     ],
 });
 
@@ -48,16 +50,17 @@ export function normalizeTelopText(text: string): string | null {
 
 /** 設定を検証する。不正ならエラーメッセージを返す */
 export function parseTelopSettings(body: unknown): TelopSettings | string {
-    const invalid = `presets must be an array of up to ${MAX_TELOP_PRESETS} {id, text, speak} with unique ids and text of 1-${MAX_TELOP_LENGTH} characters.`;
+    const invalid = `presets must be an array of up to ${MAX_TELOP_PRESETS} {id, text, speak, followFont} with unique ids and text of 1-${MAX_TELOP_LENGTH} characters.`;
     const {presets} = (body ?? {}) as Record<string, unknown>;
     if (!Array.isArray(presets) || presets.length > MAX_TELOP_PRESETS) return invalid;
     const parsed: TelopPreset[] = [];
     for (const item of presets) {
-        const {id, text, speak} = (item ?? {}) as Record<string, unknown>;
-        if (typeof id !== 'number' || !Number.isInteger(id) || id < 1 || typeof speak !== 'boolean' || typeof text !== 'string') return invalid;
+        // followFont は後から追加した項目なので、保存済みのプリセットに無ければ共通設定のフォントに追従する
+        const {id, text, speak, followFont = true} = (item ?? {}) as Record<string, unknown>;
+        if (typeof id !== 'number' || !Number.isInteger(id) || id < 1 || typeof speak !== 'boolean' || typeof followFont !== 'boolean' || typeof text !== 'string') return invalid;
         const normalized = normalizeTelopText(text);
         if (normalized === null || parsed.some((p) => p.id === id)) return invalid;
-        parsed.push({id, text: normalized, speak});
+        parsed.push({id, text: normalized, speak, followFont});
     }
     return {presets: parsed};
 }

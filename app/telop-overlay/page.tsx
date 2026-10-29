@@ -5,9 +5,14 @@ import {AnimatePresence, motion} from 'motion/react';
 import React, {useState, useEffect, useCallback} from 'react';
 
 import {TELOP_DISPLAY_DURATION, Telop, TelopData} from '../../lib/telopTypes';
+import {StreamData} from '../api/stream-data/route';
 
 // ワンボタンで出すものなので、字幕（1秒）より短い間隔で問い合わせる
 const POLLING_INTERVAL = 500;
+// 共通設定のフォントは頻繁に変わらないので、ほかのオーバーレイと同じくらいの間隔で問い合わせる
+const FONT_POLLING_INTERVAL = 2000;
+// 共通設定のフォントに追従しないテロップ（そのフォントで文字化けするもの）に使うフォント
+const FALLBACK_FONT = 'sans-serif';
 
 // インク風の帯の色。テロップごとに順に変える
 const INK_COLORS = ['#FF6F00', '#B05CFF', '#00C2FF', '#FF3EA5'];
@@ -16,6 +21,7 @@ const TelopOverlayPage: React.FC = () => {
     // 表示中のテロップと、ブラウザの時計で消す時刻
     const [shown, setShown] = useState<{telop: Telop; hideAt: number} | null>(null);
     const [now, setNow] = useState(0);
+    const [fontFamily, setFontFamily] = useState('');
 
     const fetchDataInternal = useCallback(async () => {
         try {
@@ -48,6 +54,26 @@ const TelopOverlayPage: React.FC = () => {
         return () => clearInterval(interval);
     }, [fetchDataInternal]);
 
+    const fetchFont = useCallback(async () => {
+        try {
+            const res = await axios.get<StreamData>('/api/stream-data', {
+                headers: {'Cache-Control': 'no-cache', 'Pragma': 'no-cache', 'Expires': '0'},
+            });
+            if (res.status === 200) setFontFamily(res.data.fontFamily);
+        } catch (error) {
+            // 取れなければ直前のフォントのまま（初回なら既定のフォント）で表示を続ける
+            console.error('Failed to fetch font setting:', error);
+        }
+    }, []);
+
+    useEffect(() => {
+        // マウント時に取得してからポーリングする（テロップの取得と同じパターン）
+        // eslint-disable-next-line react-hooks/set-state-in-effect
+        void fetchFont();
+        const interval = setInterval(fetchFont, FONT_POLLING_INTERVAL);
+        return () => clearInterval(interval);
+    }, [fetchFont]);
+
     // 出してから表示時間内のものだけ表示する（オーバーレイを開き直したときに、古いテロップは出さない）
     const telop = shown && now < shown.hideAt ? shown.telop : null;
 
@@ -68,6 +94,7 @@ const TelopOverlayPage: React.FC = () => {
                         className="px-10 py-3 rounded-2xl shadow-2xl border-4 border-white text-white font-black text-center"
                         style={{
                             backgroundColor: INK_COLORS[telop.id % INK_COLORS.length],
+                            fontFamily: telop.followFont ? fontFamily || FALLBACK_FONT : FALLBACK_FONT,
                             fontSize: 56,
                             maxWidth: '90%',
                             textShadow: '3px 3px 0 rgba(0, 0, 0, 0.6)',

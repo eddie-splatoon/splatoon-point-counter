@@ -42,24 +42,30 @@ async function readJson(request: Request): Promise<{body: unknown} | NextRespons
     }
 }
 
-/** テロップを出す。`{presetId}` でプリセットを、`{text}` で自由入力の文を出す（Stream Deck などからも同じ形で送れる） */
+/**
+ * テロップを出す。`{presetId}` でプリセットを、`{text, followFont?}` で自由入力の文を出す（Stream Deck などからも同じ形で送れる）。
+ * 自由入力の followFont（共通設定のフォントで表示するか）は省略すると true
+ */
 export async function POST(request: Request) {
     const json = await readJson(request);
     if (json instanceof NextResponse) return json;
-    const {presetId, text} = (json.body ?? {}) as Record<string, unknown>;
+    const {presetId, text, followFont = true} = (json.body ?? {}) as Record<string, unknown>;
 
-    let telopText: string | null;
+    let telop: {text: string; followFont: boolean};
     if (presetId !== undefined) {
         const preset = loadPresets().find((p) => p.id === presetId);
         if (!preset) return NextResponse.json({message: 'Preset not found.'}, {status: 404});
-        telopText = preset.text;
+        telop = {text: preset.text, followFont: preset.followFont};
     } else {
-        telopText = typeof text === 'string' ? normalizeTelopText(text) : null;
-        if (telopText === null) return NextResponse.json({message: `Either presetId or a non-empty text of up to ${MAX_TELOP_LENGTH} characters is required.`}, {status: 400});
+        const telopText = typeof text === 'string' ? normalizeTelopText(text) : null;
+        if (telopText === null || typeof followFont !== 'boolean') {
+            return NextResponse.json({message: `Either presetId or a non-empty text of up to ${MAX_TELOP_LENGTH} characters (with an optional boolean followFont) is required.`}, {status: 400});
+        }
+        telop = {text: telopText, followFont};
     }
 
     revision += 1;
-    current = {id: revision, text: telopText, timestamp: Date.now()};
+    current = {id: revision, ...telop, timestamp: Date.now()};
     return NextResponse.json(toData());
 }
 

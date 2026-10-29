@@ -91,7 +91,7 @@ export interface StreamData {
 -   **目的**: 配信画面右側（250x584）のサイドパネル。上段にインクタンク型フォロワーゲージ（`components/InkTankGauge.tsx`。Twitch のフォロワー目標、無ければコントロールパネルで手入力した目標を使う）、下段にコントロールパネルの「サイドパネル」タブ（`components/SidePanelSettingsPanel.tsx`）で選んだスロット（サーモンランのスケジュール / 本日の戦績 / 本日のお題 / バーンダウン。スケジュールは `/app/api/salmon-schedule/route.ts` が非公式 API を中継・キャッシュする）を表示します。下段は、常に表示する「固定枠」と、その下で一定時間ごとに1つずつ切り替える「ローテーション枠」に分かれ、どちらも複数選べます（同じスロットは両方に入れられない）。設定は SQLite の `app_state` に保存され、スロットの定義と検証は `lib/sidePanelTypes.ts` にあります。
 
 #### `/app/telop-overlay/page.tsx` と `/app/api/telop/route.ts`
--   **目的**: 実況テロップ。コントロールパネルの「テロップ」タブ（`components/TelopPanel.tsx`）のボタンかキーボードの 1〜9, 0 で `POST /api/telop`（`{presetId}` または `{text}`）し、オーバーレイが出してから 4 秒間だけ大きく表示します。いま出ているテロップはインメモリ、プリセット（`{id, text, speak}`）は SQLite の `app_state`（キー `telop`、`PUT /api/telop` で保存）に保持します。型と検証は `lib/telopTypes.ts` にあります。
+-   **目的**: 実況テロップ。コントロールパネルの「テロップ」タブ（`components/TelopPanel.tsx`）のボタンかキーボードの 1〜9, 0 で `POST /api/telop`（`{presetId}` または `{text}`）し、オーバーレイが出してから 4 秒間だけ大きく表示します。いま出ているテロップはインメモリ、プリセット（`{id, text, speak, followFont}`。`followFont` は共通設定のフォントで表示するか）は SQLite の `app_state`（キー `telop`、`PUT /api/telop` で保存）に保持します。型と検証は `lib/telopTypes.ts` にあります。
 
 ### `/tools/twitch-eventsub`
 -   **目的**: `pnpm twitch` で起動する常駐スクリプト。Device Code Flow で認証し、EventSub WebSocket でフォローとゴールの通知を受信して `/api/twitch` へ送信します。トークンは `data/twitch-token.json`（Git 管理外）に保存されます。詳細は同ディレクトリの README を参照。

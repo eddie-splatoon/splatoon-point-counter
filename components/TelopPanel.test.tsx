@@ -63,8 +63,18 @@ describe('TelopPanel', () => {
     fireEvent.change(input, { target: { value: ' ありがとう ' } });
     await act(async () => fireEvent.keyDown(input, { key: 'Enter' }));
 
-    expect(lastPosted()).toEqual({ text: 'ありがとう' });
+    expect(lastPosted()).toEqual({ text: 'ありがとう', followFont: true });
     expect(input).toHaveValue('');
+  });
+
+  it('shows free text without the common font when unchecked', async () => {
+    await renderLoaded();
+
+    fireEvent.click(screen.getByLabelText('共通設定のフォントで表示'));
+    fireEvent.change(screen.getByLabelText('自由入力'), { target: { value: 'ありがとう' } });
+    await act(async () => fireEvent.click(screen.getByRole('button', { name: '出す' })));
+
+    expect(lastPosted()).toEqual({ text: 'ありがとう', followFont: false });
   });
 
   it('keeps the free text when showing it fails', async () => {
@@ -95,12 +105,12 @@ describe('TelopPanel', () => {
     fireEvent.change(screen.getByLabelText('新しいプリセット'), { target: { value: 'カンスト!' } });
     await act(async () => fireEvent.click(screen.getByRole('button', { name: '追加' })));
 
-    expect(lastPut()).toEqual({ presets: [...getDefaultTelopSettings().presets, { id: 5, text: 'カンスト!', speak: false }] });
+    expect(lastPut()).toEqual({ presets: [...getDefaultTelopSettings().presets, { id: 5, text: 'カンスト!', speak: false, followFont: true }] });
     expect(buttons().getByRole('button', { name: /カンスト!/ })).toBeInTheDocument();
   });
 
   it('cannot add more than the maximum number of presets', async () => {
-    await renderLoaded(Array.from({ length: MAX_TELOP_PRESETS }, (_, i) => ({ id: i + 1, text: `p${i + 1}`, speak: false })));
+    await renderLoaded(Array.from({ length: MAX_TELOP_PRESETS }, (_, i) => ({ id: i + 1, text: `p${i + 1}`, speak: false, followFont: true })));
 
     fireEvent.change(screen.getByLabelText('新しいプリセット'), { target: { value: 'もう1つ' } });
 
@@ -113,6 +123,9 @@ describe('TelopPanel', () => {
 
     await act(async () => fireEvent.click(screen.getByLabelText('「カタパッド残った…」を読み上げる')));
     expect(lastPut().presets[1]).toEqual({ ...catapad, speak: true });
+
+    await act(async () => fireEvent.click(screen.getByLabelText('「カタパッド残った…」を共通設定のフォントで表示')));
+    expect(lastPut().presets[1]).toEqual({ ...catapad, speak: true, followFont: false });
 
     await act(async () => fireEvent.click(screen.getByRole('button', { name: '「カタパッド残った…」を上へ' })));
     expect(lastPut().presets.slice(0, 2).map((p) => p.id)).toEqual([catapad.id, nice.id]);
