@@ -12,12 +12,12 @@ const mockedAxios = vi.mocked(axios);
 const renderLoaded = async (presets: TelopPreset[] = getDefaultTelopSettings().presets) => {
   mockedAxios.get.mockResolvedValue({ data: { presets, current: null, revision: 0 }, status: 200 });
   render(<TelopPanel />);
-  await screen.findByText('📣 テロップを出す');
+  await screen.findByText('📣 自由入力でテロップを出す');
 };
 
 const lastPosted = () => mockedAxios.post.mock.calls.at(-1)?.[1];
 const lastPut = () => mockedAxios.put.mock.calls.at(-1)?.[1] as { presets: TelopPreset[] };
-const buttons = () => within(screen.getByTestId('telop-buttons'));
+const editor = () => within(screen.getByTestId('telop-preset-editor'));
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -26,36 +26,6 @@ beforeEach(() => {
 });
 
 describe('TelopPanel', () => {
-  it('shows a preset when its button is clicked', async () => {
-    await renderLoaded();
-
-    await act(async () => fireEvent.click(buttons().getByRole('button', { name: /満潮きた/ })));
-
-    expect(mockedAxios.post).toHaveBeenCalledWith('/api/telop', { presetId: 3 });
-  });
-
-  it('shows the preset assigned to a number key', async () => {
-    await renderLoaded();
-
-    await act(async () => fireEvent.keyDown(document.body, { key: '2' }));
-
-    expect(lastPosted()).toEqual({ presetId: 2 });
-  });
-
-  it.each([
-    ['while typing in an input', { key: '1' }, true],
-    ['with a modifier key', { key: '1', ctrlKey: true }, false],
-    ['during IME composition', { key: '1', isComposing: true }, false],
-    ['for a key without a preset', { key: '9' }, false],
-  ])('ignores number keys %s', async (_, event, inInput) => {
-    await renderLoaded();
-
-    const target = inInput ? screen.getByLabelText('自由入力') : document.body;
-    await act(async () => fireEvent.keyDown(target, event));
-
-    expect(mockedAxios.post).not.toHaveBeenCalled();
-  });
-
   it('shows free text with Enter and clears the input', async () => {
     await renderLoaded();
     const input = screen.getByLabelText('自由入力');
@@ -116,7 +86,7 @@ describe('TelopPanel', () => {
     await act(async () => fireEvent.click(screen.getByRole('button', { name: '追加' })));
 
     expect(lastPut()).toEqual({ presets: [...getDefaultTelopSettings().presets, { id: 5, text: 'カンスト!', speak: false, followFont: true }] });
-    expect(buttons().getByRole('button', { name: /カンスト!/ })).toBeInTheDocument();
+    expect(editor().getByText('カンスト!')).toBeInTheDocument();
   });
 
   it('cannot add more than the maximum number of presets', async () => {
@@ -165,6 +135,28 @@ describe('TelopPanel', () => {
     await act(async () => fireEvent.click(screen.getByRole('button', { name: 'プリセット「ナイス!」を削除' })));
 
     expect(screen.getByText('プリセットの保存に失敗しました。')).toBeInTheDocument();
-    expect(buttons().getByRole('button', { name: /ナイス!/ })).toBeInTheDocument();
+    expect(editor().getByText('ナイス!')).toBeInTheDocument();
+  });
+
+  it('notifies after a preset is saved and after reloading on failure', async () => {
+    mockedAxios.get.mockResolvedValue({ data: { presets: getDefaultTelopSettings().presets, current: null, revision: 0 }, status: 200 });
+    const onPresetsChange = vi.fn();
+    render(<TelopPanel onPresetsChange={onPresetsChange} />);
+    await screen.findByText('📣 自由入力でテロップを出す');
+
+    await act(async () => fireEvent.click(screen.getByLabelText('「ナイス!」を読み上げる')));
+    expect(onPresetsChange).toHaveBeenCalledTimes(1);
+
+    mockedAxios.put.mockRejectedValueOnce(new Error('network'));
+    await act(async () => fireEvent.click(screen.getByRole('button', { name: 'プリセット「ナイス!」を削除' })));
+    expect(onPresetsChange).toHaveBeenCalledTimes(2);
+  });
+
+  it('does not show presets with number keys (the telop bar handles them)', async () => {
+    await renderLoaded();
+
+    await act(async () => fireEvent.keyDown(document.body, { key: '1' }));
+
+    expect(mockedAxios.post).not.toHaveBeenCalled();
   });
 });

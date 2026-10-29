@@ -91,7 +91,7 @@ export interface StreamData {
 -   **目的**: 配信画面右側（250x584）のサイドパネル。上段にインクタンク型フォロワーゲージ（`components/InkTankGauge.tsx`。Twitch のフォロワー目標、無ければコントロールパネルで手入力した目標を使う）、下段にコントロールパネルの「サイドパネル」タブ（`components/SidePanelSettingsPanel.tsx`）で選んだスロット（サーモンランのスケジュール / 本日の戦績 / 本日のお題 / バーンダウン。スケジュールは `/app/api/salmon-schedule/route.ts` が非公式 API を中継・キャッシュする）を表示します。下段は、常に表示する「固定枠」と、その下で一定時間ごとに1つずつ切り替える「ローテーション枠」に分かれ、どちらも複数選べます（同じスロットは両方に入れられない）。設定は SQLite の `app_state` に保存され、スロットの定義と検証は `lib/sidePanelTypes.ts` にあります。
 
 #### `/app/telop-overlay/page.tsx` と `/app/api/telop/route.ts`
--   **目的**: 実況テロップ。コントロールパネルの「テロップ」タブ（`components/TelopPanel.tsx`）のボタンかキーボードの 1〜9, 0 で `POST /api/telop`（`{presetId}` または `{text}`）し、オーバーレイが出してから 4 秒間だけ大きく表示します。いま出ているテロップはインメモリ、プリセット（`{id, text, speak, followFont}`。`followFont` は共通設定のフォントで表示するか）は SQLite の `app_state`（キー `telop`、`PUT /api/telop` で保存）に保持します。型と検証は `lib/telopTypes.ts` にあります。
+-   **目的**: 実況テロップ。コントロールパネル上部のテロップバー（`components/TelopBar.tsx`。どのタブでも表示）のボタンかキーボードの 1〜9, 0、または「テロップ」タブ（`components/TelopPanel.tsx`）の自由入力で `POST /api/telop`（`{presetId}` または `{text}`）し、オーバーレイが出してから 4 秒間だけ大きく表示します。いま出ているテロップはインメモリ、プリセット（`{id, text, speak, followFont}`。`followFont` は共通設定のフォントで表示するか）は SQLite の `app_state`（キー `telop`、`PUT /api/telop` で保存）に保持します。型と検証は `lib/telopTypes.ts` にあります。
 
 #### `/app/voice-overlay/page.tsx` と `/app/api/speech/route.ts` / `/app/api/voice/route.ts`
 -   **目的**: 合成音声（VOICEVOX）の読み上げ。`/api/speech` はインメモリの読み上げキュー（`POST {text}` で追加。読み上げが無効なら 409）、`/api/speech/audio?id=` はキューの 1 件を VOICEVOX（`VOICEVOX_URL`、既定 `http://localhost:50021`）で wav にして返します。`/api/voice` は読み上げの設定（有効/無効・話者・速度・音量。SQLite の `app_state` キー `voice`）、`/api/voice/speakers` は VOICEVOX の話者一覧の中継です。音声専用オーバーレイがキューをポーリングして 1 件ずつ順に再生します。キュー・設定・VOICEVOX との通信は `lib/speech.ts`（サーバー専用）、型と検証は `lib/voiceTypes.ts` にあります。設定 UI は `components/VoiceSettingsPanel.tsx`（コントロールパネルの「テロップ」タブ）。
@@ -103,7 +103,8 @@ export interface StreamData {
 このディレクトリには、再利用可能なReactコンポーネントが格納されています。
 
 -   `VoiceSettingsPanel.tsx`: コントロールパネルの読み上げ（VOICEVOX）の設定。話者の選択、速度・音量、テスト再生、クレジット表記の表示を扱います。
--   `TelopPanel.tsx`: コントロールパネルの「テロップ」タブ。プリセットのボタン、自由入力、プリセットの編集と、キーボードショートカット（1〜9, 0）を扱います。
+-   `TelopBar.tsx`: コントロールパネルの上部（タブの外）に常に出すテロップのボタンと、キーボードショートカット（1〜9, 0）。どのタブを開いていても使えます。
+-   `TelopPanel.tsx`: コントロールパネルの「テロップ」タブ。自由入力とプリセットの編集を扱います。プリセットを保存したら `onPresetsChange` でテロップバーに読み込み直させます。
 -   `ScoreDisplay.tsx`: メインスコアとラベルをレンダリングします。スコア値が変更されたときにアニメーションを含みます。
 -   `BurndownChart.tsx`: 目標、残り値、折れ線グラフの可視化、バーンアッププログレスバーを含むバーンダウンチャートをレンダリングします。
 -   `MessageScroller.tsx` / `RandomTipScroller.tsx`: スクロールするテキストを表示するためのコンポーネント。
