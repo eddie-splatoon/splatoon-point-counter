@@ -1,5 +1,6 @@
 /**
  * Twitch のフォロワー数とフォロワー目標を EventSub WebSocket で受信し、/api/twitch へ送信する常駐スクリプト。
+ * チャットも受信し、初めてコメントした視聴者への挨拶と配信者自身のコメントを /api/speech（読み上げキュー）へ送る。
  *
  *   pnpm twitch    # リポジトリのルートで起動（README.md 参照）
  *
@@ -10,7 +11,7 @@ import { chmod, mkdir, readFile, writeFile } from 'node:fs/promises';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-export const SCOPES = ['moderator:read:followers', 'channel:read:goals'];
+export const SCOPES = ['moderator:read:followers', 'channel:read:goals', 'user:read:chat'];
 export const EVENTSUB_URL = 'wss://eventsub.wss.twitch.tv/ws';
 const ID_URL = 'https://id.twitch.tv/oauth2';
 const HELIX_URL = 'https://api.twitch.tv/helix';
@@ -236,6 +237,8 @@ export class TwitchClient {
       { type: 'channel.goal.begin', version: '1', condition: { broadcaster_user_id: this.userId } },
       { type: 'channel.goal.progress', version: '1', condition: { broadcaster_user_id: this.userId } },
       { type: 'channel.goal.end', version: '1', condition: { broadcaster_user_id: this.userId } },
+      // 自分のチャンネルのチャットを、自分のアカウントとして読む
+      { type: 'channel.chat.message', version: '1', condition: { broadcaster_user_id: this.userId, user_id: this.userId } },
     ];
     for (const sub of subscriptions) {
       await this.helix('/eventsub/subscriptions', {
@@ -455,6 +458,110 @@ export class EventSubConnection {
   }
 }
 
+// ---- チャットの読み上げ ----
+
+interface ChatMessageEvent {
+  chatter_user_id?: string;
+  chatter_user_login?: string;
+  chatter_user_name?: string;
+  message?: { text?: string };
+  // 共有チャット（Shared Chat）で、ほかのチャンネルから届いたメッセージなら、そのチャンネルの ID
+  source_broadcaster_user_id?: string | null;
+}
+
+export interface ChatSpeechContext {
+  broadcasterId: string;
+  // 挨拶済みの視聴者のユーザー ID（スクリプトの起動中だけメモリに持つ。保存しない）
+  greeted: Set<string>;
+  // 読み上げないアカウント（Nightbot などのボット）のログイン名。小文字
+  ignoredLogins: Set<string>;
+}
+
+const MAX_CHAT_SPEECH_LENGTH = 100;
+// 挨拶で読み上げる名前の長さ。表示名を文のようにして読ませる悪用を防ぐため短く切る
+const MAX_SPOKEN_NAME_LENGTH = 20;
+// URL らしいものを含むコメントは読まない（読み上げても聞き取れず、意図しないサイト名を読ませないため）。全角は NFKC で半角にしてから判定する
+const URL_PATTERN = /https?:\/\/|www\.|\b[\w-]+\.(?:com|net|org|jp|tv|gg|io|ly|me|co|dev|app|xyz|info|link|live|be)\b/i;
+
+// 文字（コードポイント）単位で切る。UTF-16 で切ると絵文字が途中で切れて文字化けするため
+const truncate = (text: string, max: number) => Array.from(text).slice(0, max).join('');
+
+/**
+ * 挨拶で読み上げる名前に整える。全角・半角をそろえ、制御文字や書式文字を除き、同じ文字が 3 つ以上続くところは 2 つに縮め
+ * （「ーーーー…」で長く鳴らすなどの悪用を防ぐ）、20 文字までに切る
+ */
+export function speakableName(name: string): string {
+  const cleaned = name
+    .normalize('NFKC')
+    .replace(/[\p{Cc}\p{Cf}]/gu, '')
+    .replace(/(.)\1{2,}/gu, '$1$1')
+    .replace(/\s+/g, ' ')
+    .trim();
+  return truncate(cleaned, MAX_SPOKEN_NAME_LENGTH);
+}
+
+/** 環境変数（カンマ区切りのログイン名）から、読み上げないアカウントの一覧を作る */
+export const parseIgnoredLogins = (value: string | undefined): Set<string> =>
+  new Set((value ?? '').split(',').map((login) => login.trim().toLowerCase()).filter((login) => login !== ''));
+
+/**
+ * チャットのメッセージから、読み上げる文を決める。読み上げないものは null。
+ * - 配信者自身: コメント本文（`!` で始まるコマンドと URL を含むものは読まない。全角も半角にそろえてから判定する）
+ * - 視聴者: 起動中に初めてコメントしたときだけ「〇〇さん、いらっしゃい！」（本文は読まない。名前は speakableName で整える）。
+ *   挨拶した人は context.greeted に加える
+ */
+export function chatToSpeech(event: unknown, context: ChatSpeechContext): string | null {
+  const chat = (event ?? {}) as ChatMessageEvent;
+  const userId = chat.chatter_user_id;
+  if (!userId) return null;
+  // 共有チャットで、ほかのチャンネルから届いたものは読まない
+  if (chat.source_broadcaster_user_id && chat.source_broadcaster_user_id !== context.broadcasterId) return null;
+
+  if (userId === context.broadcasterId) {
+    const text = (chat.message?.text ?? '').normalize('NFKC').replace(/\s+/g, ' ').trim();
+    if (text === '' || text.startsWith('!') || URL_PATTERN.test(text)) return null;
+    return truncate(text, MAX_CHAT_SPEECH_LENGTH);
+  }
+
+  if (context.ignoredLogins.has((chat.chatter_user_login ?? '').toLowerCase()) || context.greeted.has(userId)) return null;
+  // 表示名が整えると空になる（記号や制御文字だけなど）ときは、ログイン名（英数字）で呼ぶ
+  const name = speakableName(chat.chatter_user_name ?? '') || speakableName(chat.chatter_user_login ?? '');
+  if (name === '') return null;
+  context.greeted.add(userId);
+  return `${name}さん、いらっしゃい！`;
+}
+
+/** 読み上げキューに送る。アプリ側で読み上げが無効（409）なら送らなかったものとして false */
+export async function publishSpeech(speechUrl: string, text: string, fetchFn: FetchFn = fetch): Promise<boolean> {
+  const res = await fetchFn(speechUrl, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ text }),
+  });
+  if (res.status === 409) return false;
+  if (!res.ok) throw new Error(`${speechUrl} への送信に失敗しました: ${res.status}`);
+  return true;
+}
+
+/**
+ * チャットのメッセージを読み上げキューに送る。視聴者への挨拶を送れなかったとき（読み上げが無効・送信に失敗）は、
+ * 挨拶済みから外して次のコメントでもう一度挨拶する（読み上げを途中で有効にしても、その前にコメントした人を取りこぼさない）
+ */
+export async function speakChatMessage(event: unknown, context: ChatSpeechContext, send: (text: string) => Promise<boolean>): Promise<void> {
+  const userId = ((event ?? {}) as ChatMessageEvent).chatter_user_id ?? '';
+  const greetedBefore = context.greeted.has(userId);
+  const text = chatToSpeech(event, context);
+  if (!text) return;
+  // 送信中に同じ人がまたコメントしても二重に挨拶しないよう、挨拶済みには先に入れておき、送れなかったら外す
+  const isGreeting = !greetedBefore && context.greeted.has(userId);
+  let delivered = false;
+  try {
+    delivered = await send(text);
+  } finally {
+    if (isGreeting && !delivered) context.greeted.delete(userId);
+  }
+}
+
 // ---- アプリへの送信 ----
 
 export async function publishState(apiUrl: string, state: TwitchState, fetchFn: FetchFn = fetch): Promise<void> {
@@ -473,6 +580,7 @@ async function main(): Promise<void> {
     process.exit(1);
   }
   const apiUrl = process.env.TWITCH_API_URL ?? 'http://localhost:3000/api/twitch';
+  const speechUrl = process.env.TWITCH_SPEECH_API_URL ?? new URL('/api/speech', apiUrl).toString();
   const log = (message: string) => console.log(`[twitch] ${message}`);
 
   const client = new TwitchClient({ clientId, tokenPath: process.env.TWITCH_TOKEN_PATH ?? DEFAULT_TOKEN_PATH, log });
@@ -503,10 +611,23 @@ async function main(): Promise<void> {
     await publish();
   }, RESYNC_INTERVAL_MS);
 
+  const chatContext: ChatSpeechContext = {
+    broadcasterId: client.userId,
+    greeted: new Set(),
+    ignoredLogins: parseIgnoredLogins(process.env.TWITCH_SPEECH_IGNORE),
+  };
+
   const connection = new EventSubConnection(
     {
       onWelcome: (sessionId) => client.subscribeAll(sessionId),
       onNotification: (type, event) => {
+        if (type === 'channel.chat.message') {
+          // 視聴者の名前やコメントはログに出さない
+          speakChatMessage(event, chatContext, (text) => publishSpeech(speechUrl, text)).catch((error) => {
+            log(`警告: 読み上げを送信できませんでした: ${(error as Error).message}`);
+          });
+          return;
+        }
         state = applyNotification(state, type, event, Date.now());
         log(`${type} を受信しました（フォロワー数: ${state.followerTotal}）`);
         void publish();

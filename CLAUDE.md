@@ -18,7 +18,7 @@
 8. **読み上げ（音声専用）オーバーレイ** (`/voice-overlay`) - 読み上げキューの文を VOICEVOX で音声にして順に再生（画面には何も出さない）
 9. **バックエンドAPI** (`/api/stream-data`, `/api/caption`, `/api/twitch`, `/api/salmon`, `/api/side-panel`, `/api/salmon-schedule`, `/api/telop`, `/api/speech`, `/api/voice`) - データ管理とクライアント間の同期
 10. **文字起こしスクリプト** (`tools/caption-stt/`) - マイク音声を文字起こしして `/api/caption` へ送信（Python, Mac ネイティブ実行）
-11. **Twitch連携スクリプト** (`tools/twitch-eventsub/`) - フォロワー数・フォロワー目標を EventSub で受信して `/api/twitch` へ送信（Node, 依存なし）
+11. **Twitch連携スクリプト** (`tools/twitch-eventsub/`) - フォロワー数・フォロワー目標を EventSub で受信して `/api/twitch` へ送信。チャットの初コメの挨拶・配信者のコメントを `/api/speech` へ送信（Node, 依存なし）
 
 ## 技術スタック
 
@@ -236,12 +236,13 @@ export interface StreamData {
 
 ### `/app/api/twitch/route.ts` と `tools/twitch-eventsub/`
 
-Twitch のフォロワー数とフォロワー目標を受け取る機能。
+Twitch のフォロワー数とフォロワー目標を受け取る機能と、チャットの読み上げ。
 
 - 起動はリポジトリのルートで `pnpm twitch`（`.env.local` の `TWITCH_CLIENT_ID` が必須。初回はブラウザで承認）
 - `tools/twitch-eventsub/twitch_eventsub.ts` は Node 24 の型除去でそのまま実行するため、enum・コンストラクタ引数プロパティなど型除去できない構文は使わない（`tools/twitch-eventsub/package.json` で ESM 指定）
-- 認証は Device Code Flow（Public クライアント、スコープ `moderator:read:followers` / `channel:read:goals`）。トークンは `data/twitch-token.json`（gitignore・dockerignore 済み）
-- EventSub WebSocket で `channel.follow` v2 と `channel.goal.*` を購読。フォロー通知では総数を加算し、60秒ごとに Helix から再同期して `/api/twitch` に送り直す
+- 認証は Device Code Flow（Public クライアント、スコープ `moderator:read:followers` / `channel:read:goals` / `user:read:chat`。保存済みトークンにスコープが足りなければ承認し直す）。トークンは `data/twitch-token.json`（gitignore・dockerignore 済み）
+- EventSub WebSocket で `channel.follow` v2 と `channel.goal.*`、`channel.chat.message` v1 を購読。フォロー通知では総数を加算し、60秒ごとに Helix から再同期して `/api/twitch` に送り直す
+- チャットは `chatToSpeech`（純粋関数）で読み上げる文を決め、`publishSpeech` で `/api/speech`（`TWITCH_SPEECH_API_URL`、既定は `TWITCH_API_URL` と同じホスト）へ送る。視聴者は起動中に初めてコメントしたときだけ「〇〇さん、いらっしゃい！」（**本文は読まない**。挨拶済みのユーザー ID はメモリの Set だけ。名前は表示名を文のようにして読ませる悪用を防ぐため `speakableName` で NFKC・制御文字の除去・同じ文字の連続の短縮・20 文字までに整え、空ならログイン名）、配信者自身は本文（NFKC で全角をそろえてから、`!` コマンド・URL を含むものを除く。コードポイント単位で 100 文字まで）。`TWITCH_SPEECH_IGNORE`（カンマ区切りのログイン名）のボットと、共有チャットでほかのチャンネルから届いたものは読まない。読み上げが無効（409）なら黙って捨てる。挨拶を送れなかったとき（無効・送信失敗）は `speakChatMessage` が挨拶済みから外し、次のコメントで挨拶し直す。**視聴者の名前やコメントはログに出さない**
 - API は `{followerTotal, goal, lastFollowAt, updatedAt, revision}` をインメモリで保持（`followerTotal: null` はスクリプト未起動）。**フォロワー名は保持しない**。`POST` は `Content-Type: application/json` 必須。`getInitialTwitchData()` / `__TEST_ONLY_setTwitchData()` はテスト用
 - スクリプトのテストは Vitest（CI 対象）
 

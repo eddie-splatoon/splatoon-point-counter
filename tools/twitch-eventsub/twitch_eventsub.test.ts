@@ -12,11 +12,17 @@ import {
   SCOPES,
   TwitchClient,
   applyNotification,
+  chatToSpeech,
   loadToken,
+  parseIgnoredLogins,
+  publishSpeech,
+  speakChatMessage,
+  speakableName,
   pollDeviceToken,
   publishState,
   refreshAccessToken,
   saveToken,
+  type ChatSpeechContext,
   type SocketLike,
   type TwitchState,
 } from './twitch_eventsub';
@@ -237,12 +243,23 @@ describe('TwitchClient', () => {
       await client.subscribeAll('session-1');
 
       const bodies = fetchFn.mock.calls.slice(1).map(([, init]) => JSON.parse(init.body));
-      expect(bodies.map((b) => b.type)).toEqual(['channel.follow', 'channel.goal.begin', 'channel.goal.progress', 'channel.goal.end']);
+      expect(bodies.map((b) => b.type)).toEqual(['channel.follow', 'channel.goal.begin', 'channel.goal.progress', 'channel.goal.end', 'channel.chat.message']);
       expect(bodies[0]).toMatchObject({
         version: '2',
         condition: { broadcaster_user_id: '123', moderator_user_id: '123' },
         transport: { method: 'websocket', session_id: 'session-1' },
       });
+    });
+
+    it('subscribes to the chat as the broadcaster', async () => {
+      const fetchFn = vi.fn();
+      const client = await authenticated(fetchFn);
+      fetchFn.mockImplementation(async () => json({ data: [] }, 202));
+
+      await client.subscribeAll('session-1');
+
+      const chat = fetchFn.mock.calls.slice(1).map(([, init]) => JSON.parse(init.body)).find((b) => b.type === 'channel.chat.message');
+      expect(chat).toMatchObject({ version: '1', condition: { broadcaster_user_id: '123', user_id: '123' } });
     });
 
     it('throws when a subscription is rejected', async () => {
@@ -453,6 +470,180 @@ describe('EventSubConnection', () => {
     vi.advanceTimersByTime(120_000);
 
     expect(sockets).toHaveLength(1);
+  });
+});
+
+describe('chatToSpeech', () => {
+  const context = (): ChatSpeechContext => ({ broadcasterId: '123', greeted: new Set(), ignoredLogins: new Set(['nightbot']) });
+  const chat = (overrides: Record<string, unknown> = {}) => ({
+    chatter_user_id: '999',
+    chatter_user_login: 'viewer_a',
+    chatter_user_name: 'ViewerA',
+    message: { text: 'こんにちは！初見です' },
+    source_broadcaster_user_id: null,
+    ...overrides,
+  });
+
+  it('greets a viewer by name on their first message without reading the message', () => {
+    expect(chatToSpeech(chat(), context())).toBe('ViewerAさん、いらっしゃい！');
+  });
+
+  it('greets each viewer only once', () => {
+    const ctx = context();
+    chatToSpeech(chat(), ctx);
+
+    expect(chatToSpeech(chat({ message: { text: '2回目' } }), ctx)).toBeNull();
+    expect(chatToSpeech(chat({ chatter_user_id: '1000', chatter_user_name: 'ViewerB' }), ctx)).toBe('ViewerBさん、いらっしゃい！');
+  });
+
+  it('falls back to the login name when the display name is empty', () => {
+    expect(chatToSpeech(chat({ chatter_user_name: '' }), context())).toBe('viewer_aさん、いらっしゃい！');
+  });
+
+  it('shortens and cleans a display name used to read something else', () => {
+    expect(chatToSpeech(chat({ chatter_user_name: '配信者はこれからとても大事なお知らせを読み上げます' }), context()))
+      .toBe('配信者はこれからとても大事なお知らせを読さん、いらっしゃい！');
+  });
+
+  it('falls back to the login name when the display name has nothing speakable', () => {
+    expect(chatToSpeech(chat({ chatter_user_name: '\u200b\u200b' }), context())).toBe('viewer_aさん、いらっしゃい！');
+  });
+
+  it('ignores bots in the ignore list regardless of case', () => {
+    expect(chatToSpeech(chat({ chatter_user_login: 'Nightbot' }), context())).toBeNull();
+  });
+
+  it('reads the broadcaster\'s own message', () => {
+    expect(chatToSpeech(chat({ chatter_user_id: '123', message: { text: '  次は\nキケン度MAX  ' } }), context())).toBe('次は キケン度MAX');
+  });
+
+  it('truncates long messages from the broadcaster', () => {
+    expect(chatToSpeech(chat({ chatter_user_id: '123', message: { text: 'あ'.repeat(150) } }), context())).toBe('あ'.repeat(100));
+  });
+
+  it('does not cut an emoji in half when truncating', () => {
+    const text = `${'あ'.repeat(99)}🦑🦑`;
+    expect(chatToSpeech(chat({ chatter_user_id: '123', message: { text } }), context())).toBe(`${'あ'.repeat(99)}🦑`);
+  });
+
+  it.each([
+    ['a command', '!uptime'],
+    ['a URL', '配信はこちら https://example.com'],
+    ['a bare domain', 'twitch.tv/eddie を見てね'],
+    ['a full-width domain', 'ｅｘａｍｐｌｅ．ｃｏｍ を見てね'],
+    ['another TLD', 'example.dev を見てね'],
+    ['a full-width command', '！uptime'],
+    ['an empty message', '  '],
+  ])('does not read the broadcaster\'s message with %s', (_, text) => {
+    expect(chatToSpeech(chat({ chatter_user_id: '123', message: { text } }), context())).toBeNull();
+  });
+
+  it('ignores messages from other channels in a shared chat', () => {
+    const ctx = context();
+    expect(chatToSpeech(chat({ source_broadcaster_user_id: '555' }), ctx)).toBeNull();
+    expect(ctx.greeted.size).toBe(0);
+  });
+
+  it('ignores events without a chatter', () => {
+    expect(chatToSpeech({}, context())).toBeNull();
+    expect(chatToSpeech(null, context())).toBeNull();
+  });
+});
+
+describe('speakChatMessage', () => {
+  const context = (): ChatSpeechContext => ({ broadcasterId: '123', greeted: new Set(), ignoredLogins: new Set() });
+  const viewer = { chatter_user_id: '999', chatter_user_login: 'viewer_a', chatter_user_name: 'ViewerA', message: { text: 'こんにちは' } };
+
+  it('sends the greeting and remembers the viewer', async () => {
+    const ctx = context();
+    const send = vi.fn().mockResolvedValue(true);
+
+    await speakChatMessage(viewer, ctx, send);
+    await speakChatMessage(viewer, ctx, send);
+
+    expect(send).toHaveBeenCalledTimes(1);
+    expect(send).toHaveBeenCalledWith('ViewerAさん、いらっしゃい！');
+  });
+
+  it('greets again next time when reading aloud was disabled', async () => {
+    const ctx = context();
+    const send = vi.fn().mockResolvedValueOnce(false).mockResolvedValueOnce(true);
+
+    await speakChatMessage(viewer, ctx, send);
+    expect(ctx.greeted.has('999')).toBe(false);
+
+    await speakChatMessage(viewer, ctx, send);
+    expect(send).toHaveBeenCalledTimes(2);
+    expect(ctx.greeted.has('999')).toBe(true);
+  });
+
+  it('greets again next time when sending failed', async () => {
+    const ctx = context();
+    await expect(speakChatMessage(viewer, ctx, vi.fn().mockRejectedValue(new Error('500')))).rejects.toThrow('500');
+    expect(ctx.greeted.has('999')).toBe(false);
+  });
+
+  it('does not greet twice while the first greeting is being sent', async () => {
+    const ctx = context();
+    let finish: (value: boolean) => void = () => {};
+    const send = vi.fn().mockImplementationOnce(() => new Promise<boolean>((resolve) => { finish = resolve; }));
+
+    const first = speakChatMessage(viewer, ctx, send);
+    await speakChatMessage(viewer, ctx, send);
+    finish(true);
+    await first;
+
+    expect(send).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not touch the greeted list for the broadcaster\'s own messages', async () => {
+    const ctx = context();
+    await speakChatMessage({ chatter_user_id: '123', message: { text: '次いきます' } }, ctx, vi.fn().mockResolvedValue(false));
+    expect(ctx.greeted.size).toBe(0);
+  });
+});
+
+describe('speakableName', () => {
+  it.each([
+    ['full-width letters', 'ＶｉｅｗｅｒＡ', 'ViewerA'],
+    ['control and format characters', 'Vie\u0007wer\u200bA', 'ViewerA'],
+    ['long runs of the same character', 'イカーーーーーー', 'イカーー'],
+    ['surrounding and repeated spaces', '  イカ  ちゃん ', 'イカ ちゃん'],
+  ])('handles %s', (_, name, expected) => {
+    expect(speakableName(name)).toBe(expected);
+  });
+
+  it('keeps at most 20 characters', () => {
+    expect(speakableName('あいうえおかきくけこさしすせそたちつてとなにぬねの')).toBe('あいうえおかきくけこさしすせそたちつてと');
+  });
+});
+
+describe('parseIgnoredLogins', () => {
+  it('splits, trims and lowercases the logins', () => {
+    expect(parseIgnoredLogins(' Nightbot, StreamElements ,,')).toEqual(new Set(['nightbot', 'streamelements']));
+    expect(parseIgnoredLogins(undefined)).toEqual(new Set());
+  });
+});
+
+describe('publishSpeech', () => {
+  it('posts the text as JSON', async () => {
+    const fetchFn = vi.fn().mockImplementation(async () => json({}));
+
+    expect(await publishSpeech('http://localhost:3000/api/speech', 'こんにちは', fetchFn)).toBe(true);
+    const [url, init] = fetchFn.mock.calls[0];
+    expect(url).toBe('http://localhost:3000/api/speech');
+    expect(init.headers).toEqual({ 'Content-Type': 'application/json' });
+    expect(JSON.parse(init.body)).toEqual({ text: 'こんにちは' });
+  });
+
+  it('returns false when reading aloud is disabled in the app', async () => {
+    const fetchFn = vi.fn().mockImplementation(async () => json({}, 409));
+    expect(await publishSpeech('http://x', 'a', fetchFn)).toBe(false);
+  });
+
+  it('throws when the app rejects the request', async () => {
+    const fetchFn = vi.fn().mockImplementation(async () => json({}, 500));
+    await expect(publishSpeech('http://x', 'a', fetchFn)).rejects.toThrow('500');
   });
 });
 
