@@ -106,8 +106,9 @@ const TelopPanel: React.FC = () => {
     const normalizedFreeText = normalizeTelopText(freeText);
     const handleShowFreeText = async () => {
         if (normalizedFreeText === null) return;
-        // 出せなかったときは入力を残して、そのまま再送できるようにする
-        if (await show({text: normalizedFreeText})) setFreeText('');
+        // 出せなかったときは入力を残して、そのまま再送できるようにする。送信中に打ち直した文は消さない
+        const sent = normalizedFreeText;
+        if (await show({text: sent})) setFreeText((current) => normalizeTelopText(current) === sent ? '' : current);
     };
 
     const normalizedNewPreset = normalizeTelopText(newPreset);
