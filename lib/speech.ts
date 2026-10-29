@@ -17,6 +17,9 @@ export const VOICE_STATE_KEY = 'voice';
 const VOICEVOX_URL = (process.env.VOICEVOX_URL || 'http://localhost:50021').replace(/\/+$/, '');
 // VOICEVOX が応答しないまま待ち続けると、オーバーレイの再生が止まるので打ち切る
 export const VOICEVOX_TIMEOUT_MS = 10_000;
+// VOICEVOX の応答の上限。100 文字の wav は数 MB 程度なので、異常に大きい応答は読み込みながら打ち切る（メモリを使い切らないように）
+export const MAX_AUDIO_QUERY_BYTES = 1_000_000;
+export const MAX_WAV_BYTES = 20_000_000;
 
 /** 保存済みの読み上げ設定。未保存、または不正なら既定値（読み上げ無効） */
 export function loadVoiceSettings(): VoiceSettings {
@@ -29,11 +32,13 @@ export function loadVoiceSettings(): VoiceSettings {
 interface SpeechQueue {
     items: SpeechItem[];
     nextId: number;
+    // 合成した音声。同じ ID を何度要求されても VOICEVOX で合成するのは1回だけにする
+    audio: Map<number, Promise<ArrayBuffer>>;
 }
 const globalStore = globalThis as typeof globalThis & {__speechQueue?: SpeechQueue};
 // ID は起動時刻から振る。サーバーを再起動しても前の ID より大きくなるので、
 // 開いたままのオーバーレイが新しい読み上げを「再生済み」と取り違えない
-const queue = (): SpeechQueue => (globalStore.__speechQueue ??= {items: [], nextId: Date.now()});
+const queue = (): SpeechQueue => (globalStore.__speechQueue ??= {items: [], nextId: Date.now(), audio: new Map()});
 
 /**
  * **FOR TESTING PURPOSES ONLY**
@@ -47,6 +52,9 @@ export function __TEST_ONLY_resetSpeechQueue() {
 export function listSpeech(now = Date.now()): SpeechItem[] {
     const q = queue();
     q.items = q.items.filter((item) => now - item.createdAt < SPEECH_TTL_MS);
+    for (const id of q.audio.keys()) {
+        if (!q.items.some((item) => item.id === id)) q.audio.delete(id);
+    }
     return q.items;
 }
 
@@ -64,6 +72,33 @@ export function enqueueSpeech(text: string): SpeechItem | null {
     return item;
 }
 
+/** 本文を読む。全体をメモリに載せる前に、バイト数が上限を超えた時点で読むのをやめる */
+async function readLimitedBytes(res: Response, maxBytes: number): Promise<Uint8Array> {
+    const tooLarge = () => new Error('VOICEVOX returned too large a response');
+    if (Number(res.headers.get('content-length')) > maxBytes) throw tooLarge();
+    if (!res.body) return new Uint8Array();
+    const reader = res.body.getReader();
+    const chunks: Uint8Array[] = [];
+    let total = 0;
+    for (;;) {
+        const {done, value} = await reader.read();
+        if (done) break;
+        total += value.byteLength;
+        if (total > maxBytes) {
+            await reader.cancel();
+            throw tooLarge();
+        }
+        chunks.push(value);
+    }
+    const bytes = new Uint8Array(total);
+    let offset = 0;
+    for (const chunk of chunks) {
+        bytes.set(chunk, offset);
+        offset += chunk.byteLength;
+    }
+    return bytes;
+}
+
 async function voicevoxFetch(path: string, init?: RequestInit): Promise<Response> {
     const res = await fetch(`${VOICEVOX_URL}${path}`, {...init, cache: 'no-store', signal: AbortSignal.timeout(VOICEVOX_TIMEOUT_MS)});
     if (!res.ok) throw new Error(`VOICEVOX ${path.split('?')[0]} returned ${res.status}`);
@@ -78,11 +113,25 @@ export async function fetchSpeakers(): Promise<VoiceSpeaker[]> {
 /** 文を音声（wav）にする。速度と音量は設定の値を使う */
 export async function synthesize(text: string, settings: VoiceSettings & {speakerId: number}): Promise<ArrayBuffer> {
     const speaker = encodeURIComponent(String(settings.speakerId));
-    const query = await (await voicevoxFetch(`/audio_query?text=${encodeURIComponent(text)}&speaker=${speaker}`, {method: 'POST'})).json();
+    const queryRes = await voicevoxFetch(`/audio_query?text=${encodeURIComponent(text)}&speaker=${speaker}`, {method: 'POST'});
+    const query: unknown = JSON.parse(new TextDecoder().decode(await readLimitedBytes(queryRes, MAX_AUDIO_QUERY_BYTES)));
+    if (typeof query !== 'object' || query === null || Array.isArray(query)) throw new Error('VOICEVOX returned an unexpected audio query');
     const res = await voicevoxFetch(`/synthesis?speaker=${speaker}`, {
         method: 'POST',
         headers: {'Content-Type': 'application/json'},
         body: JSON.stringify({...query, speedScale: settings.speedScale, volumeScale: settings.volumeScale}),
     });
-    return res.arrayBuffer();
+    const wav = await readLimitedBytes(res, MAX_WAV_BYTES);
+    return wav.buffer.slice(wav.byteOffset, wav.byteOffset + wav.byteLength) as ArrayBuffer;
+}
+
+/** キューの 1 件の音声。合成は ID ごとに 1 回だけ行い、失敗したら次の要求で合成し直す */
+export function synthesizeSpeech(item: SpeechItem, settings: VoiceSettings & {speakerId: number}): Promise<ArrayBuffer> {
+    const q = queue();
+    const cached = q.audio.get(item.id);
+    if (cached) return cached;
+    const audio = synthesize(item.text, settings);
+    audio.catch(() => q.audio.delete(item.id));
+    q.audio.set(item.id, audio);
+    return audio;
 }

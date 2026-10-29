@@ -1,6 +1,6 @@
 import {NextRequest, NextResponse} from 'next/server';
 
-import {findSpeech, loadVoiceSettings, synthesize} from '../../../../lib/speech';
+import {findSpeech, loadVoiceSettings, synthesizeSpeech} from '../../../../lib/speech';
 
 /**
  * 読み上げキューの 1 件を VOICEVOX で音声（wav）にして返す。
@@ -16,7 +16,7 @@ export async function GET(request: NextRequest) {
     if (!settings.enabled || speakerId === null) return NextResponse.json({message: 'Speech is disabled or no speaker is selected.'}, {status: 409});
 
     try {
-        const wav = await synthesize(item.text, {...settings, speakerId});
+        const wav = await synthesizeSpeech(item, {...settings, speakerId});
         return new NextResponse(wav, {headers: {'Content-Type': 'audio/wav', 'Cache-Control': 'no-store'}});
     } catch (error) {
         console.error('Failed to synthesize speech with VOICEVOX:', error);
