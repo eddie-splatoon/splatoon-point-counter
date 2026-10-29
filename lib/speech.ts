@@ -38,7 +38,12 @@ interface SpeechQueue {
 const globalStore = globalThis as typeof globalThis & {__speechQueue?: SpeechQueue};
 // ID は起動時刻から振る。サーバーを再起動しても前の ID より大きくなるので、
 // 開いたままのオーバーレイが新しい読み上げを「再生済み」と取り違えない
-const queue = (): SpeechQueue => (globalStore.__speechQueue ??= {items: [], nextId: Date.now(), audio: new Map()});
+const queue = (): SpeechQueue => {
+    const q = (globalStore.__speechQueue ??= {items: [], nextId: Date.now(), audio: new Map()});
+    // 開発サーバーの再読み込みで、audio が無い以前の形のキューが globalThis に残っていることがある
+    q.audio ??= new Map();
+    return q;
+};
 
 /**
  * **FOR TESTING PURPOSES ONLY**

@@ -303,7 +303,7 @@ Twitch のフォロワー数とフォロワー目標を受け取る機能。
 合成音声（VOICEVOX）で、テロップなどを読み上げて配信に声を入れる機能。
 
 - 読み上げキュー（`lib/speech.ts`、サーバー専用）はインメモリ。`/api/speech` と `/api/telop` など複数のルートから使うので、ルートごとにモジュールが別に読み込まれても共有できるよう `globalThis` に置く。1 件 100 文字まで（超えたら切り詰め）・最大 20 件・60 秒で破棄。ID は起動時刻から振る（サーバーを再起動しても、開いたままのオーバーレイが新しい読み上げを再生済みと取り違えないように）。`enqueueSpeech` は読み上げが無効・話者が未選択なら追加せず null を返す（`POST /api/speech` は 409）。`__TEST_ONLY_resetSpeechQueue()` はテスト用
-- `/api/speech/audio?id=` はキューにある id だけを受け付け、VOICEVOX の `audio_query` → `synthesis` を中継して wav を返す（任意の文を読ませないため）。合成は ID ごとに 1 回だけ（`synthesizeSpeech` が結果をキャッシュし、失敗したら次の要求で合成し直す）。VOICEVOX との通信は 10 秒（`VOICEVOX_TIMEOUT_MS`）で打ち切り、応答は `audio_query` 1 MB・wav 20 MB を超えた時点で読むのをやめる。失敗したら 502
+- `/api/speech/audio?id=` はキューにある id だけを受け付け、VOICEVOX の `audio_query` → `synthesis` を中継して wav を返す（任意の文を読ませないため）。合成は ID ごとに 1 回だけ（`synthesizeSpeech` が結果をキャッシュし、失敗したら次の要求で合成し直す。合成後に速度・音量を変えても、合成済みのものはそのまま）。VOICEVOX との通信は 10 秒（`VOICEVOX_TIMEOUT_MS`）で打ち切り、応答は `audio_query` 1 MB・wav 20 MB を超えた時点で読むのをやめる。失敗したら 502
 - 設定 `{enabled, speakerId, speakerName, speedScale, volumeScale}` は SQLite の `app_state`（キー `voice`）。既定は無効。`speakerId` は VOICEVOX のスタイル ID、`speakerName` はクレジット表記（`voiceCredit` → `VOICEVOX:キャラ名`）用のキャラクター名。`/api/voice/speakers` は VOICEVOX の `/speakers` の中継で、歌唱用（`type` が `talk` 以外）のスタイルは除く（`parseSpeakers`）
 - オーバーレイは 0.5 秒ごとにキューを取得し、開いた時点でキューにあったものは再生しない。新しいものを 1 件ずつ順に `Audio` で再生し、再生できなかったとき（VOICEVOX 未起動・自動再生の拒否など）も止まらずに次へ進む
 - コントロールパネルの「テロップ」タブの下に `components/VoiceSettingsPanel.tsx`（有効/無効・話者・速度・音量・テスト再生・クレジット表記）。VOICEVOX に接続できなくても保存済みの話者は表示する
