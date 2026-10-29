@@ -66,6 +66,19 @@ describe('TelopBar', () => {
     input.remove();
   });
 
+  it.each(['combobox', 'option'])('ignores number keys on a dropdown (role=%s)', async (role) => {
+    await renderLoaded();
+    const dropdown = document.createElement('div');
+    dropdown.setAttribute('role', role);
+    dropdown.tabIndex = 0;
+    document.body.appendChild(dropdown);
+
+    await act(async () => fireEvent.keyDown(dropdown, { key: '2' }));
+
+    expect(mockedAxios.post).not.toHaveBeenCalled();
+    dropdown.remove();
+  });
+
   it('shows an error when showing a telop fails', async () => {
     await renderLoaded();
     mockedAxios.post.mockRejectedValueOnce(new Error('network'));

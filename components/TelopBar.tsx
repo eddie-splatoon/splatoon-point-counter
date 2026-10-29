@@ -6,9 +6,14 @@ import React, {useCallback, useEffect, useState} from 'react';
 
 import {TELOP_SHORTCUT_KEYS, TelopData, TelopPreset} from '../lib/telopTypes';
 
-// 入力欄で数字を打っているときは、ショートカットとして扱わない
+// 入力欄で数字を打っているときや、プルダウン（MUI の Select はフォーカスが div[role=combobox] やメニューの項目に乗る）を
+// キーボードで操作しているときは、ショートカットとして扱わない
 const isEditableTarget = (target: EventTarget | null) =>
-    target instanceof HTMLElement && (target.isContentEditable || ['INPUT', 'TEXTAREA', 'SELECT'].includes(target.tagName));
+    target instanceof HTMLElement && (
+        target.isContentEditable
+        || ['INPUT', 'TEXTAREA', 'SELECT'].includes(target.tagName)
+        || target.closest('[role="combobox"], [role="listbox"], [role="option"]') !== null
+    );
 
 interface TelopBarProps {
     /** 変わるたびにプリセットを読み込み直す（テロップタブでプリセットを編集したとき） */

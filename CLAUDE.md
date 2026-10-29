@@ -298,7 +298,7 @@ Twitch のフォロワー数とフォロワー目標を受け取る機能と、�
 - 型・定数・検証は `lib/telopTypes.ts`（クライアントからも使う）。`speak` は合成音声で読み上げるかの設定。`speak` が true のプリセット（自由入力は `speak: true` を付けたもの）は、出すと同時に `enqueueSpeech` で読み上げキューに入れる（読み上げが無効なら入れない）
 - `followFont` は共通設定のフォント（`/api/stream-data` の `fontFamily`）で表示するか。そのフォントに無い文字が化けるテロップは false にして `sans-serif` で出す。後から追加した項目なので、保存済みのプリセットに無ければ true とみなす（自由入力で省略したときも true）
 - オーバーレイは 0.5 秒ごとにポーリングし（フォントは 2 秒ごとに `/api/stream-data` から取得）、出してから `TELOP_DISPLAY_DURATION`（4 秒）以内のものだけ表示する（開き直したときに古いテロップを出さない）。テロップごとにインクの色を変える
-- プリセットのボタンは、コントロールパネルのタイトルとタブの間の `components/TelopBar.tsx`（テロップバー）に置き、どのタブでも表示する（サーモンランタブで戦績を入力しながら出せるように。スクロールしても見えるよう `position: sticky`。そのためコントロールパネルのルートは `overflow: hidden` ではなく `clip`）。テロップバーは `window` の keydown で 1〜9, 0 を受け、並び順のプリセットを出す（入力欄にフォーカスがあるとき・IME 変換中・修飾キー付き・キーリピートは無視）
+- プリセットのボタンは、コントロールパネルのタイトルとタブの間の `components/TelopBar.tsx`（テロップバー）に置き、どのタブでも表示する（サーモンランタブで戦績を入力しながら出せるように。スクロールしても見えるよう `position: sticky`。そのためコントロールパネルのルートは `overflow: hidden` ではなく `clip`）。テロップバーは `window` の keydown で 1〜9, 0 を受け、並び順のプリセットを出す（入力欄・プルダウン（MUI の Select の `role=combobox` / `option`）にフォーカスがあるとき・IME 変換中・修飾キー付き・キーリピートは無視）
 - 「テロップ」タブ（`components/TelopPanel.tsx`）は、自由入力とプリセットの編集（変更はその場で保存）。保存のたびに（失敗して読み込み直したときも）`onPresetsChange` を呼び、コントロールパネルがテロップバーの `reloadKey` を進めてプリセットを読み込み直させる
 
 ### `/app/voice-overlay/page.tsx` と `/app/api/speech/` / `/app/api/voice/`
