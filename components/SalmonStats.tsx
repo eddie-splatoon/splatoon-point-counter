@@ -19,7 +19,7 @@ const resultLabel = (job: SalmonJob) => (job.cleared ? 'クリア' : `WAVE${job.
 
 /** サーモンランの「前回」と「本日（セッション）合計」。サイドパネルのスロット（幅 250px）向け */
 const SalmonStats: React.FC<SalmonStatsProps> = ({lastJob, totals, title = '本日の戦績'}) => (
-    <div className="w-[250px] bg-black/80 text-white rounded-2xl shadow-2xl border-2 border-white/20 p-3"
+    <div className="w-[250px] max-w-full bg-black/80 text-white rounded-2xl shadow-2xl border-2 border-white/20 p-3"
          data-testid="salmon-stats">
         <p className="text-center font-bold" style={{color: '#FF6F00', fontSize: '20px'}}>{title}</p>
 

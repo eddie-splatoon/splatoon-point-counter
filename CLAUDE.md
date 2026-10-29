@@ -238,10 +238,13 @@ Twitch のフォロワー数とフォロワー目標を受け取る機能。
 
 配信画面右側（250x584）のサイドパネル。上段はインクタンク型フォロワーゲージ（`components/InkTankGauge.tsx`）、下段は「スロット」を表示する。
 
-- スロットの定義は `lib/sidePanelTypes.ts` の `SIDE_PANEL_SLOTS`（現在は `schedule` / `salmon` / `challenges` / `burndown`。並び順が、縦に並べるときの上からの順と自動ローテーションの順）。スロットを追加するときは、ここと `SIDE_PANEL_SLOT_LABELS`、オーバーレイの `renderSlot` に足す
-- 設定 `{visibleSlots, autoRotate, rotateSeconds, enabledSlots, followerGoal, challenges}` は SQLite のキーバリュー `app_state`（`getAppState` / `setAppState`、キー `sidePanel`）に保存。保存値が不正（スロット削除後など）なら既定値を返す
-- オーバーレイは2秒ごとに `/api/side-panel`・`/api/salmon`・`/api/stream-data` をポーリングし（1つが失敗しても他は表示を続ける）、motion のクロスフェードでスロットを切り替える。表示するスロットは `pickSlots` で決める: 自動ローテーションが OFF なら `visibleSlots` を上から順に並べ、ON なら `enabledSlots` を1つずつ順に回す
-- `visibleSlots` は以前の `activeSlot`（1つだけ選ぶ方式）を置き換えた項目。保存済みの設定に無ければ `[activeSlot]` として読み込む。下段全体の高さを使うスロット（`FULL_HEIGHT_SLOTS`、現在は `burndown`）は他と同時に選べない（検証で拒否し、コントロールパネルでは新しく選んだ側に入れ替える）
+- スロットの定義は `lib/sidePanelTypes.ts` の `SIDE_PANEL_SLOTS`（現在は `schedule` / `salmon` / `challenges` / `burndown`。並び順が、固定枠で上から並べる順とローテーションの順）。スロットを追加するときは、ここと `SIDE_PANEL_SLOT_LABELS`、オーバーレイの `renderSlot` に足す
+- 設定 `{fixedSlots, rotationSlots, rotateSeconds, followerGoal, challenges}` は SQLite のキーバリュー `app_state`（`getAppState` / `setAppState`、キー `sidePanel`）に保存。保存値が不正（スロット削除後など）なら既定値を返す
+- オーバーレイは2秒ごとに `/api/side-panel`・`/api/salmon`・`/api/stream-data` をポーリングし（1つが失敗しても他は表示を続ける）、下段は「固定枠」と「ローテーション枠」に分かれる。固定枠（`fixedSlots`）は上から順に常に表示し、その下の残りのスペースでローテーション枠（`rotationSlots`）を `rotateSeconds` ごとに1つずつ motion のクロスフェードで切り替える（`pickRotationSlot`。ローテーション枠が空なら切り替えない）
+- 同じスロットを両方の枠に入れることはできず、両方の枠が空になることもできない。残りの高さいっぱいを使うスロット（`FULL_HEIGHT_SLOTS`、現在は `burndown`）は、固定枠に入れるときはそれ1つだけ（ローテーション枠も空）、ローテーション枠なら固定枠の下に表示できる。コントロールパネルでは、固定枠で選んだスロットはローテーション枠のボタンを無効にし、固定枠に移したスロットはローテーション枠から外す
+- 固定枠が多いとローテーション枠の高さが足りず見切れる。`estimateSlotHeight` / `exceedsSlotArea` でスロットの高さの目安を合計し、下段（`SLOT_AREA_HEIGHT` = 約 440px、ゲージ表示時）に収まらない見込みならコントロールパネルで警告する（保存は止めない）。スロットの見た目を変えたら目安の値も見直す
+- 以前の保存形式（`visibleSlots`、さらに前は `activeSlot` と、`autoRotate` / `enabledSlots`）は、自動ローテーション ON ならローテーション枠だけ、OFF なら固定枠だけとして読み込む（既存の設定を既定値に戻さない）
+- オーバーレイのテストは `motion/react` を単純な要素に置き換えている（クロスフェード中に古いスロットが残ると、待ち時間内に消えずに不安定になるため）
 - コントロールパネルの「サイドパネル」タブ（`components/SidePanelSettingsPanel.tsx`）は変更をその場で保存する（「OBSに反映」は不要）
 - 既存の `/burndown-overlay` はそのまま残している（サイドパネルのバーンダウンスロットは花火エフェクトを出さない）
 - フォロワーゲージは `/api/twitch` もポーリングして表示する。値は `getFollowerProgress`（`lib/sidePanelTypes.ts`）で決める: Twitch のクリエイターゴール（フォロワー型）を優先し、無ければフォロワー総数と手入力の `followerGoal`（設定に保存、`null` は未設定）。どちらも無い、または Twitch 連携スクリプトが未起動（`followerTotal: null`）ならゲージを出さない

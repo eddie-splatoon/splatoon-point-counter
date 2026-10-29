@@ -11,7 +11,7 @@ import SalmonSchedule from '../../components/SalmonSchedule';
 import SalmonStats from '../../components/SalmonStats';
 import {SalmonScheduleData, pickCurrentSchedule} from '../../lib/salmonSchedule';
 import {SalmonSummary} from '../../lib/salmonTypes';
-import {FULL_HEIGHT_SLOTS, SidePanelSettings, SidePanelSlot, getFollowerProgress, pickSlots} from '../../lib/sidePanelTypes';
+import {FULL_HEIGHT_SLOTS, SidePanelSettings, SidePanelSlot, getFollowerProgress, pickRotationSlot} from '../../lib/sidePanelTypes';
 import {StreamData} from '../api/stream-data/route';
 
 import type {TwitchData} from '../api/twitch/route';
@@ -59,10 +59,10 @@ const SidePanelOverlayPage: React.FC = () => {
         return () => clearInterval(interval);
     }, [fetchData]);
 
-    const autoRotate = settings?.autoRotate ?? false;
     const rotateSeconds = settings?.rotateSeconds ?? 0;
-    const rotationKey = autoRotate ? `${rotateSeconds}:${settings?.enabledSlots.join(',')}` : '';
-    // OFF を挟んだ場合も含め、設定が変わったらレンダー中に位置を戻す（React の「props の変化に合わせて state を調整する」パターン）
+    const rotationSlots = settings?.rotationSlots ?? [];
+    const rotationKey = rotationSlots.length > 0 ? `${rotateSeconds}:${rotationSlots.join(',')}` : '';
+    // ローテーション枠が空になった場合も含め、設定が変わったらレンダー中に位置を戻す（React の「props の変化に合わせて state を調整する」パターン）
     if (rotation.key !== rotationKey) setRotation({key: rotationKey, index: 0});
     const rotationIndex = rotation.key === rotationKey ? rotation.index : 0;
     useEffect(() => {
@@ -74,9 +74,7 @@ const SidePanelOverlayPage: React.FC = () => {
 
     if (!settings) return <div className="w-[250px] h-[584px]"/>;
 
-    const slots = pickSlots(settings, rotationIndex);
-    // 表示する組み合わせが変わったら、まとめてクロスフェードする
-    const slotsKey = slots.join('+');
+    const rotationSlot = pickRotationSlot(settings, rotationIndex);
     // Twitch 連携スクリプトが未起動、または目標が無いときはゲージを出さない
     const followerProgress = twitch && getFollowerProgress(twitch, settings.followerGoal);
 
@@ -96,37 +94,47 @@ const SidePanelOverlayPage: React.FC = () => {
 
     return (
         <div
-            className="relative overflow-hidden w-[250px] h-[584px] flex flex-col"
+            // 左右に少し余白を取り、配信画面の枠にぴったり付かないようにする（カードは max-w-full で縮む）
+            className="relative overflow-hidden w-[250px] h-[584px] flex flex-col px-2"
             style={{backgroundColor: 'transparent', fontFamily: streamData?.fontFamily || 'sans-serif'}}
         >
             {/* 上段: フォロワーゲージ（泡と花火はパネル全体を覆う） */}
             {followerProgress && twitch && (
                 <InkTankGauge current={followerProgress.current} target={followerProgress.target} lastFollowAt={twitch.lastFollowAt}/>
             )}
-            {/* 下段: コントロールパネルで選んだスロット（複数なら上から順に並べる） */}
-            <div className="relative flex-1" data-testid="side-panel-slot">
-                <AnimatePresence>
-                    <motion.div
-                        key={slotsKey}
-                        className="absolute inset-0 flex flex-col items-center gap-3"
-                        initial={{opacity: 0}}
-                        animate={{opacity: 1}}
-                        exit={{opacity: 0}}
-                        transition={{duration: 0.8}}
-                        data-slots={slotsKey}
+            {/* 下段: 固定枠を上から順に並べ、その下の残りのスペースでローテーション枠を1つずつ切り替える */}
+            <div className="relative flex-1 min-h-0 flex flex-col items-center gap-3" data-testid="side-panel-slot">
+                {settings.fixedSlots.map((slot) => (
+                    <div
+                        key={slot}
+                        // 残りの高さいっぱいを使うスロットは広げる（固定枠では単独のときだけ選べる）
+                        className={FULL_HEIGHT_SLOTS.includes(slot) ? 'flex-1 min-h-0 w-full flex justify-center' : 'shrink-0 w-full flex justify-center'}
+                        data-slot={slot}
+                        data-area="fixed"
                     >
-                        {slots.map((slot) => (
-                            <div
-                                key={slot}
-                                // 下段全体を使うスロットは残りの高さいっぱいに広げる
-                                className={FULL_HEIGHT_SLOTS.includes(slot) ? 'flex-1 min-h-0 w-full flex justify-center' : 'shrink-0'}
-                                data-slot={slot}
+                        {renderSlot(slot)}
+                    </div>
+                ))}
+                {rotationSlot && (
+                    <div className="relative flex-1 min-h-0 w-full" data-testid="side-panel-rotation">
+                        <AnimatePresence>
+                            <motion.div
+                                key={rotationSlot}
+                                className="absolute inset-0 flex flex-col items-center"
+                                initial={{opacity: 0}}
+                                animate={{opacity: 1}}
+                                exit={{opacity: 0}}
+                                transition={{duration: 0.8}}
+                                data-slot={rotationSlot}
+                                data-area="rotation"
                             >
-                                {renderSlot(slot)}
-                            </div>
-                        ))}
-                    </motion.div>
-                </AnimatePresence>
+                                {FULL_HEIGHT_SLOTS.includes(rotationSlot)
+                                    ? <div className="flex-1 min-h-0 w-full flex justify-center">{renderSlot(rotationSlot)}</div>
+                                    : renderSlot(rotationSlot)}
+                            </motion.div>
+                        </AnimatePresence>
+                    </div>
+                )}
             </div>
         </div>
     );

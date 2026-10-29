@@ -7,10 +7,8 @@ import {
     Button,
     Checkbox,
     FormControlLabel,
-    FormGroup,
     IconButton,
     Paper,
-    Switch,
     TextField,
     ToggleButton,
     ToggleButtonGroup,
@@ -31,7 +29,9 @@ import {
     SIDE_PANEL_SLOTS,
     SIDE_PANEL_SLOT_LABELS,
     SidePanelSettings,
+    SLOT_AREA_HEIGHT,
     SidePanelSlot,
+    exceedsSlotArea,
     normalizeChallengeText,
 } from '../lib/sidePanelTypes';
 
@@ -100,20 +100,33 @@ const SidePanelSettingsPanel: React.FC = () => {
         setNewChallenge('');
     };
 
-    // 下段全体を使うスロットは単独でしか表示できないので、新しく選んだ側を残して入れ替える
-    const handleVisibleSlotsChange = (value: SidePanelSlot[]) => {
-        const added = value.find((slot) => !settings.visibleSlots.includes(slot));
-        const next = added === undefined
-            ? value
-            : FULL_HEIGHT_SLOTS.includes(added) ? [added] : value.filter((slot) => !FULL_HEIGHT_SLOTS.includes(slot));
-        // 最低1つは残す。表示順はサーバーと同じく SIDE_PANEL_SLOTS の順にそろえる
-        if (next.length > 0) void save({visibleSlots: SIDE_PANEL_SLOTS.filter((slot) => next.includes(slot))});
+    // 表示順はサーバーと同じく SIDE_PANEL_SLOTS の順にそろえる。固定枠とローテーション枠の両方が空になる変更は無視する（最低1つは残す）
+    const saveSlots = (fixedSlots: SidePanelSlot[], rotationSlots: SidePanelSlot[]) => {
+        if (fixedSlots.length + rotationSlots.length === 0) return;
+        void save({
+            fixedSlots: SIDE_PANEL_SLOTS.filter((slot) => fixedSlots.includes(slot)),
+            rotationSlots: SIDE_PANEL_SLOTS.filter((slot) => rotationSlots.includes(slot)),
+        });
     };
 
-    const toggleEnabled = (slot: SidePanelSlot, checked: boolean) => {
-        const enabledSlots = checked ? [...settings.enabledSlots, slot] : settings.enabledSlots.filter((s) => s !== slot);
-        void save({enabledSlots});
+    const fixedFullHeight = settings.fixedSlots.some((slot) => FULL_HEIGHT_SLOTS.includes(slot));
+    // 配信画面では見切れに気づきにくいので、収まらない見込みの組み合わせはここで知らせる
+    const overflows = exceedsSlotArea(settings);
+
+    const handleFixedSlotsChange = (value: SidePanelSlot[]) => {
+        const added = value.find((slot) => !settings.fixedSlots.includes(slot));
+        if (added !== undefined && FULL_HEIGHT_SLOTS.includes(added)) {
+            // 残りの高さいっぱいを使うスロットを固定するときは、それ1つだけにする
+            saveSlots([added], []);
+            return;
+        }
+        // 固定枠に移したスロットはローテーション枠から外す。固定していた全高のスロットは、他を固定したら外す
+        const fixed = added === undefined ? value : value.filter((slot) => !FULL_HEIGHT_SLOTS.includes(slot));
+        saveSlots(fixed, settings.rotationSlots.filter((slot) => !fixed.includes(slot)));
     };
+
+    // 固定枠にあるスロットはローテーション枠のボタンを無効にしているので、ここには来ない
+    const handleRotationSlotsChange = (value: SidePanelSlot[]) => saveSlots(settings.fixedSlots, value);
 
     const handleSecondsChange = (value: string) => {
         setSecondsInput(value);
@@ -198,35 +211,53 @@ const SidePanelSettingsPanel: React.FC = () => {
                     <Button variant="contained" onClick={handleAddChallenge} disabled={!canAddChallenge} sx={{minWidth: '100px'}}>追加</Button>
                 </Box>
                 <Typography variant="caption" sx={{display: 'block', mt: 1, color: 'text.secondary'}}>
-                    最大 {MAX_CHALLENGES} 個（2〜4 個がおすすめ）。チェックを入れると、オーバーレイでスタンプが押されます。サイドパネルに出すには、下のスロットで「本日のお題」を選んでください。
+                    最大 {MAX_CHALLENGES} 個（2〜4 個がおすすめ）。チェックを入れると、オーバーレイでスタンプが押されます。サイドパネルに出すには、下の固定枠かローテーション枠で「本日のお題」を選んでください。
                 </Typography>
             </Paper>
 
             <Paper elevation={12} sx={paperSx}>
-                <Typography variant="h6" gutterBottom>🧩 表示するスロット</Typography>
+                <Typography variant="h6" gutterBottom>📌 固定枠</Typography>
                 <ToggleButtonGroup
-                    value={settings.visibleSlots}
-                    onChange={(e, value: SidePanelSlot[]) => handleVisibleSlotsChange(value)}
-                    disabled={settings.autoRotate}
-                    aria-label="表示するスロット"
+                    value={settings.fixedSlots}
+                    onChange={(e, value: SidePanelSlot[]) => handleFixedSlotsChange(value)}
+                    aria-label="固定枠"
                 >
                     {SIDE_PANEL_SLOTS.map((slot) => (
                         <ToggleButton key={slot} value={slot}>{SIDE_PANEL_SLOT_LABELS[slot]}</ToggleButton>
                     ))}
                 </ToggleButtonGroup>
                 <Typography variant="caption" sx={{display: 'block', mt: 1, color: 'text.secondary'}}>
-                    {settings.autoRotate
-                        ? '自動ローテーション中は、下で選んだスロットを1つずつ順に表示します。'
-                        : `サイドパネル下段に、選んだものを上から順に並べて表示します。${FULL_HEIGHT_SLOTS.map((s) => SIDE_PANEL_SLOT_LABELS[s]).join('・')}は下段全体を使うため、他と同時には選べません。`}
+                    サイドパネル下段の上から順に、常に表示します。{FULL_HEIGHT_SLOTS.map((s) => SIDE_PANEL_SLOT_LABELS[s]).join('・')}は残りの高さいっぱいを使うため、固定するときはそれ1つだけになります。
                 </Typography>
             </Paper>
 
             <Paper elevation={12} sx={paperSx}>
-                <Typography variant="h6" gutterBottom>🔄 自動ローテーション</Typography>
-                <FormControlLabel
-                    control={<Switch checked={settings.autoRotate} onChange={(e) => save({autoRotate: e.target.checked})}/>}
-                    label="一定時間ごとに切り替える"
-                />
+                <Typography variant="h6" gutterBottom>🔄 ローテーション枠</Typography>
+                <ToggleButtonGroup
+                    value={settings.rotationSlots}
+                    onChange={(e, value: SidePanelSlot[]) => handleRotationSlotsChange(value)}
+                    aria-label="ローテーション枠"
+                >
+                    {SIDE_PANEL_SLOTS.map((slot) => (
+                        <ToggleButton
+                            key={slot}
+                            value={slot}
+                            disabled={fixedFullHeight || settings.fixedSlots.includes(slot)}
+                        >
+                            {SIDE_PANEL_SLOT_LABELS[slot]}
+                        </ToggleButton>
+                    ))}
+                </ToggleButtonGroup>
+                <Typography variant="caption" sx={{display: 'block', mt: 1, color: 'text.secondary'}}>
+                    {fixedFullHeight
+                        ? `${settings.fixedSlots.map((s) => SIDE_PANEL_SLOT_LABELS[s]).join('・')}を固定している間は、ローテーション枠は使えません。`
+                        : '固定枠の下の残りのスペースで、選んだものを1つずつ順に切り替えます。固定枠で選んでいるものは選べません。何も選ばなければ切り替えません。'}
+                </Typography>
+                {overflows && (
+                    <Alert severity="warning" sx={{mt: 2}}>
+                        固定枠とローテーション枠を合わせると、サイドパネル下段（約 {SLOT_AREA_HEIGHT}px）に収まらず、下が見切れる可能性があります。固定枠を減らすか、ローテーション枠に移してください（高さは目安です）。
+                    </Alert>
+                )}
                 <TextField
                     label="切り替え秒数"
                     type="number"
@@ -238,26 +269,6 @@ const SidePanelSettingsPanel: React.FC = () => {
                     fullWidth
                     margin="normal"
                 />
-                <Typography variant="subtitle2" sx={{mt: 1}}>ローテーションするスロット</Typography>
-                <FormGroup row>
-                    {SIDE_PANEL_SLOTS.map((slot) => {
-                        const checked = settings.enabledSlots.includes(slot);
-                        return (
-                            <FormControlLabel
-                                key={slot}
-                                label={SIDE_PANEL_SLOT_LABELS[slot]}
-                                control={
-                                    <Checkbox
-                                        checked={checked}
-                                        // 最低1つは残す
-                                        disabled={checked && settings.enabledSlots.length === 1}
-                                        onChange={(e) => toggleEnabled(slot, e.target.checked)}
-                                    />
-                                }
-                            />
-                        );
-                    })}
-                </FormGroup>
                 <Typography variant="caption" sx={{display: 'block', mt: 1, color: 'text.secondary'}}>
                     設定はすぐに保存され、オーバーレイに反映されます（「OBSに反映」ボタンは不要です）。
                 </Typography>

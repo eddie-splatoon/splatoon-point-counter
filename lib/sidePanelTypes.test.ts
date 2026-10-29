@@ -10,11 +10,13 @@ import {
   getDefaultSidePanelSettings,
   getFollowerProgress,
   parseSidePanelSettings,
-  pickSlots,
+  exceedsSlotArea,
+  pickRotationSlot,
+  type SidePanelSettings,
 } from './sidePanelTypes';
 
 const challenges = [{ id: 1, text: 'キケン度MAXでクリア', done: false }, { id: 2, text: '新ブキで3クリア', done: true }];
-const valid = { visibleSlots: ['burndown'], autoRotate: true, rotateSeconds: 30, enabledSlots: ['salmon', 'burndown'], followerGoal: 20, challenges };
+const valid = { fixedSlots: ['schedule'], rotationSlots: ['salmon', 'burndown'], rotateSeconds: 30, followerGoal: 20, challenges };
 
 describe('parseSidePanelSettings', () => {
   it('accepts valid settings', () => {
@@ -32,17 +34,65 @@ describe('parseSidePanelSettings', () => {
     expect(parseSidePanelSettings(saved)).toEqual({ ...valid, followerGoal: null, challenges: [] });
   });
 
-  it('reads settings saved with a single activeSlot as visibleSlots', () => {
-    const saved: Record<string, unknown> = { ...valid, activeSlot: 'challenges' };
-    delete saved.visibleSlots;
-    expect(parseSidePanelSettings(saved)).toMatchObject({ visibleSlots: ['challenges'] });
-    expect(parseSidePanelSettings(saved)).not.toHaveProperty('activeSlot');
+  describe('settings saved in an older format', () => {
+    const legacy = { rotateSeconds: 30, followerGoal: 20, challenges };
+
+    it('reads auto rotation as rotation slots only', () => {
+      expect(parseSidePanelSettings({ ...legacy, visibleSlots: ['schedule'], autoRotate: true, enabledSlots: ['salmon', 'burndown'] })).toMatchObject({
+        fixedSlots: [], rotationSlots: ['salmon', 'burndown'],
+      });
+    });
+
+    it('reads no rotation as fixed slots only', () => {
+      expect(parseSidePanelSettings({ ...legacy, visibleSlots: ['schedule', 'salmon'], autoRotate: false, enabledSlots: ['salmon', 'burndown'] })).toMatchObject({
+        fixedSlots: ['schedule', 'salmon'], rotationSlots: [],
+      });
+    });
+
+    it.each([
+      ['auto rotation without enabledSlots', { visibleSlots: ['salmon'], autoRotate: true }],
+      ['auto rotation with no enabledSlots', { visibleSlots: ['salmon'], autoRotate: true, enabledSlots: [] }],
+      ['no rotation without visibleSlots or activeSlot', { autoRotate: false, enabledSlots: ['salmon'] }],
+    ])('rejects %s, so the defaults are used instead', (_, slots) => {
+      expect(parseSidePanelSettings({ ...legacy, ...slots })).toBeTypeOf('string');
+    });
+
+    it('treats a null area in the new format as empty', () => {
+      expect(parseSidePanelSettings({ ...legacy, fixedSlots: null, rotationSlots: ['salmon'] })).toMatchObject({ fixedSlots: [], rotationSlots: ['salmon'] });
+    });
+
+    it('reads a single activeSlot as a fixed slot', () => {
+      const parsed = parseSidePanelSettings({ ...legacy, activeSlot: 'challenges', autoRotate: false, enabledSlots: ['salmon'] });
+      expect(parsed).toMatchObject({ fixedSlots: ['challenges'], rotationSlots: [] });
+      expect(parsed).not.toHaveProperty('activeSlot');
+      expect(parsed).not.toHaveProperty('autoRotate');
+      expect(parsed).not.toHaveProperty('enabledSlots');
+    });
   });
 
-  it('shows several slots together in the slot order', () => {
-    expect(parseSidePanelSettings({ ...valid, visibleSlots: ['challenges', 'salmon', 'challenges'] })).toMatchObject({
-      visibleSlots: ['salmon', 'challenges'],
+  it('orders the slots and drops duplicates', () => {
+    expect(parseSidePanelSettings({ ...valid, fixedSlots: ['challenges', 'schedule', 'challenges'], rotationSlots: ['burndown', 'salmon'] })).toMatchObject({
+      fixedSlots: ['schedule', 'challenges'], rotationSlots: ['salmon', 'burndown'],
     });
+  });
+
+  it('allows either area to be empty', () => {
+    expect(parseSidePanelSettings({ ...valid, fixedSlots: [] })).toMatchObject({ fixedSlots: [] });
+    expect(parseSidePanelSettings({ ...valid, rotationSlots: [] })).toMatchObject({ rotationSlots: [] });
+  });
+
+  it('treats a missing area as empty when the other is given', () => {
+    const saved: Record<string, unknown> = { ...valid };
+    delete saved.rotationSlots;
+    expect(parseSidePanelSettings(saved)).toMatchObject({ fixedSlots: ['schedule'], rotationSlots: [] });
+  });
+
+  it('rotates the burndown below other fixed slots', () => {
+    expect(parseSidePanelSettings({ ...valid, fixedSlots: ['schedule', 'salmon'], rotationSlots: ['burndown'] })).not.toBeTypeOf('string');
+  });
+
+  it('fixes the burndown alone', () => {
+    expect(parseSidePanelSettings({ ...valid, fixedSlots: ['burndown'], rotationSlots: [] })).toMatchObject({ fixedSlots: ['burndown'] });
   });
 
   it('trims challenge text', () => {
@@ -73,12 +123,6 @@ describe('parseSidePanelSettings', () => {
     expect(parseSidePanelSettings({ ...valid, followerGoal: null })).toMatchObject({ followerGoal: null });
   });
 
-  it('orders enabled slots and drops duplicates', () => {
-    expect(parseSidePanelSettings({ ...valid, enabledSlots: ['burndown', 'salmon', 'burndown'] })).toMatchObject({
-      enabledSlots: ['salmon', 'burndown'],
-    });
-  });
-
   it('accepts the rotation bounds', () => {
     expect(parseSidePanelSettings({ ...valid, rotateSeconds: MIN_ROTATE_SECONDS })).not.toBeTypeOf('string');
     expect(parseSidePanelSettings({ ...valid, rotateSeconds: MAX_ROTATE_SECONDS })).not.toBeTypeOf('string');
@@ -86,18 +130,17 @@ describe('parseSidePanelSettings', () => {
 
   it.each([
     ['null', null],
-    ['an unknown visible slot', { ...valid, visibleSlots: ['unknown-slot'] }],
-    ['no visible slots', { ...valid, visibleSlots: [] }],
-    ['non-array visible slots', { ...valid, visibleSlots: 'salmon' }],
-    ['the burndown together with another slot', { ...valid, visibleSlots: ['salmon', 'burndown'] }],
-    ['neither visibleSlots nor a valid activeSlot', { ...valid, visibleSlots: undefined, activeSlot: 'unknown-slot' }],
-    ['a non-boolean autoRotate', { ...valid, autoRotate: 'yes' }],
+    ['an unknown fixed slot', { ...valid, fixedSlots: ['unknown-slot'] }],
+    ['an unknown rotation slot', { ...valid, rotationSlots: ['salmon', 'unknown-slot'] }],
+    ['non-array fixed slots', { ...valid, fixedSlots: 'salmon' }],
+    ['no slots at all', { ...valid, fixedSlots: [], rotationSlots: [] }],
+    ['a slot both fixed and rotated', { ...valid, fixedSlots: ['salmon'], rotationSlots: ['salmon', 'challenges'] }],
+    ['a fixed burndown with another fixed slot', { ...valid, fixedSlots: ['salmon', 'burndown'], rotationSlots: [] }],
+    ['a fixed burndown with rotation slots', { ...valid, fixedSlots: ['burndown'], rotationSlots: ['salmon'] }],
+    ['an old format without valid slots', { rotateSeconds: 30, activeSlot: 'unknown-slot', autoRotate: false }],
     ['too short a rotation', { ...valid, rotateSeconds: MIN_ROTATE_SECONDS - 1 }],
     ['too long a rotation', { ...valid, rotateSeconds: MAX_ROTATE_SECONDS + 1 }],
     ['a fractional rotation', { ...valid, rotateSeconds: 10.5 }],
-    ['no enabled slots', { ...valid, enabledSlots: [] }],
-    ['an unknown enabled slot', { ...valid, enabledSlots: ['salmon', 'unknown-slot'] }],
-    ['non-array enabled slots', { ...valid, enabledSlots: 'salmon' }],
     ['a zero follower goal', { ...valid, followerGoal: 0 }],
     ['too large a follower goal', { ...valid, followerGoal: MAX_FOLLOWER_GOAL + 1 }],
     ['a fractional follower goal', { ...valid, followerGoal: 1.5 }],
@@ -116,18 +159,46 @@ describe('parseSidePanelSettings', () => {
   });
 });
 
-describe('pickSlots', () => {
-  it('shows the visible slots when not rotating', () => {
-    expect(pickSlots({ ...getDefaultSidePanelSettings(), visibleSlots: ['salmon', 'challenges'], autoRotate: false }, 5)).toEqual(['salmon', 'challenges']);
+describe('pickRotationSlot', () => {
+  it('cycles through the rotation slots', () => {
+    const settings: SidePanelSettings = { ...getDefaultSidePanelSettings(), rotationSlots: ['salmon', 'challenges', 'burndown'] };
+    expect([0, 1, 2, 3].map((i) => pickRotationSlot(settings, i))).toEqual(['salmon', 'challenges', 'burndown', 'salmon']);
   });
 
-  it('cycles through the enabled slots when rotating', () => {
-    const settings = { ...getDefaultSidePanelSettings(), autoRotate: true };
-    expect([0, 1, 2, 3].map((i) => pickSlots({ ...settings, enabledSlots: ['salmon', 'challenges', 'burndown'] }, i))).toEqual([['salmon'], ['challenges'], ['burndown'], ['salmon']]);
+  it('returns null without rotation slots', () => {
+    expect(pickRotationSlot({ ...getDefaultSidePanelSettings(), rotationSlots: [] }, 3)).toBeNull();
   });
 
-  it('does not rotate through the challenges by default', () => {
-    expect(getDefaultSidePanelSettings().enabledSlots).not.toContain('challenges');
+  it('shows the stats fixed and rotates nothing by default', () => {
+    expect(getDefaultSidePanelSettings()).toMatchObject({ fixedSlots: ['salmon'], rotationSlots: [] });
+  });
+});
+
+describe('exceedsSlotArea', () => {
+  const settings = (fixedSlots: SidePanelSettings['fixedSlots'], rotationSlots: SidePanelSettings['rotationSlots'], challengeCount = 0) => ({
+    fixedSlots,
+    rotationSlots,
+    challenges: Array.from({ length: challengeCount }, (_, i) => ({ id: i + 1, text: 'お題', done: false })),
+  });
+
+  it.each([
+    ['the stats alone', settings(['salmon'], [])],
+    ['the schedule with the stats rotating below', settings(['schedule'], ['salmon', 'challenges'], 3)],
+    ['the burndown rotating alone', settings([], ['burndown'])],
+  ])('fits %s', (_, s) => {
+    expect(exceedsSlotArea(s)).toBe(false);
+  });
+
+  it.each([
+    ['three fixed slots', settings(['schedule', 'salmon', 'challenges'], [], 4)],
+    ['the burndown rotating below two fixed slots', settings(['schedule', 'salmon'], ['burndown'])],
+    ['many challenges rotating below the schedule', settings(['schedule'], ['challenges'], 8)],
+  ])('does not fit %s', (_, s) => {
+    expect(exceedsSlotArea(s)).toBe(true);
+  });
+
+  it('ignores challenges with nothing to show', () => {
+    expect(exceedsSlotArea(settings(['schedule', 'salmon', 'challenges'], [], 0))).toBe(false);
   });
 });
 

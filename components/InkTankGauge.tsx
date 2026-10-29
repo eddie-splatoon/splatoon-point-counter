@@ -38,7 +38,7 @@ const InkTankGauge: React.FC<InkTankGaugeProps> = ({current, target, lastFollowA
     }
 
     return (
-        <div className="w-[250px] flex items-center justify-center gap-4 py-3" data-testid="ink-tank-gauge">
+        <div className="w-full flex items-center justify-center gap-4 py-3" data-testid="ink-tank-gauge">
             <div
                 className="relative overflow-hidden"
                 style={{

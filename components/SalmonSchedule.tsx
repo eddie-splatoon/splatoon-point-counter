@@ -18,14 +18,14 @@ const KIND_COLORS: Record<SalmonScheduleEntry['kind'], string> = {
 const SalmonSchedule: React.FC<SalmonScheduleProps> = ({schedule, now}) => {
     if (!schedule) {
         return (
-            <div className="w-[250px] bg-black/80 text-gray-400 rounded-2xl border-2 border-white/20 p-3 text-center" data-testid="salmon-schedule">
+            <div className="w-[250px] max-w-full bg-black/80 text-gray-400 rounded-2xl border-2 border-white/20 p-3 text-center" data-testid="salmon-schedule">
                 スケジュールを取得できません
             </div>
         );
     }
 
     return (
-        <div className="w-[250px] bg-black/80 text-white rounded-2xl shadow-2xl border-2 border-white/20 p-3" data-testid="salmon-schedule">
+        <div className="w-[250px] max-w-full bg-black/80 text-white rounded-2xl shadow-2xl border-2 border-white/20 p-3" data-testid="salmon-schedule">
             <div className="flex justify-between items-baseline">
                 <p className="font-bold" style={{color: KIND_COLORS[schedule.kind], fontSize: '18px'}}>{SALMON_SCHEDULE_KIND_LABELS[schedule.kind]}</p>
                 <p className="text-gray-300 tabular-nums" style={{fontSize: '13px'}}>{formatRemaining(schedule.endTime, now)}</p>
