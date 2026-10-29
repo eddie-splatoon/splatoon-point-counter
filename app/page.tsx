@@ -207,6 +207,17 @@ export default function Home() {
                         >
                             サイドパネルオーバーレイ (Preview)
                         </Button>
+                        <Button
+                            variant="contained"
+                            color="secondary"
+                            href="/telop-overlay"
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            fullWidth
+                            size="large"
+                        >
+                            実況テロップオーバーレイ (Preview)
+                        </Button>
                     </Box>
                 </Box>
                 <Typography variant="caption" sx={{mt: 4, color: 'text.secondary', zIndex: 1}}>
