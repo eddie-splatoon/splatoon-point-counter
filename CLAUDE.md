@@ -14,9 +14,10 @@
 4. **バーンダウンチャートオーバーレイ** (`/burndown-overlay`) - 進捗状況を可視化
 5. **字幕オーバーレイ** (`/caption-overlay`) - 配信者の音声をリアルタイムに字幕表示
 6. **サイドパネルオーバーレイ** (`/side-panel-overlay`) - 配信画面右側（250x584）。上段にフォロワーゲージ、下段にコントロールパネルで選んだスロットを表示
-7. **バックエンドAPI** (`/api/stream-data`, `/api/caption`, `/api/twitch`, `/api/salmon`, `/api/side-panel`, `/api/salmon-schedule`) - データ管理とクライアント間の同期
-8. **文字起こしスクリプト** (`tools/caption-stt/`) - マイク音声を文字起こしして `/api/caption` へ送信（Python, Mac ネイティブ実行）
-9. **Twitch連携スクリプト** (`tools/twitch-eventsub/`) - フォロワー数・フォロワー目標を EventSub で受信して `/api/twitch` へ送信（Node, 依存なし）
+7. **実況テロップオーバーレイ** (`/telop-overlay`) - コントロールパネルのボタン・キーボードで出す定型文を数秒だけ大きく表示
+8. **バックエンドAPI** (`/api/stream-data`, `/api/caption`, `/api/twitch`, `/api/salmon`, `/api/side-panel`, `/api/salmon-schedule`, `/api/telop`) - データ管理とクライアント間の同期
+9. **文字起こしスクリプト** (`tools/caption-stt/`) - マイク音声を文字起こしして `/api/caption` へ送信（Python, Mac ネイティブ実行）
+10. **Twitch連携スクリプト** (`tools/twitch-eventsub/`) - フォロワー数・フォロワー目標を EventSub で受信して `/api/twitch` へ送信（Node, 依存なし）
 
 ## 技術スタック
 
@@ -54,6 +55,8 @@
 │   │   └── page.tsx              # 字幕オーバーレイ
 │   ├── side-panel-overlay/
 │   │   └── page.tsx              # サイドパネルオーバーレイ
+│   ├── telop-overlay/
+│   │   └── page.tsx              # 実況テロップオーバーレイ
 │   └── api/
 │       ├── stream-data/
 │       │   └── route.ts          # データ管理API
@@ -67,8 +70,10 @@
 │       │       └── route.ts      # サーモンランのセッションAPI
 │       ├── side-panel/
 │       │   └── route.ts          # サイドパネル設定API
-│       └── salmon-schedule/
-│           └── route.ts          # サーモンランのスケジュール（外部 API の中継・キャッシュ）
+│       ├── salmon-schedule/
+│       │   └── route.ts          # サーモンランのスケジュール（外部 API の中継・キャッシュ）
+│       └── telop/
+│           └── route.ts          # 実況テロップAPI（いま出ているテロップ・プリセット）
 ├── components/                    # 再利用可能なReactコンポーネント
 │   ├── ScoreDisplay.tsx          # スコア表示
 │   ├── BurndownChart.tsx         # バーンダウンチャート
@@ -84,14 +89,16 @@
 │   ├── SidePanelSettingsPanel.tsx # コントロールパネルのサイドパネルタブ
 │   ├── InkTankGauge.tsx          # インクタンク型フォロワーゲージ
 │   ├── ChallengeList.tsx         # 本日のお題（サイドパネルのスロット）
-│   └── SalmonSchedule.tsx        # サーモンランのスケジュール（サイドパネルのスロット）
+│   ├── SalmonSchedule.tsx        # サーモンランのスケジュール（サイドパネルのスロット）
+│   └── TelopPanel.tsx            # コントロールパネルのテロップタブ
 ├── lib/
 │   ├── localStorage.ts           # ローカルストレージのラッパー
 │   ├── db.ts                     # SQLite の接続とスキーマ
 │   ├── salmon.ts                 # サーモンラン記録のデータアクセス・入力検証（サーバー専用）
 │   ├── salmonTypes.ts            # サーモンラン記録の型・定数（クライアントからも使う）
 │   ├── sidePanelTypes.ts         # サイドパネルのスロット定義・設定の検証（クライアントからも使う）
-│   └── salmonSchedule.ts         # サーモンランのスケジュールの型・変換（クライアントからも使う）
+│   ├── salmonSchedule.ts         # サーモンランのスケジュールの型・変換（クライアントからも使う）
+│   └── telopTypes.ts             # 実況テロップの型・プリセットの検証（クライアントからも使う）
 ├── data/                          # SQLite・Twitch トークン（Git / Docker イメージ管理外）
 ├── public/                        # 静的アセット
 │   └── tips.tsv                  # Tips データ
@@ -264,6 +271,16 @@ Twitch のフォロワー数とフォロワー目標を受け取る機能。
 - サイドパネルの `schedule` スロット（`components/SalmonSchedule.tsx`）で表示する。画像は外部の署名付き URL なので `next/image` を通さず `<img>` で表示する
 - コントロールパネルの「サーモンラン」タブは、ステージ欄が空なら開催中のステージ名を入れる（手入力した値は上書きしない。取れなくても記録はできる）
 - テストでは `fetch` を `vi.stubGlobal` で差し替え、`__TEST_ONLY_resetSalmonScheduleCache()` でキャッシュを消す
+
+### `/app/telop-overlay/page.tsx` と `/app/api/telop/route.ts`
+
+サーモンラン中などチャットを打てないときに、定型文の「実況テロップ」をワンボタンで出す機能。
+
+- `POST /api/telop` に `{presetId}` か `{text}`（1 行・30 文字まで。`normalizeTelopText` で改行と連続する空白を空白 1 つにまとめる）を送るとテロップを出す。Stream Deck などからも同じ形で送れる（JSON 以外は 415、無いプリセットは 404）
+- いま出ているテロップ `{id, text, timestamp}` はインメモリ（再起動で消えてよい）。プリセット `{id, text, speak}`（最大 12 個）は SQLite の `app_state`（キー `telop`）に保存し、`PUT /api/telop {presets}` で更新する。保存値が不正なら既定のプリセットを返す。`__TEST_ONLY_resetTelop()` はテスト用
+- 型・定数・検証は `lib/telopTypes.ts`（クライアントからも使う）。`speak` は合成音声で読み上げるかの設定で、読み上げは別 Issue（#76）で対応する
+- オーバーレイは 0.5 秒ごとにポーリングし、出してから `TELOP_DISPLAY_DURATION`（4 秒）以内のものだけ表示する（開き直したときに古いテロップを出さない）。テロップごとにインクの色を変える
+- コントロールパネルの「テロップ」タブ（`components/TelopPanel.tsx`）は、プリセットのボタン・自由入力・プリセットの編集（変更はその場で保存）。タブを開いている間は `window` の keydown で 1〜9, 0 を受け、並び順のプリセットを出す（入力欄にフォーカスがあるとき・IME 変換中・修飾キー付き・キーリピートは無視）
 
 ### `/components/ScoreDisplay.tsx`
 

@@ -25,6 +25,7 @@ import React, {useState, useEffect, useRef, useMemo, useCallback} from 'react';
 
 import SalmonRunPanel from '../../components/SalmonRunPanel';
 import SidePanelSettingsPanel from '../../components/SidePanelSettingsPanel';
+import TelopPanel from '../../components/TelopPanel';
 import {getItem, setItem, removeItem} from '../../lib/localStorage';
 import {StreamData, MessagePreset, BurndownData} from '../api/stream-data/route';
 
@@ -486,12 +487,13 @@ const ControlPanelPage: React.FC = () => {
                         </Typography>
                     </Box>
 
-                    <Tabs value={formData.activeTab} onChange={(e, newValue) => updateFormData({ activeTab: newValue })} centered sx={{mb: 3}}>
+                    <Tabs value={formData.activeTab} onChange={(e, newValue) => updateFormData({ activeTab: newValue })} variant="scrollable" scrollButtons="auto" sx={{mb: 3}}>
                         <Tab label="スコア表示" value="score"/>
                         <Tab label="バーンダウン" value="burndown"/>
                         <Tab label="メッセージ" value="message"/>
                         <Tab label="サーモンラン" value="salmon"/>
                         <Tab label="サイドパネル" value="sidePanel"/>
+                        <Tab label="テロップ" value="telop"/>
                         <Tab label="共通設定" value="common"/>
                     </Tabs>
 
@@ -597,6 +599,8 @@ const ControlPanelPage: React.FC = () => {
                     {formData.activeTab === 'salmon' && <SalmonRunPanel/>}
 
                     {formData.activeTab === 'sidePanel' && <SidePanelSettingsPanel/>}
+
+                    {formData.activeTab === 'telop' && <TelopPanel/>}
 
                     {formData.activeTab === 'common' && (
                         <>
