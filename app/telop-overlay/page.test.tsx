@@ -11,10 +11,12 @@ const mockedAxios = vi.mocked(axios);
 
 const NOW = 1_700_000_000_000;
 
-const makeData = (current: { text: string; ageMs: number } | null): TelopData => ({
+// serverTime はサーバーの時計。ブラウザの時計（Date.now = NOW）とずらして、経過時間をサーバーの時計で測ることを確かめる
+const makeData = (current: { text: string; ageMs: number } | null, serverTime = NOW): TelopData => ({
   presets: [],
-  current: current && { id: 1, text: current.text, timestamp: NOW - current.ageMs },
+  current: current && { id: 1, text: current.text, timestamp: serverTime - current.ageMs },
   revision: current ? 1 : 0,
+  serverTime,
 });
 
 describe('TelopOverlayPage', () => {
@@ -41,6 +43,13 @@ describe('TelopOverlayPage', () => {
 
   it('shows a telop that was just sent', async () => {
     mockedAxios.get.mockResolvedValueOnce({ data: makeData({ text: 'ナイス!', ageMs: 500 }), status: 200 });
+    render(<TelopOverlayPage />);
+
+    expect(await screen.findByTestId('telop')).toHaveTextContent('ナイス!');
+  });
+
+  it('measures the elapsed time with the server clock even when the browser clock differs', async () => {
+    mockedAxios.get.mockResolvedValueOnce({ data: makeData({ text: 'ナイス!', ageMs: 500 }, NOW - 60_000), status: 200 });
     render(<TelopOverlayPage />);
 
     expect(await screen.findByTestId('telop')).toHaveTextContent('ナイス!');

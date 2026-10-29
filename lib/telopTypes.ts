@@ -27,6 +27,7 @@ export interface TelopData {
     presets: TelopPreset[];
     current: Telop | null; // 最後に出したテロップ。表示するかはオーバーレイが timestamp で決める
     revision: number;
+    serverTime: number; // 応答時のサーバー時刻。オーバーレイは経過時間をこれで測る（ブラウザとサーバーの時計がずれていても表示時間を守るため）
 }
 
 export const getDefaultTelopSettings = (): TelopSettings => ({

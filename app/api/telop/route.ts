@@ -24,7 +24,7 @@ const loadPresets = () => {
     return (typeof saved === 'string' ? getDefaultTelopSettings() : saved).presets;
 };
 
-const toData = (): TelopData => ({presets: loadPresets(), current, revision});
+const toData = (): TelopData => ({presets: loadPresets(), current, revision, serverTime: Date.now()});
 
 export async function GET() {
     return NextResponse.json(toData());

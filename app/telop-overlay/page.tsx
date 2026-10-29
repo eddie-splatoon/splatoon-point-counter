@@ -4,7 +4,7 @@ import axios from 'axios';
 import {AnimatePresence, motion} from 'motion/react';
 import React, {useState, useEffect, useCallback} from 'react';
 
-import {TELOP_DISPLAY_DURATION, TelopData} from '../../lib/telopTypes';
+import {TELOP_DISPLAY_DURATION, Telop, TelopData} from '../../lib/telopTypes';
 
 // ワンボタンで出すものなので、字幕（1秒）より短い間隔で問い合わせる
 const POLLING_INTERVAL = 500;
@@ -13,7 +13,8 @@ const POLLING_INTERVAL = 500;
 const INK_COLORS = ['#FF6F00', '#B05CFF', '#00C2FF', '#FF3EA5'];
 
 const TelopOverlayPage: React.FC = () => {
-    const [data, setData] = useState<TelopData | null>(null);
+    // 表示中のテロップと、ブラウザの時計で消す時刻
+    const [shown, setShown] = useState<{telop: Telop; hideAt: number} | null>(null);
     const [now, setNow] = useState(0);
 
     const fetchDataInternal = useCallback(async () => {
@@ -26,7 +27,9 @@ const TelopOverlayPage: React.FC = () => {
                 },
             });
             if (res.status === 200) {
-                setData(res.data);
+                const {current, serverTime} = res.data;
+                // 経過時間はサーバーの時計どうしで測り、残り時間をブラウザの時計に置き換える（OBS とサーバーの時計がずれていてもよいように）
+                setShown(current ? {telop: current, hideAt: Date.now() + TELOP_DISPLAY_DURATION - (serverTime - current.timestamp)} : null);
             }
         } catch (error) {
             console.error('Failed to fetch telop data:', error);
@@ -46,7 +49,7 @@ const TelopOverlayPage: React.FC = () => {
     }, [fetchDataInternal]);
 
     // 出してから表示時間内のものだけ表示する（オーバーレイを開き直したときに、古いテロップは出さない）
-    const telop = data?.current && now - data.current.timestamp < TELOP_DISPLAY_DURATION ? data.current : null;
+    const telop = shown && now < shown.hideAt ? shown.telop : null;
 
     return (
         <div

@@ -28,7 +28,7 @@ afterEach(() => {
 
 describe('Telop API', () => {
   it('returns the default presets and no telop at first', async () => {
-    expect(await (await GET()).json()).toEqual({ presets: getDefaultTelopSettings().presets, current: null, revision: 0 });
+    expect(await (await GET()).json()).toEqual({ presets: getDefaultTelopSettings().presets, current: null, revision: 0, serverTime: NOW });
   });
 
   it('shows a preset by id', async () => {
