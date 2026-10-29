@@ -20,7 +20,6 @@ import React, {useCallback, useEffect, useRef, useState} from 'react';
 import {
     MAX_TELOP_LENGTH,
     MAX_TELOP_PRESETS,
-    TELOP_SHORTCUT_KEYS,
     TelopData,
     TelopPreset,
     normalizeTelopText,
@@ -28,12 +27,16 @@ import {
 
 const paperSx = {mb: 3, p: 3, bgcolor: 'background.paper', backdropFilter: 'blur(10px)', border: '1px solid rgba(255, 255, 255, 0.1)'};
 
-// 入力欄で数字を打っているときは、ショートカットとして扱わない
-const isEditableTarget = (target: EventTarget | null) =>
-    target instanceof HTMLElement && (target.isContentEditable || ['INPUT', 'TEXTAREA', 'SELECT'].includes(target.tagName));
+interface TelopPanelProps {
+    /** プリセットを保存（または保存に失敗して読み込み直）したとき。上部のテロップバーに反映するのに使う */
+    onPresetsChange?: () => void;
+}
 
-/** コントロールパネルの「テロップ」タブ。ボタンかキーボードの 1〜9, 0 でテロップを出す。プリセットの変更はその場で保存される */
-const TelopPanel: React.FC = () => {
+/**
+ * コントロールパネルの「テロップ」タブ。自由入力でテロップを出し、プリセットを編集する（変更はその場で保存される）。
+ * プリセットのボタンとキーボードの 1〜9, 0 は、どのタブでも使えるよう TelopBar にある
+ */
+const TelopPanel: React.FC<TelopPanelProps> = ({onPresetsChange}) => {
     const [presets, setPresets] = useState<TelopPreset[] | null>(null);
     const [freeText, setFreeText] = useState('');
     const [freeTextFollowFont, setFreeTextFollowFont] = useState(true);
@@ -58,8 +61,8 @@ const TelopPanel: React.FC = () => {
         void load();
     }, [load]);
 
-    /** テロップを出す。出せたかを返す */
-    const show = useCallback(async (body: {presetId: number} | {text: string; followFont: boolean; speak: boolean}): Promise<boolean> => {
+    /** 自由入力のテロップを出す。出せたかを返す */
+    const show = useCallback(async (body: {text: string; followFont: boolean; speak: boolean}): Promise<boolean> => {
         setError('');
         try {
             await axios.post('/api/telop', body);
@@ -69,21 +72,6 @@ const TelopPanel: React.FC = () => {
             return false;
         }
     }, []);
-
-    // コントロールパネルにフォーカスがあるとき、1〜9, 0 で並び順のプリセットを出す
-    useEffect(() => {
-        if (!presets) return;
-        const handleKeyDown = (e: KeyboardEvent) => {
-            if (e.isComposing || e.repeat || e.ctrlKey || e.metaKey || e.altKey || isEditableTarget(e.target)) return;
-            const index = (TELOP_SHORTCUT_KEYS as readonly string[]).indexOf(e.key);
-            const preset = index >= 0 ? presets[index] : undefined;
-            if (!preset) return;
-            e.preventDefault();
-            void show({presetId: preset.id});
-        };
-        window.addEventListener('keydown', handleKeyDown);
-        return () => window.removeEventListener('keydown', handleKeyDown);
-    }, [presets, show]);
 
     const savePresets = (next: TelopPreset[]) => {
         setPresets(next);
@@ -96,6 +84,7 @@ const TelopPanel: React.FC = () => {
                 setError('プリセットの保存に失敗しました。');
                 await load();
             }
+            onPresetsChange?.();
         });
         saveQueue.current = save;
         return save;
@@ -133,30 +122,9 @@ const TelopPanel: React.FC = () => {
             {error && <Alert severity="error" sx={{mb: 2}}>{error}</Alert>}
 
             <Paper elevation={12} sx={paperSx}>
-                <Typography variant="h6" gutterBottom>📣 テロップを出す</Typography>
-                {presets.length === 0 ? (
-                    <Typography variant="body2" sx={{color: 'text.secondary', p: 1}}>プリセットがありません</Typography>
-                ) : (
-                    <Box data-testid="telop-buttons" sx={{display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 1}}>
-                        {presets.map((preset, index) => (
-                            <Button
-                                key={preset.id}
-                                variant="contained"
-                                onClick={() => void show({presetId: preset.id})}
-                                sx={{justifyContent: 'flex-start', textTransform: 'none'}}
-                            >
-                                {TELOP_SHORTCUT_KEYS[index] !== undefined && (
-                                    <Box component="kbd" sx={{mr: 1, px: 0.75, borderRadius: 1, bgcolor: 'rgba(0,0,0,0.3)', fontFamily: 'monospace'}}>
-                                        {TELOP_SHORTCUT_KEYS[index]}
-                                    </Box>
-                                )}
-                                {preset.text}
-                            </Button>
-                        ))}
-                    </Box>
-                )}
-                <Typography variant="caption" sx={{display: 'block', mt: 1, color: 'text.secondary'}}>
-                    このページにフォーカスがあるときは、キーボードの 1〜9, 0 でも出せます（入力欄にカーソルがあるときは効きません）。
+                <Typography variant="h6" gutterBottom>📣 自由入力でテロップを出す</Typography>
+                <Typography variant="body2" sx={{color: 'text.secondary'}}>
+                    プリセットは、画面上部のボタンか、キーボードの 1〜9, 0 でどのタブからでも出せます（入力欄にカーソルがあるときは効きません）。
                 </Typography>
                 <Box sx={{display: 'flex', gap: 1, alignItems: 'flex-start', mt: 2}}>
                     <TextField

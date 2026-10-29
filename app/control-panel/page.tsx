@@ -25,6 +25,7 @@ import React, {useState, useEffect, useRef, useMemo, useCallback} from 'react';
 
 import SalmonRunPanel from '../../components/SalmonRunPanel';
 import SidePanelSettingsPanel from '../../components/SidePanelSettingsPanel';
+import TelopBar from '../../components/TelopBar';
 import TelopPanel from '../../components/TelopPanel';
 import VoiceSettingsPanel from '../../components/VoiceSettingsPanel';
 import {getItem, setItem, removeItem} from '../../lib/localStorage';
@@ -195,6 +196,8 @@ const ControlPanelPage: React.FC = () => {
     // General state
     const [status, setStatus] = useState<'idle' | 'loading' | 'success' | 'error'>('idle');
     const [effectStatus, setEffectStatus] = useState<'idle' | 'loading' | 'success' | 'error'>('idle');
+    // テロップタブでプリセットを編集したら、上部のテロップバーに読み込み直させる
+    const [telopPresetsRevision, setTelopPresetsRevision] = useState(0);
     const [origin, setOrigin] = useState<string>('');
     const [isInitialized, setIsInitialized] = useState(false);
     const [storageError, setStorageError] = useState(false);
@@ -476,7 +479,8 @@ const ControlPanelPage: React.FC = () => {
     
     return (
         <ThemeProvider theme={darkTheme}>
-            <Box sx={{minHeight: '100vh', bgcolor: 'background.default', color: 'text.primary', position: 'relative', overflow: 'hidden'}}>
+            {/* hidden だとスクロール領域になり、テロップバーの sticky が効かないので clip ではみ出しだけ切る */}
+            <Box sx={{minHeight: '100vh', bgcolor: 'background.default', color: 'text.primary', position: 'relative', overflow: 'clip'}}>
                 <Box sx={{position: 'absolute', top: '-200px', left: '-200px', width: '500px', height: '500px', bgcolor: 'primary.main', borderRadius: '50%', filter: 'blur(150px)', opacity: 0.3}}/>
                 <Box sx={{position: 'absolute', bottom: '-250px', right: '-250px', width: '600px', height: '600px', bgcolor: 'secondary.main', borderRadius: '50%', filter: 'blur(150px)', opacity: 0.3}}/>
 
@@ -497,6 +501,8 @@ const ControlPanelPage: React.FC = () => {
                             配信オーバーレイ設定パネル
                         </Typography>
                     </Box>
+
+                    <TelopBar reloadKey={telopPresetsRevision}/>
 
                     <Tabs value={formData.activeTab} onChange={(e, newValue) => updateFormData({ activeTab: newValue })} variant="scrollable" scrollButtons="auto" sx={{mb: 3}}>
                         <Tab label="スコア表示" value="score"/>
@@ -613,7 +619,7 @@ const ControlPanelPage: React.FC = () => {
 
                     {formData.activeTab === 'telop' && (
                         <>
-                            <TelopPanel/>
+                            <TelopPanel onPresetsChange={() => setTelopPresetsRevision((n) => n + 1)}/>
                             <VoiceSettingsPanel/>
                         </>
                     )}

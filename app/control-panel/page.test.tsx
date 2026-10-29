@@ -38,6 +38,16 @@ vi.mock('../../components/SalmonRunPanel', () => ({
 vi.mock('../../components/SidePanelSettingsPanel', () => ({
     default: () => <div>SidePanelSettingsPanel</div>,
 }));
+// テロップバーとテロップタブも独自に API を呼ぶ。ここではプリセットの編集がテロップバーに伝わることだけを確認する
+vi.mock('../../components/TelopBar', () => ({
+    default: ({reloadKey}: {reloadKey: number}) => <div>TelopBar reloadKey={reloadKey}</div>,
+}));
+vi.mock('../../components/TelopPanel', () => ({
+    default: ({onPresetsChange}: {onPresetsChange: () => void}) => <button onClick={onPresetsChange}>プリセットを編集</button>,
+}));
+vi.mock('../../components/VoiceSettingsPanel', () => ({
+    default: () => <div>VoiceSettingsPanel</div>,
+}));
 
 // Mock next/image
 vi.mock('next/image', () => ({
@@ -98,6 +108,19 @@ describe('ControlPanelPage', () => {
 
         fireEvent.click(screen.getByRole('tab', { name: 'サイドパネル' }));
         await waitFor(() => expect(screen.getByText('SidePanelSettingsPanel')).toBeInTheDocument());
+    });
+
+    it('shows the telop bar on every tab and reloads it after editing presets', async () => {
+        render(<ControlPanelPage />);
+        await waitFor(() => expect(screen.getByText('TelopBar reloadKey=0')).toBeInTheDocument());
+
+        fireEvent.click(screen.getByRole('tab', { name: 'サーモンラン' }));
+        expect(screen.getByText('TelopBar reloadKey=0')).toBeInTheDocument();
+
+        fireEvent.click(screen.getByRole('tab', { name: 'テロップ' }));
+        fireEvent.click(await screen.findByRole('button', { name: 'プリセットを編集' }));
+
+        expect(screen.getByText('TelopBar reloadKey=1')).toBeInTheDocument();
     });
 
     it('shows dropdown menus on an opaque background', async () => {
