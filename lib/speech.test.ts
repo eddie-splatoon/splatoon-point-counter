@@ -32,9 +32,9 @@ describe('speech queue', () => {
 
   it('enqueues normalized text with increasing ids', () => {
     setAppState(VOICE_STATE_KEY, enabled);
-    expect(enqueueSpeech(' ナイス! ')).toEqual({ id: 1, text: 'ナイス!', createdAt: NOW });
-    expect(enqueueSpeech('ヘルプ感謝')?.id).toBe(2);
-    expect(findSpeech(2)?.text).toBe('ヘルプ感謝');
+    expect(enqueueSpeech(' ナイス! ')).toEqual({ id: NOW, text: 'ナイス!', createdAt: NOW });
+    expect(enqueueSpeech('ヘルプ感謝')?.id).toBe(NOW + 1);
+    expect(findSpeech(NOW + 1)?.text).toBe('ヘルプ感謝');
     expect(enqueueSpeech('  ')).toBeNull();
   });
 
@@ -44,7 +44,16 @@ describe('speech queue', () => {
     vi.mocked(Date.now).mockReturnValue(NOW + SPEECH_TTL_MS);
     enqueueSpeech('新しい');
     expect(listSpeech().map((item) => item.text)).toEqual(['新しい']);
-    expect(findSpeech(1)).toBeUndefined();
+    expect(findSpeech(NOW)).toBeUndefined();
+  });
+
+  it('starts ids from the current time so they keep increasing after a server restart', () => {
+    setAppState(VOICE_STATE_KEY, enabled);
+    enqueueSpeech('再起動前');
+    __TEST_ONLY_resetSpeechQueue();
+    vi.mocked(Date.now).mockReturnValue(NOW + 5_000);
+
+    expect(enqueueSpeech('再起動後')?.id).toBe(NOW + 5_000);
   });
 
   it('keeps at most the maximum number of items', () => {

@@ -31,14 +31,16 @@ interface SpeechQueue {
     nextId: number;
 }
 const globalStore = globalThis as typeof globalThis & {__speechQueue?: SpeechQueue};
-const queue = (): SpeechQueue => (globalStore.__speechQueue ??= {items: [], nextId: 1});
+// ID は起動時刻から振る。サーバーを再起動しても前の ID より大きくなるので、
+// 開いたままのオーバーレイが新しい読み上げを「再生済み」と取り違えない
+const queue = (): SpeechQueue => (globalStore.__speechQueue ??= {items: [], nextId: Date.now()});
 
 /**
  * **FOR TESTING PURPOSES ONLY**
- * Clears the speech queue.
+ * Clears the speech queue (the next id starts from the current time again).
  */
 export function __TEST_ONLY_resetSpeechQueue() {
-    globalStore.__speechQueue = {items: [], nextId: 1};
+    delete globalStore.__speechQueue;
 }
 
 /** 古いものを捨てた読み上げキュー */

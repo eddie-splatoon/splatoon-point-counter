@@ -42,7 +42,7 @@ describe('Speech API', () => {
     const response = await post({ text: 'テスト' });
 
     expect(response.status).toBe(200);
-    expect(await response.json()).toEqual({ id: 1, text: 'テスト', createdAt: NOW });
+    expect(await response.json()).toEqual({ id: NOW, text: 'テスト', createdAt: NOW });
     expect((await (await GET()).json()).items).toHaveLength(1);
   });
 
@@ -66,7 +66,7 @@ describe('Speech audio API', () => {
     await post({ text: 'テスト' });
     vi.stubGlobal('fetch', vi.fn(async (url: string) => url.includes('/audio_query') ? Response.json({}) : new Response(new Uint8Array([1, 2]))));
 
-    const response = await audio('1');
+    const response = await audio(String(NOW));
 
     expect(response.status).toBe(200);
     expect(response.headers.get('content-type')).toBe('audio/wav');
@@ -82,7 +82,7 @@ describe('Speech audio API', () => {
     await post({ text: 'テスト' });
     setAppState(VOICE_STATE_KEY, { ...enabled, enabled: false });
 
-    expect((await audio('1')).status).toBe(409);
+    expect((await audio(String(NOW))).status).toBe(409);
   });
 
   it('returns 502 when VOICEVOX fails', async () => {
@@ -91,6 +91,6 @@ describe('Speech audio API', () => {
     vi.spyOn(console, 'error').mockImplementation(() => {});
     vi.stubGlobal('fetch', vi.fn(async () => { throw new TypeError('fetch failed'); }));
 
-    expect((await audio('1')).status).toBe(502);
+    expect((await audio(String(NOW))).status).toBe(502);
   });
 });
