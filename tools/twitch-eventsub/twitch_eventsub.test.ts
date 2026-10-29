@@ -17,6 +17,7 @@ import {
   parseIgnoredLogins,
   publishSpeech,
   speakChatMessage,
+  speakableName,
   pollDeviceToken,
   publishState,
   refreshAccessToken,
@@ -499,6 +500,15 @@ describe('chatToSpeech', () => {
     expect(chatToSpeech(chat({ chatter_user_name: '' }), context())).toBe('viewer_aさん、いらっしゃい！');
   });
 
+  it('shortens and cleans a display name used to read something else', () => {
+    expect(chatToSpeech(chat({ chatter_user_name: '配信者はこれからとても大事なお知らせを読み上げます' }), context()))
+      .toBe('配信者はこれからとても大事なお知らせを読さん、いらっしゃい！');
+  });
+
+  it('falls back to the login name when the display name has nothing speakable', () => {
+    expect(chatToSpeech(chat({ chatter_user_name: '\u200b\u200b' }), context())).toBe('viewer_aさん、いらっしゃい！');
+  });
+
   it('ignores bots in the ignore list regardless of case', () => {
     expect(chatToSpeech(chat({ chatter_user_login: 'Nightbot' }), context())).toBeNull();
   });
@@ -511,10 +521,18 @@ describe('chatToSpeech', () => {
     expect(chatToSpeech(chat({ chatter_user_id: '123', message: { text: 'あ'.repeat(150) } }), context())).toBe('あ'.repeat(100));
   });
 
+  it('does not cut an emoji in half when truncating', () => {
+    const text = `${'あ'.repeat(99)}🦑🦑`;
+    expect(chatToSpeech(chat({ chatter_user_id: '123', message: { text } }), context())).toBe(`${'あ'.repeat(99)}🦑`);
+  });
+
   it.each([
     ['a command', '!uptime'],
     ['a URL', '配信はこちら https://example.com'],
     ['a bare domain', 'twitch.tv/eddie を見てね'],
+    ['a full-width domain', 'ｅｘａｍｐｌｅ．ｃｏｍ を見てね'],
+    ['another TLD', 'example.dev を見てね'],
+    ['a full-width command', '！uptime'],
     ['an empty message', '  '],
   ])('does not read the broadcaster\'s message with %s', (_, text) => {
     expect(chatToSpeech(chat({ chatter_user_id: '123', message: { text } }), context())).toBeNull();
@@ -582,6 +600,21 @@ describe('speakChatMessage', () => {
     const ctx = context();
     await speakChatMessage({ chatter_user_id: '123', message: { text: '次いきます' } }, ctx, vi.fn().mockResolvedValue(false));
     expect(ctx.greeted.size).toBe(0);
+  });
+});
+
+describe('speakableName', () => {
+  it.each([
+    ['full-width letters', 'ＶｉｅｗｅｒＡ', 'ViewerA'],
+    ['control and format characters', 'Vie\u0007wer\u200bA', 'ViewerA'],
+    ['long runs of the same character', 'イカーーーーーー', 'イカーー'],
+    ['surrounding and repeated spaces', '  イカ  ちゃん ', 'イカ ちゃん'],
+  ])('handles %s', (_, name, expected) => {
+    expect(speakableName(name)).toBe(expected);
+  });
+
+  it('keeps at most 20 characters', () => {
+    expect(speakableName('あいうえおかきくけこさしすせそたちつてとなにぬねの')).toBe('あいうえおかきくけこさしすせそたちつてと');
   });
 });
 

@@ -478,8 +478,27 @@ export interface ChatSpeechContext {
 }
 
 const MAX_CHAT_SPEECH_LENGTH = 100;
-// URL らしいものを含むコメントは読まない（読み上げても聞き取れず、意図しないサイト名を読ませないため）
-const URL_PATTERN = /https?:\/\/|www\.|\b[\w-]+\.(?:com|net|org|jp|tv|gg|io|ly|me|co)\b/i;
+// 挨拶で読み上げる名前の長さ。表示名を文のようにして読ませる悪用を防ぐため短く切る
+const MAX_SPOKEN_NAME_LENGTH = 20;
+// URL らしいものを含むコメントは読まない（読み上げても聞き取れず、意図しないサイト名を読ませないため）。全角は NFKC で半角にしてから判定する
+const URL_PATTERN = /https?:\/\/|www\.|\b[\w-]+\.(?:com|net|org|jp|tv|gg|io|ly|me|co|dev|app|xyz|info|link|live|be)\b/i;
+
+// 文字（コードポイント）単位で切る。UTF-16 で切ると絵文字が途中で切れて文字化けするため
+const truncate = (text: string, max: number) => Array.from(text).slice(0, max).join('');
+
+/**
+ * 挨拶で読み上げる名前に整える。全角・半角をそろえ、制御文字や書式文字を除き、同じ文字が 3 つ以上続くところは 2 つに縮め
+ * （「ーーーー…」で長く鳴らすなどの悪用を防ぐ）、20 文字までに切る
+ */
+export function speakableName(name: string): string {
+  const cleaned = name
+    .normalize('NFKC')
+    .replace(/[\p{Cc}\p{Cf}]/gu, '')
+    .replace(/(.)\1{2,}/gu, '$1$1')
+    .replace(/\s+/g, ' ')
+    .trim();
+  return truncate(cleaned, MAX_SPOKEN_NAME_LENGTH);
+}
 
 /** 環境変数（カンマ区切りのログイン名）から、読み上げないアカウントの一覧を作る */
 export const parseIgnoredLogins = (value: string | undefined): Set<string> =>
@@ -487,8 +506,9 @@ export const parseIgnoredLogins = (value: string | undefined): Set<string> =>
 
 /**
  * チャットのメッセージから、読み上げる文を決める。読み上げないものは null。
- * - 配信者自身: コメント本文（`!` で始まるコマンドと URL を含むものは読まない）
- * - 視聴者: 起動中に初めてコメントしたときだけ「〇〇さん、いらっしゃい！」（本文は読まない）。挨拶した人は context.greeted に加える
+ * - 配信者自身: コメント本文（`!` で始まるコマンドと URL を含むものは読まない。全角も半角にそろえてから判定する）
+ * - 視聴者: 起動中に初めてコメントしたときだけ「〇〇さん、いらっしゃい！」（本文は読まない。名前は speakableName で整える）。
+ *   挨拶した人は context.greeted に加える
  */
 export function chatToSpeech(event: unknown, context: ChatSpeechContext): string | null {
   const chat = (event ?? {}) as ChatMessageEvent;
@@ -498,13 +518,14 @@ export function chatToSpeech(event: unknown, context: ChatSpeechContext): string
   if (chat.source_broadcaster_user_id && chat.source_broadcaster_user_id !== context.broadcasterId) return null;
 
   if (userId === context.broadcasterId) {
-    const text = (chat.message?.text ?? '').replace(/\s+/g, ' ').trim();
+    const text = (chat.message?.text ?? '').normalize('NFKC').replace(/\s+/g, ' ').trim();
     if (text === '' || text.startsWith('!') || URL_PATTERN.test(text)) return null;
-    return text.slice(0, MAX_CHAT_SPEECH_LENGTH);
+    return truncate(text, MAX_CHAT_SPEECH_LENGTH);
   }
 
   if (context.ignoredLogins.has((chat.chatter_user_login ?? '').toLowerCase()) || context.greeted.has(userId)) return null;
-  const name = (chat.chatter_user_name || chat.chatter_user_login || '').trim();
+  // 表示名が整えると空になる（記号や制御文字だけなど）ときは、ログイン名（英数字）で呼ぶ
+  const name = speakableName(chat.chatter_user_name ?? '') || speakableName(chat.chatter_user_login ?? '');
   if (name === '') return null;
   context.greeted.add(userId);
   return `${name}さん、いらっしゃい！`;
