@@ -17,6 +17,7 @@ import axios from 'axios';
 import React, {useCallback, useEffect, useRef, useState} from 'react';
 
 import {WeaponCard} from '../lib/salmonWeapons';
+import {downloadBlob, renderWeaponCardImage, weaponCardImageFileName} from '../lib/weaponCardImage';
 
 import WeaponPicker from './WeaponPicker';
 
@@ -30,6 +31,7 @@ const WeaponCardPanel: React.FC = () => {
     const [card, setCard] = useState<WeaponCard | null>(null);
     const [error, setError] = useState('');
     const [confirmingNewCard, setConfirmingNewCard] = useState(false);
+    const [downloading, setDownloading] = useState(false);
     // 素早く続けて押したとき、古い応答で新しい状態を戻さないための通し番号
     const latestRequest = useRef(0);
 
@@ -69,6 +71,18 @@ const WeaponCardPanel: React.FC = () => {
         void request(() => axios.post<WeaponCard>('/api/weapon-card', {}), '新しいカードを始められませんでした。');
     };
 
+    const handleDownload = async () => {
+        setDownloading(true);
+        try {
+            const now = new Date();
+            downloadBlob(await renderWeaponCardImage(card, now), weaponCardImageFileName(now));
+        } catch {
+            setError('画像を作れませんでした。');
+        } finally {
+            setDownloading(false);
+        }
+    };
+
     return (
         <>
             {error && <Alert severity="error" sx={{mb: 2}}>{error}</Alert>}
@@ -90,6 +104,14 @@ const WeaponCardPanel: React.FC = () => {
                 <Typography variant="caption" sx={{display: 'block', mt: 2, color: 'text.secondary'}}>
                     サーモンランタブで支給ブキを選んで記録すると自動で埋まります。押したブキは手動で埋める / 外すことができます（記録から埋まったブキは押せません。外すときは記録を取り消してください）。
                 </Typography>
+            </Paper>
+
+            <Paper elevation={12} sx={paperSx}>
+                <Typography variant="h6" gutterBottom>📸 SNS 用の画像</Typography>
+                <Typography variant="body2" sx={{mb: 2}}>今のカードを PNG 画像でダウンロードします。</Typography>
+                <Button variant="contained" onClick={handleDownload} disabled={downloading}>
+                    {downloading ? '画像を作成中...' : '画像をダウンロード'}
+                </Button>
             </Paper>
 
             <Paper elevation={12} sx={paperSx}>

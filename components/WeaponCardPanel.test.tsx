@@ -2,11 +2,19 @@ import { act, fireEvent, render, screen, waitFor, within } from '@testing-librar
 import axios from 'axios';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
+import { downloadBlob, renderWeaponCardImage } from '../lib/weaponCardImage';
+
 import WeaponCardPanel from './WeaponCardPanel';
+
 
 import type { WeaponCard } from '../lib/salmonWeapons';
 
 vi.mock('axios');
+vi.mock('../lib/weaponCardImage', () => ({
+  renderWeaponCardImage: vi.fn(),
+  downloadBlob: vi.fn(),
+  weaponCardImageFileName: () => 'weapon-card.png',
+}));
 const mockedAxios = vi.mocked(axios);
 
 const card = (obtained: WeaponCard['obtained'] = [], startedAt = 0): WeaponCard => ({ startedAt, total: 71, obtained });
@@ -82,5 +90,28 @@ describe('WeaponCardPanel', () => {
     mockedAxios.get.mockRejectedValue(new Error('500'));
     render(<WeaponCardPanel />);
     expect(await screen.findByText(/ブキ埋めカードの読み込みに失敗しました/)).toBeInTheDocument();
+  });
+
+  it('downloads the card as an image', async () => {
+    const blob = new Blob(['png']);
+    vi.mocked(renderWeaponCardImage).mockResolvedValue(blob);
+    render(<WeaponCardPanel />);
+    await screen.findByTestId('weapon-card-count');
+
+    await act(async () => fireEvent.click(screen.getByRole('button', { name: '画像をダウンロード' })));
+
+    expect(vi.mocked(renderWeaponCardImage).mock.calls[0][0].obtained).toHaveLength(2);
+    expect(downloadBlob).toHaveBeenCalledWith(blob, 'weapon-card.png');
+  });
+
+  it('shows an error when the image cannot be made', async () => {
+    vi.mocked(renderWeaponCardImage).mockRejectedValue(new Error('no canvas'));
+    render(<WeaponCardPanel />);
+    await screen.findByTestId('weapon-card-count');
+
+    await act(async () => fireEvent.click(screen.getByRole('button', { name: '画像をダウンロード' })));
+
+    expect(screen.getByRole('alert')).toHaveTextContent('画像を作れませんでした。');
+    expect(downloadBlob).not.toHaveBeenCalled();
   });
 });
