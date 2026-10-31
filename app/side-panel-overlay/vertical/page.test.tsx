@@ -77,6 +77,14 @@ const rotationSlot = () => screen.queryByTestId('side-panel-rotation')?.querySel
 const fixedSlots = () => [...screen.getByTestId('side-panel-slot').querySelectorAll('[data-area="fixed"]')].map((el) => el.getAttribute('data-slot'));
 const rotating: SidePanelSettings = { ...getDefaultSidePanelSettings(), fixedSlots: [], rotationSlots: ['salmon', 'burndown'], rotateSeconds: 10 };
 
+// React の Scheduler は偽タイマーを入れる前の本物の setImmediate で effect を流す。負荷が高いと、スロットが表示された時点で
+// ローテーションのタイマー（effect で作る setInterval）がまだ作られていないことがあるので、effect を流してから時間を進める
+const realSetImmediate = globalThis.setImmediate;
+const advance = async (ms: number) => {
+  await act(() => new Promise<void>((resolve) => realSetImmediate(() => resolve())));
+  await act(async () => vi.advanceTimersByTime(ms));
+};
+
 beforeEach(() => {
   vi.clearAllMocks();
 });
@@ -117,7 +125,7 @@ describe('VerticalSidePanelOverlayPage', () => {
     await screen.findByTestId('SalmonStats');
     expect(rotationSlot()).toBe('salmon');
 
-    await act(async () => vi.advanceTimersByTime(10_000));
+    await advance(10_000);
     await waitFor(() => expect(rotationSlot()).toBe('burndown'));
   });
 
