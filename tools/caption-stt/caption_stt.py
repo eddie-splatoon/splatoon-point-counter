@@ -2,6 +2,7 @@
 
 Silero VAD で発話を区切り、発話ごとに mlx-whisper (Apple Silicon) で文字起こしする。
 発話がテロップのプリセットに近ければ、字幕の代わりに /api/telop でそのテロップを出す。
+決まった言葉（「ナイス」など）を含めば、/api/stream-data でスコア表示オーバーレイにエフェクトを出す。
 """
 
 import argparse
@@ -59,6 +60,14 @@ TELOP_MATCH_THRESHOLD = 0.8  # 発話とテロップの類似度がこれ以上�
 TELOP_SHORT_LENGTH = 2  # 正規化後この文字数以下のテロップは完全一致のときだけ出す
 TELOP_REFRESH_SECONDS = 30  # テロップのプリセットを取り直す間隔
 TELOP_COOLDOWN_SECONDS = 10  # 同じテロップを出し直さない時間
+
+# 話した言葉で出すエフェクト（/api/stream-data の lastEvent.name）。上から順に見て、最初に含まれていたものを出す
+EFFECT_KEYWORDS = [
+    ("STAR", ("ナイス",)),
+    ("LOVE", ("ありがとう",)),
+    ("SPARKLE", ("よっしゃ",)),
+    ("BUBBLE", ("やべ", "やば")),
+]
 
 _PUNCTUATION = re.compile(r"[\s、。．，,.!！?？…・「」『』（）()\-ー〜~]+")
 _LATIN_WORD = re.compile(r"[A-Za-z]+")
@@ -158,6 +167,15 @@ def match_telop(text: str, presets: list[dict]) -> dict | None:
     return best
 
 
+def match_effect(text: str) -> str | None:
+    """発話に含まれるキーワードに対応するエフェクトを返す。無ければ None。"""
+    spoken = normalize_for_match(text)
+    for effect, keywords in EFFECT_KEYWORDS:
+        if any(normalize_for_match(k) in spoken for k in keywords):
+            return effect
+    return None
+
+
 class TelopMatcher:
     """テロップのプリセットを定期的に取得し、発話に近いものがあればテロップを出す。"""
 
@@ -201,6 +219,19 @@ class TelopMatcher:
 
 def default_telop_url(caption_url: str) -> str:
     return urljoin(caption_url, "/api/telop")
+
+
+def default_effect_url(caption_url: str) -> str:
+    return urljoin(caption_url, "/api/stream-data")
+
+
+def trigger_effect(url: str, effect: str) -> None:
+    import requests
+
+    try:
+        requests.patch(url, json={"event": effect}, timeout=3).raise_for_status()
+    except requests.RequestException as e:
+        print(f"[caption-stt] エフェクトを出せませんでした: {e}", file=sys.stderr)
 
 
 def fetch_telop_presets(url: str) -> list[dict]:
@@ -311,7 +342,14 @@ def parse_device(value: str | None) -> int | str | None:
     return int(value) if value.isdigit() else value
 
 
-def run(caption_url: str, model: str, device: int | str | None, telop: TelopMatcher | None, save_dir: Path | None) -> None:
+def run(
+    caption_url: str,
+    model: str,
+    device: int | str | None,
+    telop: TelopMatcher | None,
+    effect_url: str | None,
+    save_dir: Path | None,
+) -> None:
     import numpy as np
     import sounddevice as sd
     import torch
@@ -362,6 +400,11 @@ def run(caption_url: str, model: str, device: int | str | None, telop: TelopMatc
         if reason:
             print(f"[caption-stt] (除外: {reason}) {text}")
             return
+        # エフェクトは字幕・テロップとは別に出す（「ナイス」ならテロップとエフェクトの両方）
+        effect = match_effect(text) if effect_url else None
+        if effect:
+            print(f"[caption-stt] (エフェクト: {effect}) {text}")
+            trigger_effect(effect_url, effect)
         preset = telop.try_show(text) if telop else None
         if preset:
             print(f"[caption-stt] (テロップ: {preset['text']}) {text}")
@@ -414,6 +457,7 @@ def main() -> None:
     model = os.environ.get("WHISPER_MODEL", DEFAULT_WHISPER_MODEL)
     telop_url = os.environ.get("TELOP_URL") or default_telop_url(caption_url)
     telop = None if os.environ.get("TELOP_MATCH") == "off" else TelopMatcher(telop_url, fetch_telop_presets, show_telop)
+    effect_url = None if os.environ.get("EFFECT_MATCH") == "off" else (os.environ.get("EFFECT_URL") or default_effect_url(caption_url))
 
     if args.compare:
         models = [m.strip() for m in (args.models or model).split(",") if m.strip()]
@@ -431,6 +475,7 @@ def main() -> None:
             model=model,
             device=parse_device(os.environ.get("MIC_DEVICE")),
             telop=telop,
+            effect_url=effect_url,
             save_dir=Path(save_dir) if save_dir else None,
         )
     except KeyboardInterrupt:

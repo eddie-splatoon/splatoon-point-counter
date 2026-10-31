@@ -8,9 +8,11 @@ from caption_stt import (
     TelopMatcher,
     build_prompt,
     caption_rejection,
+    default_effect_url,
     default_telop_url,
     is_valid_caption,
     load_sample,
+    match_effect,
     match_telop,
     parse_device,
     save_sample,
@@ -196,6 +198,27 @@ def test_telop_matcher_falls_back_to_caption_when_show_fails():
     matcher, _, _, _ = make_matcher(show=failing_show)
     matcher.refresh()
     assert matcher.try_show("ナイス") is None
+
+
+@pytest.mark.parametrize(
+    ("text", "expected"),
+    [
+        ("ナイス！", "STAR"),
+        ("ないすー", "STAR"),
+        ("ありがとうございます", "LOVE"),
+        ("よっしゃー！", "SPARKLE"),
+        ("やべぇ", "BUBBLE"),
+        ("ヤバい", "BUBBLE"),
+        ("ナイスありがとう", "STAR"),  # 複数含むときは上のものを優先
+        ("こんにちは", None),
+    ],
+)
+def test_match_effect(text, expected):
+    assert match_effect(text) == expected
+
+
+def test_default_effect_url():
+    assert default_effect_url("http://localhost:3000/api/caption") == "http://localhost:3000/api/stream-data"
 
 
 def test_default_telop_url():

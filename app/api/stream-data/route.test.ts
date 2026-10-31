@@ -1,7 +1,7 @@
 import { NextRequest } from 'next/server';
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
 
-import { GET, POST, getInitialStreamData, __TEST_ONLY_setStreamData } from './route';
+import { GET, PATCH, POST, getInitialStreamData, __TEST_ONLY_setStreamData } from './route';
 
 // Reset the stream data before each test
 beforeEach(() => {
@@ -83,6 +83,40 @@ describe('Stream Data API', () => {
 
         expect(response.status).toBe(200);
         expect(body.lastEvent).toEqual(event);
+    });
+  });
+
+  describe('PATCH', () => {
+    const patch = (body: unknown, contentType = 'application/json') =>
+      PATCH(new NextRequest('http://localhost/api/stream-data', {
+        method: 'PATCH',
+        headers: { 'Content-Type': contentType },
+        body: typeof body === 'string' ? body : JSON.stringify(body),
+      }));
+
+    it('sets only lastEvent and bumps the revision', async () => {
+      vi.spyOn(Date, 'now').mockReturnValue(1_700_000_000_000);
+      const response = await patch({ event: 'STAR' });
+      const body = await response.json();
+
+      expect(response.status).toBe(200);
+      expect(body).toEqual({
+        ...getInitialStreamData(),
+        lastEvent: { name: 'STAR', timestamp: 1_700_000_000_000 },
+        revision: 1,
+      });
+      vi.restoreAllMocks();
+    });
+
+    it('rejects an unknown event', async () => {
+      expect((await patch({ event: 'BOMB' })).status).toBe(400);
+      expect((await patch({})).status).toBe(400);
+      expect((await (await GET()).json()).lastEvent).toBeNull();
+    });
+
+    it('rejects non-JSON requests', async () => {
+      expect((await patch('{"event":"STAR"}', 'text/plain')).status).toBe(415);
+      expect((await patch('not json')).status).toBe(400);
     });
   });
 });

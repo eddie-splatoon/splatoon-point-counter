@@ -13,22 +13,6 @@ import type { ComponentPropsWithoutRef } from 'react';
 vi.mock('axios');
 const mockedAxios = vi.mocked(axios);
 
-// Mock SpeechRecognition
-class MockSpeechRecognition {
-    start = vi.fn();
-    stop = vi.fn();
-    onstart = vi.fn();
-    onresult = vi.fn();
-    onerror = vi.fn();
-    onend = vi.fn();
-    continuous = false;
-    lang = '';
-    interimResults = false;
-}
-// @ts-expect-error: SpeechRecognition is a browser-specific API not available in JSDOM.
-window.SpeechRecognition = MockSpeechRecognition;
-// @ts-expect-error: SpeechRecognition is a browser-specific API not available in JSDOM.
-window.webkitSpeechRecognition = MockSpeechRecognition;
 
 
 // SalmonRunPanel は独自に API を呼ぶため、ここではタブの切り替えだけを確認する（中身は SalmonRunPanel.test.tsx）
@@ -210,7 +194,6 @@ describe('ControlPanelPage', () => {
             messagePresets: [],
             activePresetName: '',
             activeTab: 'burndown',
-            isListening: true,
         };
 
         it('loads data from local storage instead of fetching from API', async () => {
@@ -262,28 +245,6 @@ describe('ControlPanelPage', () => {
                     localStorageKey,
                     expect.stringContaining('"activeTab":"message"')
                 );
-            });
-        });
-
-        it('persists the voice recognition listening state', async () => {
-            const setItemSpy = vi.spyOn(Storage.prototype, 'setItem');
-            
-            render(<ControlPanelPage />);
-            await waitFor(() => expect(screen.getByText('スコア設定')).toBeInTheDocument());
-
-            fireEvent.click(screen.getByRole('tab', { name: '共通設定' }));
-            const toggleButton = await screen.findByRole('button', { name: '音声認識を開始' });
-            
-            await act(async () => {
-                fireEvent.click(toggleButton);
-            });
-
-            await waitFor(() => {
-                expect(setItemSpy).toHaveBeenCalledWith(
-                    localStorageKey,
-                    expect.stringContaining('"isListening":true')
-                );
-                expect(screen.getByRole('button', { name: '音声認識を停止' })).toBeInTheDocument();
             });
         });
 

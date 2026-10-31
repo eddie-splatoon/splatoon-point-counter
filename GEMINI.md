@@ -18,7 +18,6 @@
 -   **UI/スタイリング**: Material-UI (MUI) と Tailwind CSS。
 -   **リアルタイム通信**: バックエンドはREST APIコールを通じてコントロールパネルから更新されるシンプルなインメモリストアを使用します。オーバーレイは定期的にバックエンドをポーリングして最新のデータを取得します。
 -   **MCPサーバー**: GitHubの公式MCPサーバーが利用されており、Geminiはこれと連携して機能を活用できます。
--   **ブラウザAPI**: [Web Speech API](https://developer.mozilla.org/en-US/docs/Web/API/Web_Speech_API) は、音声認識によるエフェクト機能に使用されます。
 -   **テスト**: Vitest と React Testing Library (RTL) が単体テストおよびコンポーネントテストに使用されます。
 -   **パッケージマネージャ**: pnpm を使用します。依存関係のインストールは `pnpm install`、スクリプトの実行は `pnpm run <script>` で行います。ロックファイルは `pnpm-lock.yaml` で、使用するバージョンは `package.json` の `packageManager` / `volta` フィールドで固定されています。
 -   **CI/CD**: GitHub Actions が Lint およびテストを実行する継続的インテグレーション（CI）ワークフローとして導入されています。
@@ -69,7 +68,7 @@ export interface StreamData {
     -   **スコア表示タブ**: メインスコアのラベルと値を更新するため。
     -   **バーンダウンタブ**: バーンダウンチャートのラベル、目標値、ポイント履歴を管理するため。
     -   **メッセージタブ**: メインオーバーレイのスクロールメッセージを制御するため。
-    -   **共通設定タブ**: フォントやフォントサイズなどのグローバル設定、および**音声認識エフェクト**機能を有効にするため。この機能はWeb Speech APIを使用してキーワード（「ナイス」、「ありがとう」など）をリ聞き取り、視覚効果を自動的にトリガーします。
+    -   **共通設定タブ**: フォントやフォントサイズなどのグローバル設定と、エフェクトを手動で出すボタン。話した言葉（「ナイス」、「ありがとう」など）でのエフェクトは、文字起こしスクリプト（`tools/caption-stt/`）が `PATCH /api/stream-data` で出します。
 
 #### `/app/obs-overlay/page.tsx`
 -   **目的**: OBS向けの主要なオーバーレイ。バックエンドからデータをフェッチして、主要なスコアとスクロールメッセージを表示します。また、トリガーされたときに視覚効果（`Heart`、`Star`など）をレンダリングします。
@@ -79,7 +78,7 @@ export interface StreamData {
 -   **機能**: 目標達成時（残りポイントが0以下）に `FireworksEffect` をトリガーします。
 
 #### `/app/api/stream-data/route.ts`
--   **目的**: `StreamData` オブジェクトの状態を管理するサーバーサイドAPIルート。オーバーレイからの `GET` リクエストとコントロールパネルからの `POST` リクエストを処理します。テストを容易にするために、初期データ (`getInitialStreamData`) とテスト用のデータ設定関数 (`__TEST_ONLY_setStreamData`) がエクスポートされています。
+-   **目的**: `StreamData` オブジェクトの状態を管理するサーバーサイドAPIルート。オーバーレイからの `GET` リクエストとコントロールパネルからの `POST` リクエスト、文字起こしスクリプトからのエフェクトだけの `PATCH`（`{event}`）を処理します。テストを容易にするために、初期データ (`getInitialStreamData`) とテスト用のデータ設定関数 (`__TEST_ONLY_setStreamData`) がエクスポートされています。
 
 #### `/app/api/twitch/route.ts`
 -   **目的**: Twitch のフォロワー数とフォロワー目標（`{followerTotal, goal, lastFollowAt, updatedAt, revision}`）をインメモリで保持するAPIルート。`tools/twitch-eventsub/` のスクリプトが `POST` し、オーバーレイが `GET` します。フォロワー名は保持しません。
@@ -168,7 +167,7 @@ GitHub Issue TemplateのようなYAML形式の設定ファイルの場合、`fs`
 -   全ての関連データは、単一のキー `'control-panel-state'` を使用してローカルストレージにJSON形式で保存されます。
 
 ### データ構造
--   保存されるデータは `FormData` インターフェースに準拠します。これには、`scoreLabel`、`scoreValue`、`burndown` データ、`fontFamily`、`fontSize`、`messagePresets`、`activePresetName`、現在アクティブなタブ (`activeTab`)、および音声認識が有効かどうか (`isListening`) などが含まれます。
+-   保存されるデータは `FormData` インターフェースに準拠します。これには、`scoreLabel`、`scoreValue`、`burndown` データ、`fontFamily`、`fontSize`、`messagePresets`、`activePresetName`、現在アクティブなタブ (`activeTab`) などが含まれます。
 
 ### データ保存と読み込みの挙動
 -   **保存**: `コントロールパネル` 内のフォームデータ (`formData` ステートオブジェクト) が変更されるたびに、その最新の状態が自動的にローカルストレージに保存されます。
