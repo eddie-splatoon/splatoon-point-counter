@@ -247,7 +247,7 @@ export interface StreamData {
 - オーバーレイは1秒ごとにポーリングし、8秒以内の最新2行を表示
 - 精度対策（`caption_stt.py`）: スプラ用語の `GLOSSARY` とテロップのプリセットの文を `initial_prompt` に渡す（プロンプトが長すぎると先頭が切り捨てられるので用語集を後ろに置く）。`select_segments` で信頼度（`avg_logprob` / `no_speech_prob` / `compression_ratio`）の低いセグメントを、`caption_rejection` で日本語以外の文字・英字 3 文字以上の単語（`ALLOWED_LATIN` を除く）・相づち（`FILLERS`、1 文字以下）を除外し、除外理由をログに出す（しきい値は定数。ログを見て調整する）。0.4 秒未満の発話は文字起こししない
 - エフェクト: `match_effect` が `EFFECT_KEYWORDS`（「ナイス」→ STAR、「ありがとう」→ LOVE、「よっしゃ」→ SPARKLE、「やべ」「やば」→ BUBBLE。上のものを優先）を含むか調べ、`PATCH /api/stream-data {event}` を送る。字幕・テロップとは別に出す（フィルタで除外した発話では出さない）。`EFFECT_MATCH=off` で無効。以前のコントロールパネルのブラウザ音声認識（Web Speech API）は廃止した
-- テロップへの照合: `TelopMatcher` が 30 秒ごとに `GET /api/telop` でプリセットを取り直し、`match_telop`（NFKC・カタカナ→ひらがな・記号除去のうえ、含む（発話がテロップの 2 倍以下の長さ）か類似度 0.8 以上。2 文字以下は完全一致のみ）で一致したら `POST /api/telop {presetId, speak: false}` を送り、その発話は字幕にしない。同じテロップは 10 秒出し直さない。プリセットが取れない・出せないときは字幕として送る。`TELOP_MATCH=off` で無効
+- テロップへの照合: `TelopMatcher` が 30 秒ごとに `GET /api/telop` でプリセットを取り直し、`match_telop`（NFKC・カタカナ→ひらがな・記号除去のうえ、含む（発話がテロップの 2 倍以下の長さ）か類似度 0.8 以上。2 文字以下は完全一致のみ）で一致したら `POST /api/telop {presetId, speak: false}` を送り（`TELOP_SPEAK=on` なら `speak` を送らずプリセットの設定どおりに読み上げる。無言配信向け。`telop_request`）、その発話は字幕にしない。同じテロップは 10 秒出し直さない。プリセットが取れない・出せないときは字幕として送る。`TELOP_MATCH=off` で無効
 - モデルの比較: `CAPTION_SAVE_DIR` を指定すると発話ごとに wav と文字起こし結果を保存し、`pnpm caption --compare <DIR> --models a,b` で複数のモデルの結果・処理時間を並べる。`run.sh` は `cd` しない（相対パスを実行した場所から解釈するため）
 - `/api/stream-data` とは別エンドポイント（コントロールパネルの保存と競合させないため）
 - Python 側のテストは `tools/caption-stt/` で `pytest`（CI 対象外）

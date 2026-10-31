@@ -17,6 +17,7 @@ from caption_stt import (
     parse_device,
     save_sample,
     select_segments,
+    telop_request,
 )
 
 
@@ -219,6 +220,15 @@ def test_match_effect(text, expected):
 
 def test_default_effect_url():
     assert default_effect_url("http://localhost:3000/api/caption") == "http://localhost:3000/api/stream-data"
+
+
+def test_telop_request_does_not_speak_by_default():
+    assert telop_request(1, speak=False) == {"presetId": 1, "speak": False}
+
+
+def test_telop_request_follows_preset_when_speaking():
+    # speak を送らなければ、プリセットの「読み上げ」設定どおりに読む
+    assert telop_request(1, speak=True) == {"presetId": 1}
 
 
 def test_default_telop_url():

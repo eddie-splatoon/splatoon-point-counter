@@ -15,6 +15,7 @@ import unicodedata
 import wave
 from collections import deque
 from difflib import SequenceMatcher
+from functools import partial
 from pathlib import Path
 from urllib.parse import urljoin
 
@@ -243,11 +244,17 @@ def fetch_telop_presets(url: str) -> list[dict]:
     return [p for p in presets if isinstance(p, dict) and isinstance(p.get("id"), int) and isinstance(p.get("text"), str)]
 
 
-def show_telop(url: str, preset_id: int) -> None:
+def telop_request(preset_id: int, speak: bool) -> dict:
+    """テロップを出すリクエストの本文。speak なら読み上げはプリセットの設定に従い、そうでなければ読み上げない。"""
+    # 既定では読み上げない（配信者が言った直後に同じ文を合成音声で読むと重なるため）。
+    # 無言配信など声が配信に乗らないときは TELOP_SPEAK=on で、読み上げを声の代わりにする
+    return {"presetId": preset_id} if speak else {"presetId": preset_id, "speak": False}
+
+
+def show_telop(url: str, preset_id: int, speak: bool = False) -> None:
     import requests
 
-    # 配信者が言った直後に同じ文を合成音声で読むと重なるので、読み上げない
-    requests.post(url, json={"presetId": preset_id, "speak": False}, timeout=3).raise_for_status()
+    requests.post(url, json=telop_request(preset_id, speak), timeout=3).raise_for_status()
 
 
 def list_devices() -> None:
@@ -456,7 +463,9 @@ def main() -> None:
     caption_url = os.environ.get("CAPTION_URL", DEFAULT_CAPTION_URL)
     model = os.environ.get("WHISPER_MODEL", DEFAULT_WHISPER_MODEL)
     telop_url = os.environ.get("TELOP_URL") or default_telop_url(caption_url)
-    telop = None if os.environ.get("TELOP_MATCH") == "off" else TelopMatcher(telop_url, fetch_telop_presets, show_telop)
+    telop = None if os.environ.get("TELOP_MATCH") == "off" else TelopMatcher(
+        telop_url, fetch_telop_presets, partial(show_telop, speak=os.environ.get("TELOP_SPEAK") == "on")
+    )
     effect_url = None if os.environ.get("EFFECT_MATCH") == "off" else (os.environ.get("EFFECT_URL") or default_effect_url(caption_url))
 
     if args.compare:
