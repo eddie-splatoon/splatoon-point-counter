@@ -95,12 +95,16 @@ describe('WeaponCardPanel', () => {
   it('downloads the card as an image', async () => {
     const blob = new Blob(['png']);
     vi.mocked(renderWeaponCardImage).mockResolvedValue(blob);
+    mockedAxios.get.mockImplementation(async (url: string) => (url === '/api/stream-data'
+      ? { data: { fontFamily: 'FOT-Kurokane Std' }, status: 200 }
+      : { data: card([{ key: 'sshooter', at: 1, source: 'job' }, { key: 'pablo', at: 2, source: 'manual' }]), status: 200 }));
     render(<WeaponCardPanel />);
     await screen.findByTestId('weapon-card-count');
 
     await act(async () => fireEvent.click(screen.getByRole('button', { name: '画像をダウンロード' })));
 
     expect(vi.mocked(renderWeaponCardImage).mock.calls[0][0].obtained).toHaveLength(2);
+    expect(vi.mocked(renderWeaponCardImage).mock.calls[0][1]).toBe('FOT-Kurokane Std');
     expect(downloadBlob).toHaveBeenCalledWith(blob, 'weapon-card.png');
   });
 

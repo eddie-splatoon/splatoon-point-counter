@@ -16,6 +16,7 @@ import {
 import axios from 'axios';
 import React, {useCallback, useEffect, useRef, useState} from 'react';
 
+import {StreamData} from '../app/api/stream-data/route';
 import {WeaponCard} from '../lib/salmonWeapons';
 import {downloadBlob, renderWeaponCardImage, weaponCardImageFileName} from '../lib/weaponCardImage';
 
@@ -74,8 +75,10 @@ const WeaponCardPanel: React.FC = () => {
     const handleDownload = async () => {
         setDownloading(true);
         try {
+            // オーバーレイと同じく、OBS に反映済みの共通設定のフォントで描く（取れなければ代わりのフォント）
+            const fontFamily = await axios.get<StreamData>('/api/stream-data').then((res) => res.data.fontFamily, () => '');
             const now = new Date();
-            downloadBlob(await renderWeaponCardImage(card, now), weaponCardImageFileName(now));
+            downloadBlob(await renderWeaponCardImage(card, fontFamily, now), weaponCardImageFileName(now));
         } catch {
             setError('画像を作れませんでした。');
         } finally {

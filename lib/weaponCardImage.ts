@@ -4,7 +4,19 @@ import {SALMON_WEAPONS, SalmonWeapon, WeaponCard, weaponImageUrl} from './salmon
 
 const INK_COLOR = '#FF40A0';
 const COMPLETE_COLOR = '#32E675';
-const FONT = '"Hiragino Sans", "Hiragino Kaku Gothic ProN", "Noto Sans JP", "Yu Gothic", sans-serif';
+// 共通設定のフォントに無い文字（漢字など）は、ここの日本語フォントで描く
+const FALLBACK_FONT = '"Hiragino Sans", "Hiragino Kaku Gothic ProN", "Noto Sans JP", "Yu Gothic", sans-serif';
+const GENERIC_FAMILIES = new Set(['serif', 'sans-serif', 'monospace', 'cursive', 'fantasy', 'system-ui']);
+
+/**
+ * 共通設定のフォント（CSS の font-family）を Canvas の font に使える形にする。
+ * Canvas は書式が不正な font を黙って無視するので、「Splatfont 2」のように数字で始まる単語を含む名前も通るよう、フォント名をそれぞれ引用符で囲む
+ */
+export const canvasFontFamily = (fontFamily: string) => {
+    const families = fontFamily.split(',').map((family) => family.trim()).filter(Boolean)
+        .map((family) => (/^["']/.test(family) || GENERIC_FAMILIES.has(family.toLowerCase()) ? family : `"${family.replace(/["\\]/g, '')}"`));
+    return [...families, FALLBACK_FONT].join(', ');
+};
 
 // 71 種が 12 列 × 6 行に収まる横長（SNS のタイムラインで見やすい比率）
 export const IMAGE_COLUMNS = 12;
@@ -64,8 +76,13 @@ const wrapText = (ctx: CanvasRenderingContext2D, text: string, maxWidth: number)
 };
 
 /** ブキ埋めカードの画像を描いて PNG にする。オーバーレイのカードと同じ見た目（埋まったマスはインクのスタンプとカラー） */
-export const renderWeaponCardImage = async (card: WeaponCard, now: Date = new Date()): Promise<Blob> => {
-    const images = await Promise.all(SALMON_WEAPONS.map(loadImage));
+export const renderWeaponCardImage = async (card: WeaponCard, fontFamily: string, now: Date = new Date()): Promise<Blob> => {
+    const FONT = canvasFontFamily(fontFamily);
+    const [images] = await Promise.all([
+        Promise.all(SALMON_WEAPONS.map(loadImage)),
+        // 読み込み前のフォントで描くと代わりのフォントになるので、先に読み込んでおく（読めなくても代わりのフォントで描く）
+        document.fonts.load(`bold 44px ${FONT}`, 'オールランダム ブキ埋め').catch(() => undefined),
+    ]);
     const obtained = new Set(card.obtained.map((w) => w.key));
     const count = obtained.size;
     const complete = count >= card.total;
