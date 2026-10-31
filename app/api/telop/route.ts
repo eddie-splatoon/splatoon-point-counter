@@ -44,14 +44,18 @@ async function readJson(request: Request): Promise<{body: unknown} | NextRespons
 }
 
 /**
- * テロップを出す。`{presetId}` でプリセットを、`{text, followFont?}` で自由入力の文を出す（Stream Deck などからも同じ形で送れる）。
+ * テロップを出す。`{presetId, speak?}` でプリセットを、`{text, followFont?, speak?}` で自由入力の文を出す（Stream Deck などからも同じ形で送れる）。
  * 自由入力の followFont（共通設定のフォントで表示するか）は省略すると true、speak（読み上げるか）は省略すると false。
+ * プリセットはその設定どおりに読み上げるが、`speak: false` なら読み上げない（文字起こしから出すときに、配信者の声と重ならないように）。
  * 読み上げるものは読み上げキューにも入れる（読み上げが無効なら入れない）
  */
 export async function POST(request: Request) {
     const json = await readJson(request);
     if (json instanceof NextResponse) return json;
-    const {presetId, text, followFont = true, speak = false} = (json.body ?? {}) as Record<string, unknown>;
+    const {presetId, text, followFont = true, speak} = (json.body ?? {}) as Record<string, unknown>;
+    if (speak !== undefined && typeof speak !== 'boolean') {
+        return NextResponse.json({message: 'speak must be a boolean.'}, {status: 400});
+    }
 
     let telop: {text: string; followFont: boolean};
     let shouldSpeak: boolean;
@@ -59,14 +63,14 @@ export async function POST(request: Request) {
         const preset = loadPresets().find((p) => p.id === presetId);
         if (!preset) return NextResponse.json({message: 'Preset not found.'}, {status: 404});
         telop = {text: preset.text, followFont: preset.followFont};
-        shouldSpeak = preset.speak;
+        shouldSpeak = preset.speak && speak !== false;
     } else {
         const telopText = typeof text === 'string' ? normalizeTelopText(text) : null;
-        if (telopText === null || typeof followFont !== 'boolean' || typeof speak !== 'boolean') {
+        if (telopText === null || typeof followFont !== 'boolean') {
             return NextResponse.json({message: `Either presetId or a non-empty text of up to ${MAX_TELOP_LENGTH} characters (with optional booleans followFont and speak) is required.`}, {status: 400});
         }
         telop = {text: telopText, followFont};
-        shouldSpeak = speak;
+        shouldSpeak = speak === true;
     }
 
     revision += 1;

@@ -53,12 +53,13 @@
 
 配信者の声をリアルタイムに文字起こしし、字幕として表示するオーバーレイです（`/caption-overlay`）。背景は透過で、直近8秒以内の字幕を最大2行表示します。
 
-文字起こしは Apple Silicon Mac 上で動く Python スクリプト（`tools/caption-stt/`）が行い、`/api/caption` に字幕を送信します。
+文字起こしは Apple Silicon Mac 上で動く Python スクリプト（`tools/caption-stt/`）が行い、`/api/caption` に字幕を送信します。スプラ用語の用語集を Whisper に渡して聞き間違いを減らし、信頼度の低い結果・日本語以外の幻聴・「あ」「はい」などの相づちは字幕にしません。発話が実況テロップのプリセットに近ければ（「ナイス！」など）、字幕の代わりにそのテロップを出します（このときは読み上げません）。
 
 ```mermaid
 flowchart LR
     Mic[マイク] --> STT["caption_stt.py<br/>Silero VAD + mlx-whisper"]
-    STT -- "POST {text}" --> API["/api/caption"]
+    STT -- "フィルタを通った発話<br/>POST {text}" --> API["/api/caption"]
+    STT -- "テロップに近い発話<br/>POST {presetId, speak: false}" --> TELOP["/api/telop"]
     OVL["/caption-overlay<br/>OBS ブラウザソース"] -- "GET 1秒ごと" --> API
 ```
 

@@ -232,6 +232,9 @@ export interface StreamData {
 - `tools/caption-stt/caption_stt.py` が Silero VAD で発話を区切り、mlx-whisper で文字起こしして `POST /api/caption {text}` する
 - API は直近5件の字幕行をインメモリで保持（`DELETE` でクリア）。`getInitialCaptionData()` / `__TEST_ONLY_setCaptionData()` はテスト用。`POST` は `Content-Type: application/json` 必須（他サイトからの単純リクエスト対策）、1行は200文字で切り詰め
 - オーバーレイは1秒ごとにポーリングし、8秒以内の最新2行を表示
+- 精度対策（`caption_stt.py`）: スプラ用語の `GLOSSARY` とテロップのプリセットの文を `initial_prompt` に渡す（プロンプトが長すぎると先頭が切り捨てられるので用語集を後ろに置く）。`select_segments` で信頼度（`avg_logprob` / `no_speech_prob` / `compression_ratio`）の低いセグメントを、`caption_rejection` で日本語以外の文字・英字 3 文字以上の単語（`ALLOWED_LATIN` を除く）・相づち（`FILLERS`、1 文字以下）を除外し、除外理由をログに出す（しきい値は定数。ログを見て調整する）。0.4 秒未満の発話は文字起こししない
+- テロップへの照合: `TelopMatcher` が 30 秒ごとに `GET /api/telop` でプリセットを取り直し、`match_telop`（NFKC・カタカナ→ひらがな・記号除去のうえ、含む（発話がテロップの 2 倍以下の長さ）か類似度 0.8 以上。2 文字以下は完全一致のみ）で一致したら `POST /api/telop {presetId, speak: false}` を送り、その発話は字幕にしない。同じテロップは 10 秒出し直さない。プリセットが取れない・出せないときは字幕として送る。`TELOP_MATCH=off` で無効
+- モデルの比較: `CAPTION_SAVE_DIR` を指定すると発話ごとに wav と文字起こし結果を保存し、`pnpm caption --compare <DIR> --models a,b` で複数のモデルの結果・処理時間を並べる。`run.sh` は `cd` しない（相対パスを実行した場所から解釈するため）
 - `/api/stream-data` とは別エンドポイント（コントロールパネルの保存と競合させないため）
 - Python 側のテストは `tools/caption-stt/` で `pytest`（CI 対象外）
 
@@ -293,7 +296,7 @@ Twitch のフォロワー数とフォロワー目標を受け取る機能と、�
 
 サーモンラン中などチャットを打てないときに、定型文の「実況テロップ」をワンボタンで出す機能。
 
-- `POST /api/telop` に `{presetId}` か `{text, followFont?}`（1 行・30 文字まで。`normalizeTelopText` で改行と連続する空白を空白 1 つにまとめる）を送るとテロップを出す。Stream Deck などからも同じ形で送れる（JSON 以外は 415、無いプリセットは 404）
+- `POST /api/telop` に `{presetId, speak?}`（`speak: false` ならプリセットの設定によらず読み上げない。文字起こしから出すとき用）か `{text, followFont?}`（1 行・30 文字まで。`normalizeTelopText` で改行と連続する空白を空白 1 つにまとめる）を送るとテロップを出す。Stream Deck などからも同じ形で送れる（JSON 以外は 415、無いプリセットは 404）
 - いま出ているテロップ `{id, text, followFont, timestamp}` はインメモリ（再起動で消えてよい）。プリセット `{id, text, speak, followFont}`（最大 12 個）は SQLite の `app_state`（キー `telop`）に保存し、`PUT /api/telop {presets}` で更新する。保存値が不正なら既定のプリセットを返す。`__TEST_ONLY_resetTelop()` はテスト用
 - 型・定数・検証は `lib/telopTypes.ts`（クライアントからも使う）。`speak` は合成音声で読み上げるかの設定。`speak` が true のプリセット（自由入力は `speak: true` を付けたもの）は、出すと同時に `enqueueSpeech` で読み上げキューに入れる（読み上げが無効なら入れない）
 - `followFont` は共通設定のフォント（`/api/stream-data` の `fontFamily`）で表示するか。そのフォントに無い文字が化けるテロップは false にして `sans-serif` で出す。後から追加した項目なので、保存済みのプリセットに無ければ true とみなす（自由入力で省略したときも true）
