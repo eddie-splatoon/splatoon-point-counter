@@ -210,6 +210,17 @@ export default function Home() {
                         <Button
                             variant="contained"
                             color="secondary"
+                            href="/side-panel-overlay/vertical"
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            fullWidth
+                            size="large"
+                        >
+                            サイドパネル 縦型配信用 (Preview)
+                        </Button>
+                        <Button
+                            variant="contained"
+                            color="secondary"
                             href="/telop-overlay"
                             target="_blank"
                             rel="noopener noreferrer"

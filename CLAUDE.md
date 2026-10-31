@@ -13,7 +13,7 @@
 3. **スコア＆メッセージオーバーレイ** (`/obs-overlay`) - メインのオーバーレイ表示
 4. **バーンダウンチャートオーバーレイ** (`/burndown-overlay`) - 進捗状況を可視化
 5. **字幕オーバーレイ** (`/caption-overlay`) - 配信者の音声をリアルタイムに字幕表示
-6. **サイドパネルオーバーレイ** (`/side-panel-overlay`) - 配信画面右側（250x584）。上段にフォロワーゲージ、下段にコントロールパネルで選んだスロットを表示
+6. **サイドパネルオーバーレイ** (`/side-panel-overlay`) - 配信画面右側（250x584）。上段にフォロワーゲージ、下段にコントロールパネルで選んだスロットを表示。縦型配信用の横長レイアウト（990x440）は `/side-panel-overlay/vertical`
 7. **実況テロップオーバーレイ** (`/telop-overlay`) - コントロールパネルのボタン・キーボードで出す定型文を数秒だけ大きく表示
 8. **読み上げ（音声専用）オーバーレイ** (`/voice-overlay`) - 読み上げキューの文を VOICEVOX で音声にして順に再生（画面には何も出さない）
 9. **ブキ埋めカードオーバーレイ** (`/weapon-card-overlay`) - サーモンランのオールランダムで支給された全ブキ種（71 種）を埋めていくカード
@@ -56,7 +56,9 @@
 │   ├── caption-overlay/
 │   │   └── page.tsx              # 字幕オーバーレイ
 │   ├── side-panel-overlay/
-│   │   └── page.tsx              # サイドパネルオーバーレイ
+│   │   ├── page.tsx              # サイドパネルオーバーレイ
+│   │   └── vertical/
+│   │       └── page.tsx          # サイドパネル（縦型配信用の横長レイアウト）
 │   ├── telop-overlay/
 │   │   └── page.tsx              # 実況テロップオーバーレイ
 │   ├── voice-overlay/
@@ -102,6 +104,7 @@
 │   ├── FireworksEffect.tsx       # 花火エフェクト
 │   ├── SalmonStats.tsx           # サーモンランの前回・本日合計（タイトルは「本日の戦績」）
 │   ├── SalmonRunPanel.tsx        # コントロールパネルのサーモンランタブ
+│   ├── SidePanelOverlay.tsx      # サイドパネルの本体（2 つのレイアウトで共通）
 │   ├── SidePanelSettingsPanel.tsx # コントロールパネルのサイドパネルタブ
 │   ├── InkTankGauge.tsx          # インクタンク型フォロワーゲージ
 │   ├── ChallengeList.tsx         # 本日のお題（サイドパネルのスロット）
@@ -292,7 +295,9 @@ Twitch のフォロワー数とフォロワー目標を受け取る機能と、�
 
 配信画面右側（250x584）のサイドパネル。上段はインクタンク型フォロワーゲージ（`components/InkTankGauge.tsx`）、下段は「スロット」を表示する。
 
-- スロットの定義は `lib/sidePanelTypes.ts` の `SIDE_PANEL_SLOTS`（現在は `schedule` / `salmon` / `weaponCard` / `challenges` / `burndown`。並び順が、固定枠で上から並べる順とローテーションの順）。スロットを追加するときは、ここと `SIDE_PANEL_SLOT_LABELS`、オーバーレイの `renderSlot` に足す
+- 本体は `components/SidePanelOverlay.tsx`（`layout: 'side' | 'vertical'`）。2 つのページはこれを置くだけ（page.tsx は default 以外を export できないため）
+- 縦型配信（1080x1920）用の `/side-panel-overlay/vertical` は、画面上部の横長の枠（990x440、x=45 y=115 付近）に置く。設定は共通で、左にフォロワーゲージ、右に固定枠を左から横に並べ、最後の列でローテーション枠を切り替える。背景は透過（OBS 側の画像の上に重ねる）。カードは 250px 幅のままなので、`verticalSlotScale`（列数と `estimateSlotHeight` から、枠に収まる最大の倍率。上限 1.5。ローテーション枠は一番高いスロットに合わせる）で拡大率を決め、拡大前の大きさの領域を `transform: scale()` で拡大する。表示するものが無い固定枠は列を作らない
+- スロットの定義は `lib/sidePanelTypes.ts` の `SIDE_PANEL_SLOTS`（現在は `schedule` / `salmon` / `weaponCard` / `challenges` / `burndown`。並び順が、固定枠で上から並べる順とローテーションの順）。スロットを追加するときは、ここと `SIDE_PANEL_SLOT_LABELS`、`components/SidePanelOverlay.tsx` の `renderSlot`・`canShow` に足す（2 つのレイアウトで共通）。縦型レイアウトで使う高さの目安 `estimateSlotHeight` にも足す
 - 設定 `{fixedSlots, rotationSlots, rotateSeconds, followerGoal, challenges}` は SQLite のキーバリュー `app_state`（`getAppState` / `setAppState`、キー `sidePanel`）に保存。保存値が不正（スロット削除後など）なら既定値を返す
 - オーバーレイは2秒ごとに `/api/side-panel`・`/api/salmon`・`/api/stream-data`・`/api/salmon-schedule`・`/api/weapon-card` をポーリングし（1つが失敗しても他は表示を続ける）、下段は「固定枠」と「ローテーション枠」に分かれる。固定枠（`fixedSlots`）は上から順に常に表示し、その下の残りのスペースでローテーション枠（`rotationSlots`）を `rotateSeconds` ごとに1つずつ motion のクロスフェードで切り替える（`pickRotationSlot`。ローテーション枠が空なら切り替えない。お題が0個・データ未取得など表示するものが無いスロットは飛ばす）
 - 同じスロットを両方の枠に入れることはできず、両方の枠が空になることもできない。残りの高さいっぱいを使うスロット（`FULL_HEIGHT_SLOTS`、現在は `burndown`）は、固定枠に入れるときはそれ1つだけ（ローテーション枠も空）、ローテーション枠なら固定枠の下に表示できる。コントロールパネルでは、固定枠で選んだスロットはローテーション枠のボタンを無効にし、固定枠に移したスロットはローテーション枠から外す

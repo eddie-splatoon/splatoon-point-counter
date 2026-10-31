@@ -12,6 +12,8 @@ import {
   parseSidePanelSettings,
   exceedsSlotArea,
   pickRotationSlot,
+  verticalSlotArea,
+  verticalSlotScale,
   type SidePanelSettings,
 } from './sidePanelTypes';
 
@@ -208,6 +210,46 @@ describe('exceedsSlotArea', () => {
 
   it('ignores challenges with nothing to show', () => {
     expect(exceedsSlotArea(settings(['schedule', 'salmon', 'challenges'], [], 0))).toBe(false);
+  });
+});
+
+describe('verticalSlotScale', () => {
+  const settings = (fixedSlots: SidePanelSettings['fixedSlots'], rotationSlots: SidePanelSettings['rotationSlots'], challengeCount = 0) => ({
+    fixedSlots,
+    rotationSlots,
+    challenges: Array.from({ length: challengeCount }, (_, i) => ({ id: i + 1, text: 'お題', done: false })),
+  });
+  // 拡大後のスロットが領域に収まるか（幅は 250px のカードと 12px の間隔、高さは目安の最大）
+  const fits = (scale: number, columns: number, height: number, gaugeShown: boolean) => {
+    const area = verticalSlotArea(gaugeShown);
+    return (250 * columns + 12 * (columns - 1)) * scale <= area.width && height * scale <= area.height;
+  };
+
+  it('enlarges a few slots up to the limit', () => {
+    expect(verticalSlotScale(settings(['salmon'], []), true)).toBe(1.5);
+  });
+
+  it('shrinks to fit many slots side by side', () => {
+    const scale = verticalSlotScale(settings(['schedule', 'salmon'], ['weaponCard']), true);
+    expect(scale).toBeLessThan(1);
+    expect(fits(scale, 3, 200, true)).toBe(true);
+  });
+
+  it('uses the width of the gauge for the slots when the gauge is hidden', () => {
+    const slots = settings(['schedule', 'salmon'], ['weaponCard']);
+    expect(verticalSlotScale(slots, false)).toBeGreaterThan(verticalSlotScale(slots, true));
+    expect(fits(verticalSlotScale(slots, false), 3, 200, false)).toBe(true);
+  });
+
+  it('shrinks to fit the height of many challenges', () => {
+    const scale = verticalSlotScale(settings([], ['salmon', 'challenges'], 8), true);
+    expect(scale).toBeLessThan(1);
+    expect(fits(scale, 1, 450, true)).toBe(true);
+  });
+
+  it('does not count challenges with nothing to show as a column', () => {
+    expect(verticalSlotScale(settings(['schedule', 'salmon', 'challenges'], [], 0), false))
+      .toBe(verticalSlotScale(settings(['schedule', 'salmon'], []), false));
   });
 });
 
