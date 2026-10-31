@@ -135,5 +135,7 @@ describe('VerticalSidePanelOverlayPage', () => {
 
     await screen.findByTestId('SalmonStats');
     expect(fixedSlots()).toEqual(['salmon']);
+    // 列が 1 つなので、空いた列の分まで縮めない
+    expect(screen.getByTestId('side-panel-slot')).toHaveAttribute('data-scale', '1.5');
   });
 });

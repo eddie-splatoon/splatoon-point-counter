@@ -139,7 +139,7 @@ const SidePanelOverlay: React.FC<SidePanelOverlayProps> = ({layout}) => {
     if (layout === 'vertical') {
         // カードはサイドパネルの幅（250px）前提なので、枠に収まる倍率で拡大する。CSS の zoom ではなく、拡大前の大きさの領域を transform で拡大する
         const area = verticalSlotArea(Boolean(gauge));
-        const scale = verticalSlotScale(settings, Boolean(gauge));
+        const scale = verticalSlotScale(settings, Boolean(gauge), canShow);
         return (
             <div
                 className="relative overflow-hidden flex items-center"

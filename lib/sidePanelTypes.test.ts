@@ -251,6 +251,13 @@ describe('verticalSlotScale', () => {
     expect(verticalSlotScale(settings(['schedule', 'salmon', 'challenges'], [], 0), false))
       .toBe(verticalSlotScale(settings(['schedule', 'salmon'], []), false));
   });
+
+  it('does not count slots that cannot be shown yet', () => {
+    // スケジュールが未取得なら 2 列、ローテーション枠のバーンダウンも高さに数えない
+    const canShow = (slot: string) => slot !== 'schedule' && slot !== 'burndown';
+    expect(verticalSlotScale(settings(['schedule', 'salmon', 'weaponCard'], ['burndown']), true, canShow))
+      .toBe(verticalSlotScale(settings(['salmon', 'weaponCard'], []), true));
+  });
 });
 
 describe('getFollowerProgress', () => {

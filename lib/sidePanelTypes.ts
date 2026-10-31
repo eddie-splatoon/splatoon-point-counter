@@ -179,7 +179,7 @@ export const VERTICAL_PANEL_WIDTH = 990;
 export const VERTICAL_PANEL_HEIGHT = 440;
 // 枠の端に付かないようにする余白と、左に置くフォロワーゲージの列の幅
 export const VERTICAL_PANEL_PADDING = 16;
-export const VERTICAL_GAUGE_WIDTH = 220;
+export const VERTICAL_GAUGE_WIDTH = 260; // 5 桁の「12,345 / 50,000」が 1 行に収まる幅
 // スロットのカードの幅（サイドパネルの幅）と、拡大の上限（スロットが少ないときに大きくなりすぎないように）
 const SLOT_WIDTH = 250;
 const MAX_VERTICAL_SCALE = 1.5;
@@ -195,10 +195,15 @@ export function verticalSlotArea(gaugeShown: boolean): {width: number; height: n
 
 /**
  * 縦型レイアウトでスロットのカードを拡大する倍率。固定枠を左から横に並べ、ローテーション枠を最後の列に置いたとき、
- * 領域に収まる最大の倍率（上限 MAX_VERTICAL_SCALE）。ローテーション枠は一番高いスロットに合わせる（切り替えのたびに大きさが変わらないように）
+ * 領域に収まる最大の倍率（上限 MAX_VERTICAL_SCALE）。ローテーション枠は一番高いスロットに合わせる（切り替えのたびに大きさが変わらないように）。
+ * 表示するものが無いスロット（データ未取得など。canShow が false）は、オーバーレイで列を作らないので数えない
  */
-export function verticalSlotScale(settings: Pick<SidePanelSettings, 'fixedSlots' | 'rotationSlots' | 'challenges'>, gaugeShown: boolean): number {
-    const heights = (slots: SidePanelSlot[]) => slots.map((slot) => estimateSlotHeight(slot, settings.challenges.length)).filter((h) => h > 0);
+export function verticalSlotScale(
+    settings: Pick<SidePanelSettings, 'fixedSlots' | 'rotationSlots' | 'challenges'>,
+    gaugeShown: boolean,
+    canShow: (slot: SidePanelSlot) => boolean = () => true,
+): number {
+    const heights = (slots: SidePanelSlot[]) => slots.filter(canShow).map((slot) => estimateSlotHeight(slot, settings.challenges.length)).filter((h) => h > 0);
     const fixed = heights(settings.fixedSlots);
     const rotation = Math.max(0, ...heights(settings.rotationSlots));
     const columns = rotation > 0 ? [...fixed, rotation] : fixed;
