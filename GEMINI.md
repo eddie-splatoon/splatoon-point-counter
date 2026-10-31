@@ -18,7 +18,6 @@
 -   **UI/スタイリング**: Material-UI (MUI) と Tailwind CSS。
 -   **リアルタイム通信**: バックエンドはREST APIコールを通じてコントロールパネルから更新されるシンプルなインメモリストアを使用します。オーバーレイは定期的にバックエンドをポーリングして最新のデータを取得します。
 -   **MCPサーバー**: GitHubの公式MCPサーバーが利用されており、Geminiはこれと連携して機能を活用できます。
--   **ブラウザAPI**: [Web Speech API](https://developer.mozilla.org/en-US/docs/Web/API/Web_Speech_API) は、音声認識によるエフェクト機能に使用されます。
 -   **テスト**: Vitest と React Testing Library (RTL) が単体テストおよびコンポーネントテストに使用されます。
 -   **パッケージマネージャ**: pnpm を使用します。依存関係のインストールは `pnpm install`、スクリプトの実行は `pnpm run <script>` で行います。ロックファイルは `pnpm-lock.yaml` で、使用するバージョンは `package.json` の `packageManager` / `volta` フィールドで固定されています。
 -   **CI/CD**: GitHub Actions が Lint およびテストを実行する継続的インテグレーション（CI）ワークフローとして導入されています。
@@ -69,7 +68,7 @@ export interface StreamData {
     -   **スコア表示タブ**: メインスコアのラベルと値を更新するため。
     -   **バーンダウンタブ**: バーンダウンチャートのラベル、目標値、ポイント履歴を管理するため。
     -   **メッセージタブ**: メインオーバーレイのスクロールメッセージを制御するため。
-    -   **共通設定タブ**: フォントやフォントサイズなどのグローバル設定、および**音声認識エフェクト**機能を有効にするため。この機能はWeb Speech APIを使用してキーワード（「ナイス」、「ありがとう」など）をリ聞き取り、視覚効果を自動的にトリガーします。
+    -   **共通設定タブ**: フォントやフォントサイズなどのグローバル設定と、エフェクトを手動で出すボタン。話した言葉（「ナイス」、「ありがとう」など）でのエフェクトは、文字起こしスクリプト（`tools/caption-stt/`）が `PATCH /api/stream-data` で出します。
 
 #### `/app/obs-overlay/page.tsx`
 -   **目的**: OBS向けの主要なオーバーレイ。バックエンドからデータをフェッチして、主要なスコアとスクロールメッセージを表示します。また、トリガーされたときに視覚効果（`Heart`、`Star`など）をレンダリングします。
@@ -79,7 +78,7 @@ export interface StreamData {
 -   **機能**: 目標達成時（残りポイントが0以下）に `FireworksEffect` をトリガーします。
 
 #### `/app/api/stream-data/route.ts`
--   **目的**: `StreamData` オブジェクトの状態を管理するサーバーサイドAPIルート。オーバーレイからの `GET` リクエストとコントロールパネルからの `POST` リクエストを処理します。テストを容易にするために、初期データ (`getInitialStreamData`) とテスト用のデータ設定関数 (`__TEST_ONLY_setStreamData`) がエクスポートされています。
+-   **目的**: `StreamData` オブジェクトの状態を管理するサーバーサイドAPIルート。オーバーレイからの `GET` リクエストとコントロールパネルからの `POST` リクエスト、文字起こしスクリプトからのエフェクトだけの `PATCH`（`{event}`）を処理します。テストを容易にするために、初期データ (`getInitialStreamData`) とテスト用のデータ設定関数 (`__TEST_ONLY_setStreamData`) がエクスポートされています。
 
 #### `/app/api/twitch/route.ts`
 -   **目的**: Twitch のフォロワー数とフォロワー目標（`{followerTotal, goal, lastFollowAt, updatedAt, revision}`）をインメモリで保持するAPIルート。`tools/twitch-eventsub/` のスクリプトが `POST` し、オーバーレイが `GET` します。フォロワー名は保持しません。
@@ -91,7 +90,7 @@ export interface StreamData {
 -   **目的**: 配信画面右側（250x584）のサイドパネル。上段にインクタンク型フォロワーゲージ（`components/InkTankGauge.tsx`。Twitch のフォロワー目標、無ければコントロールパネルで手入力した目標を使う）、下段にコントロールパネルの「サイドパネル」タブ（`components/SidePanelSettingsPanel.tsx`）で選んだスロット（サーモンランのスケジュール / 本日の戦績 / 本日のお題 / バーンダウン。スケジュールは `/app/api/salmon-schedule/route.ts` が非公式 API を中継・キャッシュする）を表示します。下段は、常に表示する「固定枠」と、その下で一定時間ごとに1つずつ切り替える「ローテーション枠」に分かれ、どちらも複数選べます（同じスロットは両方に入れられない）。設定は SQLite の `app_state` に保存され、スロットの定義と検証は `lib/sidePanelTypes.ts` にあります。
 
 #### `/app/telop-overlay/page.tsx` と `/app/api/telop/route.ts`
--   **目的**: 実況テロップ。コントロールパネル上部のテロップバー（`components/TelopBar.tsx`。どのタブでも表示）のボタンかキーボードの 1〜9, 0、または「テロップ」タブ（`components/TelopPanel.tsx`）の自由入力で `POST /api/telop`（`{presetId}` または `{text}`）し、オーバーレイが出してから 4 秒間だけ大きく表示します。いま出ているテロップはインメモリ、プリセット（`{id, text, speak, followFont}`。`followFont` は共通設定のフォントで表示するか）は SQLite の `app_state`（キー `telop`、`PUT /api/telop` で保存）に保持します。型と検証は `lib/telopTypes.ts` にあります。
+-   **目的**: 実況テロップ。コントロールパネル上部のテロップバー（`components/TelopBar.tsx`。どのタブでも表示）のボタンかキーボードの 1〜9, 0、または「テロップ」タブ（`components/TelopPanel.tsx`）の自由入力で `POST /api/telop`（`{presetId}` または `{text}`。`speak: false` を付けると読み上げない）し、オーバーレイが出してから 4 秒間だけ大きく表示します。いま出ているテロップはインメモリ、プリセット（`{id, text, speak, followFont}`。`followFont` は共通設定のフォントで表示するか）は SQLite の `app_state`（キー `telop`、`PUT /api/telop` で保存）に保持します。型と検証は `lib/telopTypes.ts` にあります。
 
 #### `/app/voice-overlay/page.tsx` と `/app/api/speech/route.ts` / `/app/api/voice/route.ts`
 -   **目的**: 合成音声（VOICEVOX）の読み上げ。`/api/speech` はインメモリの読み上げキュー（`POST {text}` で追加。読み上げが無効なら 409）、`/api/speech/audio?id=` はキューの 1 件を VOICEVOX（`VOICEVOX_URL`、既定 `http://localhost:50021`）で wav にして返します。`/api/voice` は読み上げの設定（有効/無効・話者・速度・音量。SQLite の `app_state` キー `voice`）、`/api/voice/speakers` は VOICEVOX の話者一覧の中継です。音声専用オーバーレイがキューをポーリングして 1 件ずつ順に再生します。キュー・設定・VOICEVOX との通信は `lib/speech.ts`（サーバー専用）、型と検証は `lib/voiceTypes.ts` にあります。設定 UI は `components/VoiceSettingsPanel.tsx`（コントロールパネルの「テロップ」タブ）。
@@ -168,7 +167,7 @@ GitHub Issue TemplateのようなYAML形式の設定ファイルの場合、`fs`
 -   全ての関連データは、単一のキー `'control-panel-state'` を使用してローカルストレージにJSON形式で保存されます。
 
 ### データ構造
--   保存されるデータは `FormData` インターフェースに準拠します。これには、`scoreLabel`、`scoreValue`、`burndown` データ、`fontFamily`、`fontSize`、`messagePresets`、`activePresetName`、現在アクティブなタブ (`activeTab`)、および音声認識が有効かどうか (`isListening`) などが含まれます。
+-   保存されるデータは `FormData` インターフェースに準拠します。これには、`scoreLabel`、`scoreValue`、`burndown` データ、`fontFamily`、`fontSize`、`messagePresets`、`activePresetName`、現在アクティブなタブ (`activeTab`) などが含まれます。
 
 ### データ保存と読み込みの挙動
 -   **保存**: `コントロールパネル` 内のフォームデータ (`formData` ステートオブジェクト) が変更されるたびに、その最新の状態が自動的にローカルストレージに保存されます。

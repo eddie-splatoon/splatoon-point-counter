@@ -31,6 +31,9 @@ export interface StreamData {
     revision: number; // For forcing re-renders in clients
 }
 
+// オーバーレイが表示できるエフェクト（lastEvent.name）
+export const EFFECT_NAMES = ['LOVE', 'STAR', 'SPARKLE', 'BUBBLE'] as const;
+
 // データを一時的にインメモリで保持するストア (本番ではDBが必要です)
 export const getInitialStreamData = (): StreamData => ({
     scoreLabel: '現在の評価',
@@ -139,4 +142,28 @@ export async function POST(request: Request) {
     } catch {
         return NextResponse.json({message: 'Internal Server Error'}, {status: 500});
     }
+}
+
+/**
+ * エフェクトだけを出す（`{event: 'STAR'}` など）。文字起こしスクリプト（tools/caption-stt）が話した言葉に合わせて呼ぶ。
+ * POST と違ってほかの項目を送らなくてよいので、コントロールパネルの入力内容を上書きしない
+ */
+export async function PATCH(request: Request) {
+    // 他サイトからプリフライトなしで送れる text/plain などの「単純リクエスト」を拒否する
+    if (!request.headers.get('content-type')?.toLowerCase().startsWith('application/json')) {
+        return NextResponse.json({message: 'Content-Type must be application/json.'}, {status: 415});
+    }
+    let body: unknown;
+    try {
+        body = await request.json();
+    } catch {
+        return NextResponse.json({message: 'Invalid JSON.'}, {status: 400});
+    }
+    const event = (body as {event?: unknown} | null)?.event;
+    if (!EFFECT_NAMES.some((name) => name === event)) {
+        return NextResponse.json({message: `event must be one of ${EFFECT_NAMES.join(', ')}.`}, {status: 400});
+    }
+
+    streamData = {...streamData, lastEvent: {name: event as string, timestamp: Date.now()}, revision: streamData.revision + 1};
+    return NextResponse.json(streamData);
 }

@@ -101,6 +101,18 @@ describe('Telop API', () => {
       expect(listSpeech().map((item) => item.text)).toEqual(['ナイス!']);
     });
 
+    it('does not queue a preset when speak is false', async () => {
+      const response = await POST(request('POST', { presetId: 1, speak: false })); // ナイス! (speak: true)
+
+      expect((await response.json()).current.text).toBe('ナイス!');
+      expect(listSpeech()).toEqual([]);
+    });
+
+    it('rejects a non-boolean speak for a preset', async () => {
+      expect((await POST(request('POST', { presetId: 1, speak: 'no' }))).status).toBe(400);
+      expect(listSpeech()).toEqual([]);
+    });
+
     it('queues free text only when speak is true', async () => {
       await POST(request('POST', { text: '読まない' }));
       await POST(request('POST', { text: '読む', speak: true }));

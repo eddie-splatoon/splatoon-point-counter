@@ -28,7 +28,6 @@
 - **アニメーション**: Motion (旧Framer Motion) v13
 - **リアルタイム通信**: REST API + クライアントサイドポーリング
 - **HTTPクライアント**: Axios
-- **ブラウザAPI**: Web Speech API (音声認識機能)
 - **文字起こし**: mlx-whisper + Silero VAD (Python 3.12, `tools/caption-stt/`)
 - **Twitch連携**: EventSub WebSocket + Device Code Flow（Node 24 標準の `fetch` / `WebSocket` と型除去で実行, `tools/twitch-eventsub/`）
 - **永続化**: SQLite（Node 24 標準の `node:sqlite`, `lib/db.ts`。`data/overlay.db`）
@@ -183,6 +182,10 @@ export interface StreamData {
 - コントロールパネルから呼び出される
 - `revision` が自動的にインクリメントされる
 
+**`PATCH /api/stream-data`**
+- `{event}`（`EFFECT_NAMES` = `LOVE` / `STAR` / `SPARKLE` / `BUBBLE`）で `lastEvent` だけを更新してエフェクトを出す（ほかの項目は変えない）
+- 文字起こしスクリプト（`tools/caption-stt/`）から呼び出される。`Content-Type: application/json` 必須
+
 ## 主要ファイルの詳細
 
 ### `/app/api/stream-data/route.ts`
@@ -199,13 +202,12 @@ export interface StreamData {
 1. **スコア表示タブ** - `scoreLabel`, `scoreValue`, トランジション設定
 2. **バーンダウンタブ** - バーンダウンチャートの管理
 3. **メッセージタブ** - メッセージプリセットの管理
-4. **共通設定タブ** - フォント設定、音声認識エフェクト
+4. **共通設定タブ** - フォント設定、エフェクトのボタン
 
 #### 重要な機能
 
 - **ローカルストレージ**: ユーザー設定を `'control-panel-state'` キーで永続化
-- **音声認識**: Web Speech API を使用してキーワード（「ナイス」「ありがとう」など）を検出し、エフェクトをトリガー
-- **エフェクトのトリガー**: `/api/stream-data` の `lastEvent` フィールドを更新
+- **エフェクトのトリガー**: `/api/stream-data` の `lastEvent` フィールドを更新（ボタンから。話した言葉で出すのは文字起こしスクリプト）
 
 ### `/app/obs-overlay/page.tsx`
 
@@ -232,6 +234,10 @@ export interface StreamData {
 - `tools/caption-stt/caption_stt.py` が Silero VAD で発話を区切り、mlx-whisper で文字起こしして `POST /api/caption {text}` する
 - API は直近5件の字幕行をインメモリで保持（`DELETE` でクリア）。`getInitialCaptionData()` / `__TEST_ONLY_setCaptionData()` はテスト用。`POST` は `Content-Type: application/json` 必須（他サイトからの単純リクエスト対策）、1行は200文字で切り詰め
 - オーバーレイは1秒ごとにポーリングし、8秒以内の最新2行を表示
+- 精度対策（`caption_stt.py`）: スプラ用語の `GLOSSARY` とテロップのプリセットの文を `initial_prompt` に渡す（プロンプトが長すぎると先頭が切り捨てられるので用語集を後ろに置く）。`select_segments` で信頼度（`avg_logprob` / `no_speech_prob` / `compression_ratio`）の低いセグメントを、`caption_rejection` で日本語以外の文字・英字 3 文字以上の単語（`ALLOWED_LATIN` を除く）・相づち（`FILLERS`、1 文字以下）を除外し、除外理由をログに出す（しきい値は定数。ログを見て調整する）。0.4 秒未満の発話は文字起こししない
+- エフェクト: `match_effect` が `EFFECT_KEYWORDS`（「ナイス」→ STAR、「ありがとう」→ LOVE、「よっしゃ」→ SPARKLE、「やべ」「やば」→ BUBBLE。上のものを優先）を含むか調べ、`PATCH /api/stream-data {event}` を送る。字幕・テロップとは別に出す（フィルタで除外した発話では出さない）。`EFFECT_MATCH=off` で無効。以前のコントロールパネルのブラウザ音声認識（Web Speech API）は廃止した
+- テロップへの照合: `TelopMatcher` が 30 秒ごとに `GET /api/telop` でプリセットを取り直し、`match_telop`（NFKC・カタカナ→ひらがな・記号除去のうえ、含む（発話がテロップの 2 倍以下の長さ）か類似度 0.8 以上。2 文字以下は完全一致のみ）で一致したら `POST /api/telop {presetId, speak: false}` を送り、その発話は字幕にしない。同じテロップは 10 秒出し直さない。プリセットが取れない・出せないときは字幕として送る。`TELOP_MATCH=off` で無効
+- モデルの比較: `CAPTION_SAVE_DIR` を指定すると発話ごとに wav と文字起こし結果を保存し、`pnpm caption --compare <DIR> --models a,b` で複数のモデルの結果・処理時間を並べる。`run.sh` は `cd` しない（相対パスを実行した場所から解釈するため）
 - `/api/stream-data` とは別エンドポイント（コントロールパネルの保存と競合させないため）
 - Python 側のテストは `tools/caption-stt/` で `pytest`（CI 対象外）
 
@@ -293,7 +299,7 @@ Twitch のフォロワー数とフォロワー目標を受け取る機能と、�
 
 サーモンラン中などチャットを打てないときに、定型文の「実況テロップ」をワンボタンで出す機能。
 
-- `POST /api/telop` に `{presetId}` か `{text, followFont?}`（1 行・30 文字まで。`normalizeTelopText` で改行と連続する空白を空白 1 つにまとめる）を送るとテロップを出す。Stream Deck などからも同じ形で送れる（JSON 以外は 415、無いプリセットは 404）
+- `POST /api/telop` に `{presetId, speak?}`（`speak: false` ならプリセットの設定によらず読み上げない。文字起こしから出すとき用）か `{text, followFont?}`（1 行・30 文字まで。`normalizeTelopText` で改行と連続する空白を空白 1 つにまとめる）を送るとテロップを出す。Stream Deck などからも同じ形で送れる（JSON 以外は 415、無いプリセットは 404）
 - いま出ているテロップ `{id, text, followFont, timestamp}` はインメモリ（再起動で消えてよい）。プリセット `{id, text, speak, followFont}`（最大 12 個）は SQLite の `app_state`（キー `telop`）に保存し、`PUT /api/telop {presets}` で更新する。保存値が不正なら既定のプリセットを返す。`__TEST_ONLY_resetTelop()` はテスト用
 - 型・定数・検証は `lib/telopTypes.ts`（クライアントからも使う）。`speak` は合成音声で読み上げるかの設定。`speak` が true のプリセット（自由入力は `speak: true` を付けたもの）は、出すと同時に `enqueueSpeech` で読み上げキューに入れる（読み上げが無効なら入れない）
 - `followFont` は共通設定のフォント（`/api/stream-data` の `fontFamily`）で表示するか。そのフォントに無い文字が化けるテロップは false にして `sans-serif` で出す。後から追加した項目なので、保存済みのプリセットに無ければ true とみなす（自由入力で省略したときも true）
@@ -494,10 +500,6 @@ docker-compose down
 
 ## 追加情報
 
-### ブラウザ互換性
-
-- **Web Speech API**: Chrome/Edge でのみ完全サポート。他のブラウザでは音声認識機能が動作しない可能性あり
-
 ### パフォーマンス最適化
 
 - オーバーレイは1秒ごとにポーリング（調整可能）
@@ -535,7 +537,6 @@ docker-compose down
 - [Material-UI ドキュメント](https://mui.com/material-ui/getting-started/)
 - [Motion ドキュメント](https://motion.dev/docs)
 - [Vitest ドキュメント](https://vitest.dev/)
-- [Web Speech API](https://developer.mozilla.org/en-US/docs/Web/API/Web_Speech_API)
 
 ---
 

@@ -14,14 +14,13 @@ import {
     IconButton,
     Tabs,
     Tab,
-    Chip,
     Alert,
     AlertTitle,
 } from '@mui/material';
 import {createTheme, ThemeProvider} from '@mui/material/styles';
 import axios from 'axios';
 import Image from 'next/image';
-import React, {useState, useEffect, useRef, useMemo, useCallback} from 'react';
+import React, {useState, useEffect, useMemo, useCallback} from 'react';
 
 import SalmonRunPanel from '../../components/SalmonRunPanel';
 import SidePanelSettingsPanel from '../../components/SidePanelSettingsPanel';
@@ -31,33 +30,6 @@ import VoiceSettingsPanel from '../../components/VoiceSettingsPanel';
 import {getItem, setItem, removeItem} from '../../lib/localStorage';
 import {StreamData, MessagePreset, BurndownData} from '../api/stream-data/route';
 
-
-// --- Speech API Type Definitions ---
-interface SpeechRecognitionEvent {
-    resultIndex: number;
-    results: {
-        isFinal: boolean;
-        [key: number]: {
-            transcript: string;
-        };
-    }[];
-}
-
-interface SpeechRecognitionErrorEvent {
-    error: string;
-}
-
-interface SpeechRecognition extends EventTarget {
-    continuous: boolean;
-    lang: string;
-    interimResults: boolean;
-    onstart: () => void;
-    onresult: (event: SpeechRecognitionEvent) => void;
-    onerror: (event: SpeechRecognitionErrorEvent) => void;
-    onend: () => void;
-    start: () => void;
-    stop: () => void;
-}
 
 const darkTheme = createTheme({
     palette: {
@@ -188,7 +160,6 @@ interface FormData {
     messagePresets: MessagePreset[];
     activePresetName: string;
     activeTab: string;
-    isListening: boolean;
 }
 
 
@@ -207,12 +178,6 @@ const ControlPanelPage: React.FC = () => {
 
     // Temp state for burndown new entry
     const [newBurndownScore, setNewBurndownScore] = useState('');
-
-    // Voice recognition state (non-persistent part)
-    const [transcript, setTranscript] = useState('');
-    const [interimTranscript, setInterimTranscript] = useState('');
-    const [recognitionError, setRecognitionError] = useState('');
-    const recognitionRef = useRef<SpeechRecognition | null>(null);
 
     // Message scroller temporary state
     const [currentMessage, setCurrentMessage] = useState<string>('');
@@ -297,7 +262,6 @@ const ControlPanelPage: React.FC = () => {
                                 activePresetName: apiData.activePresetName,
                                 burndown: apiData.burndown,
                                 activeTab: 'score', // Add default
-                                isListening: false, // Add default
                             });
                         }
                     }).catch(e => console.error("Failed to fetch initial data", e));
@@ -317,79 +281,6 @@ const ControlPanelPage: React.FC = () => {
             setItem(LOCAL_STORAGE_KEY, formData);
         }
     }, [formData, isInitialized, storageError]);
-
-    // Speech Recognition Effect
-     const handleVoiceCommand = useCallback(async (text: string) => {
-        const trigger = (effect: string) => handleTriggerEffect(effect);
-        if (text.includes('ナイス')) await trigger('STAR');
-        else if (text.includes('ありがとう')) await trigger('LOVE');
-        else if (text.includes('よっしゃ')) await trigger('SPARKLE');
-        else if (text.includes('やべぇ') || text.includes('やばい')) await trigger('BUBBLE');
-    }, [handleTriggerEffect]);
-    
-    useEffect(() => {
-        if (!formData?.isListening) {
-            recognitionRef.current?.stop();
-            return;
-        }
-
-        // @ts-expect-error: SpeechRecognition is a browser-specific API
-        const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
-        if (!SpeechRecognition) {
-            console.warn("Speech Recognition API is not supported in this browser.");
-            // eslint-disable-next-line react-hooks/set-state-in-effect
-            setRecognitionError("音声認識はこのブラウザではサポートされていません。");
-            return;
-        }
-
-        const recognition: SpeechRecognition = new SpeechRecognition();
-        recognition.continuous = true;
-        recognition.lang = 'ja-JP';
-        recognition.interimResults = true;
-
-        recognition.onstart = () => {
-            console.log('Speech recognition started.');
-            setRecognitionError('');
-        };
-
-        recognition.onresult = (event: SpeechRecognitionEvent) => {
-            let currentInterimTranscript = '';
-            let finalTranscript = '';
-
-            for (let i = event.resultIndex; i < event.results.length; i++) {
-                const transcriptPart = event.results[i][0].transcript;
-                if (event.results[i].isFinal) {
-                    finalTranscript += transcriptPart;
-                } else {
-                    currentInterimTranscript += transcriptPart;
-                }
-            }
-            setInterimTranscript(currentInterimTranscript);
-            if (finalTranscript) {
-                setTranscript(finalTranscript.trim());
-                handleVoiceCommand(finalTranscript.trim());
-            }
-        };
-
-        recognition.onerror = (event: SpeechRecognitionErrorEvent) => {
-            console.error('Speech recognition error:', event.error);
-            setRecognitionError(`エラー: ${event.error}`);
-        };
-        
-        recognition.onend = () => {
-            console.log('Speech recognition ended.');
-            if (formData?.isListening) {
-                recognition.start(); // Restart if it was intended to be listening
-            }
-        };
-
-        recognitionRef.current = recognition;
-        recognition.start();
-
-        return () => {
-            recognition.stop();
-        };
-    }, [formData?.isListening, handleVoiceCommand]);
 
     const handleAddMessage = () => {
         if (currentMessage.trim() !== '' && formData) {
@@ -445,11 +336,6 @@ const ControlPanelPage: React.FC = () => {
         }
     };
 
-    const handleToggleListening = () => {
-        if (!formData) return;
-        updateFormData({ isListening: !formData.isListening });
-    };
-    
     const handleClearCache = () => {
         removeItem(LOCAL_STORAGE_KEY);
         window.location.reload();
@@ -627,31 +513,6 @@ const ControlPanelPage: React.FC = () => {
                     {formData.activeTab === 'common' && (
                         <>
                             <Paper elevation={12} sx={{ mb: 3, p: 3, bgcolor: 'background.paper', backdropFilter: 'blur(10px)', border: '1px solid rgba(255, 255, 255, 0.1)' }}>
-                                <Typography variant="h6" gutterBottom>📣 音声認識エフェクト</Typography>
-                                <Box sx={{display: 'flex', alignItems: 'center', gap: 2}}>
-                                    <Button variant="contained" color={formData.isListening ? 'error' : 'secondary'} onClick={handleToggleListening}>
-                                        {formData.isListening ? '音声認識を停止' : '音声認識を開始'}
-                                    </Button>
-                                    {formData.isListening && <Chip label="音声認識中..." color="secondary" />}
-                                </Box>
-                                <Typography variant="body2" sx={{mt: 2, color: 'text.secondary'}}>
-                                    認識中: {interimTranscript || '...'}
-                                </Typography>
-                                <Typography variant="body2" sx={{mt: 1, color: 'text.secondary'}}>
-                                    最終認識テキスト: {transcript || '...'}
-                                </Typography>
-                                <Typography
-                                    variant="caption"
-                                    sx={{
-                                        display: "block",
-                                        mt: 1,
-                                        color: 'text.secondary'
-                                    }}>
-                                    「ナイス」→ ⭐, 「ありがとう」→ 💖, 「よっしゃ」→ ✨, 「やべぇ」→ 🫧
-                                </Typography>
-                                {recognitionError && <Typography variant="body2" color="error" sx={{mt: 1}}>音声認識エラー: {recognitionError}</Typography>}
-                            </Paper>
-                            <Paper elevation={12} sx={{ mb: 3, p: 3, bgcolor: 'background.paper', backdropFilter: 'blur(10px)', border: '1px solid rgba(255, 255, 255, 0.1)' }}>
                                 <Typography variant="h6" gutterBottom>🎆 演出効果</Typography>
                                 <Box sx={{display: 'flex', gap: 2, alignItems: 'center', flexWrap: 'wrap'}}>
                                     <Button variant="contained" color="primary" onClick={() => handleTriggerEffect('LOVE')} disabled={effectStatus === 'loading'}>💖 LOVE</Button>
@@ -673,6 +534,7 @@ const ControlPanelPage: React.FC = () => {
                                         color: 'text.secondary'
                                     }}>
                                     ボタンを押すと、OBSのスコア表示オーバーレイにエフェクトが表示されます。
+                                    文字起こし（pnpm caption）の起動中は、話した言葉でも出ます: 「ナイス」→ ⭐, 「ありがとう」→ 💖, 「よっしゃ」→ ✨, 「やべぇ」→ 🫧
                                 </Typography>
                             </Paper>
                             <Paper elevation={12} sx={{ mb: 3, p: 3, bgcolor: 'background.paper', backdropFilter: 'blur(10px)', border: '1px solid rgba(255, 255, 255, 0.1)' }}>
