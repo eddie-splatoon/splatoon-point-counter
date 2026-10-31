@@ -27,6 +27,7 @@ import SidePanelSettingsPanel from '../../components/SidePanelSettingsPanel';
 import TelopBar from '../../components/TelopBar';
 import TelopPanel from '../../components/TelopPanel';
 import VoiceSettingsPanel from '../../components/VoiceSettingsPanel';
+import WeaponCardPanel from '../../components/WeaponCardPanel';
 import {getItem, setItem, removeItem} from '../../lib/localStorage';
 import {StreamData, MessagePreset, BurndownData} from '../api/stream-data/route';
 
@@ -395,6 +396,7 @@ const ControlPanelPage: React.FC = () => {
                         <Tab label="バーンダウン" value="burndown"/>
                         <Tab label="メッセージ" value="message"/>
                         <Tab label="サーモンラン" value="salmon"/>
+                        <Tab label="ブキ埋め" value="weaponCard"/>
                         <Tab label="サイドパネル" value="sidePanel"/>
                         <Tab label="テロップ" value="telop"/>
                         <Tab label="共通設定" value="common"/>
@@ -500,6 +502,8 @@ const ControlPanelPage: React.FC = () => {
                     )}
 
                     {formData.activeTab === 'salmon' && <SalmonRunPanel/>}
+
+                    {formData.activeTab === 'weaponCard' && <WeaponCardPanel/>}
 
                     {formData.activeTab === 'sidePanel' && <SidePanelSettingsPanel/>}
 

@@ -251,7 +251,7 @@ const SidePanelSettingsPanel: React.FC = () => {
                 <Typography variant="caption" sx={{display: 'block', mt: 1, color: 'text.secondary'}}>
                     {fixedFullHeight
                         ? `${settings.fixedSlots.map((s) => SIDE_PANEL_SLOT_LABELS[s]).join('・')}を固定している間は、ローテーション枠は使えません。`
-                        : '固定枠の下の残りのスペースで、選んだものを1つずつ順に切り替えます。固定枠で選んでいるものは選べません。何も選ばなければ切り替えません。'}
+                        : '固定枠の下の残りのスペースで、選んだものを1つずつ順に切り替えます。固定枠で選んでいるものは選べません。表示するものが無いもの（お題が0個など）は飛ばします。何も選ばなければ切り替えません。'}
                 </Typography>
                 {overflows && (
                     <Alert severity="warning" sx={{mt: 2}}>

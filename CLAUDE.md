@@ -16,9 +16,10 @@
 6. **サイドパネルオーバーレイ** (`/side-panel-overlay`) - 配信画面右側（250x584）。上段にフォロワーゲージ、下段にコントロールパネルで選んだスロットを表示
 7. **実況テロップオーバーレイ** (`/telop-overlay`) - コントロールパネルのボタン・キーボードで出す定型文を数秒だけ大きく表示
 8. **読み上げ（音声専用）オーバーレイ** (`/voice-overlay`) - 読み上げキューの文を VOICEVOX で音声にして順に再生（画面には何も出さない）
-9. **バックエンドAPI** (`/api/stream-data`, `/api/caption`, `/api/twitch`, `/api/salmon`, `/api/side-panel`, `/api/salmon-schedule`, `/api/telop`, `/api/speech`, `/api/voice`) - データ管理とクライアント間の同期
-10. **文字起こしスクリプト** (`tools/caption-stt/`) - マイク音声を文字起こしして `/api/caption` へ送信（Python, Mac ネイティブ実行）
-11. **Twitch連携スクリプト** (`tools/twitch-eventsub/`) - フォロワー数・フォロワー目標を EventSub で受信して `/api/twitch` へ送信。チャットの初コメの挨拶・配信者のコメントを `/api/speech` へ送信（Node, 依存なし）
+9. **ブキ埋めカードオーバーレイ** (`/weapon-card-overlay`) - サーモンランのオールランダムで支給された全ブキ種（71 種）を埋めていくカード
+10. **バックエンドAPI** (`/api/stream-data`, `/api/caption`, `/api/twitch`, `/api/salmon`, `/api/side-panel`, `/api/salmon-schedule`, `/api/telop`, `/api/speech`, `/api/voice`, `/api/weapon-card`) - データ管理とクライアント間の同期
+11. **文字起こしスクリプト** (`tools/caption-stt/`) - マイク音声を文字起こしして `/api/caption` へ送信（Python, Mac ネイティブ実行）
+12. **Twitch連携スクリプト** (`tools/twitch-eventsub/`) - フォロワー数・フォロワー目標を EventSub で受信して `/api/twitch` へ送信。チャットの初コメの挨拶・配信者のコメントを `/api/speech` へ送信（Node, 依存なし）
 
 ## 技術スタック
 
@@ -60,6 +61,8 @@
 │   │   └── page.tsx              # 実況テロップオーバーレイ
 │   ├── voice-overlay/
 │   │   └── page.tsx              # 読み上げ（音声専用）オーバーレイ
+│   ├── weapon-card-overlay/
+│   │   └── page.tsx              # ブキ埋めカードオーバーレイ
 │   └── api/
 │       ├── stream-data/
 │       │   └── route.ts          # データ管理API
@@ -81,10 +84,12 @@
 │       │   ├── route.ts          # 読み上げキューAPI
 │       │   └── audio/
 │       │       └── route.ts      # キューの1件を VOICEVOX で wav にして返す
-│       └── voice/
-│           ├── route.ts          # 読み上げの設定API
-│           └── speakers/
-│               └── route.ts      # VOICEVOX の話者一覧の中継
+│       ├── voice/
+│       │   ├── route.ts          # 読み上げの設定API
+│       │   └── speakers/
+│       │       └── route.ts      # VOICEVOX の話者一覧の中継
+│       └── weapon-card/
+│           └── route.ts          # ブキ埋めカードAPI
 ├── components/                    # 再利用可能なReactコンポーネント
 │   ├── ScoreDisplay.tsx          # スコア表示
 │   ├── BurndownChart.tsx         # バーンダウンチャート
@@ -103,7 +108,11 @@
 │   ├── SalmonSchedule.tsx        # サーモンランのスケジュール（サイドパネルのスロット）
 │   ├── TelopBar.tsx              # コントロールパネル上部のテロップのボタン（どのタブでも表示）
 │   ├── TelopPanel.tsx            # コントロールパネルのテロップタブ
-│   └── VoiceSettingsPanel.tsx    # 読み上げ（VOICEVOX）の設定（テロップタブ内）
+│   ├── VoiceSettingsPanel.tsx    # 読み上げ（VOICEVOX）の設定（テロップタブ内）
+│   ├── WeaponIcon.tsx            # ブキの画像（読み込めなければブキ名）
+│   ├── WeaponPicker.tsx          # カテゴリごとのブキのパレット（記録・ブキ埋めタブで使う）
+│   ├── WeaponCard.tsx            # ブキ埋めカード（オーバーレイ）
+│   └── WeaponCardPanel.tsx       # コントロールパネルのブキ埋めタブ
 ├── lib/
 │   ├── localStorage.ts           # ローカルストレージのラッパー
 │   ├── db.ts                     # SQLite の接続とスキーマ
@@ -113,7 +122,9 @@
 │   ├── salmonSchedule.ts         # サーモンランのスケジュールの型・変換（クライアントからも使う）
 │   ├── telopTypes.ts             # 実況テロップの型・プリセットの検証（クライアントからも使う）
 │   ├── voiceTypes.ts             # 読み上げの型・設定の検証（クライアントからも使う）
-│   └── speech.ts                 # 読み上げキュー・設定・VOICEVOX との通信（サーバー専用）
+│   ├── speech.ts                 # 読み上げキュー・設定・VOICEVOX との通信（サーバー専用）
+│   ├── salmonWeapons.ts          # サーモンランのブキの定義・ブキ埋めカードの型（クライアントからも使う）
+│   └── weaponCard.ts             # ブキ埋めカードの状態（サーバー専用）
 ├── data/                          # SQLite・Twitch トークン（Git / Docker イメージ管理外）
 ├── public/                        # 静的アセット
 │   └── tips.tsv                  # Tips データ
@@ -255,7 +266,7 @@ Twitch のフォロワー数とフォロワー目標を受け取る機能と、�
 
 ### `/app/api/salmon/` と `lib/db.ts` / `lib/salmon.ts`
 
-サーモンランの成績（金イクラ納品数・オオモノ処理数・デス数・クリア/失敗と到達WAVE・ステージ）を記録する機能。
+サーモンランの成績（金イクラ納品数・オオモノ処理数・デス数・クリア/失敗と到達WAVE・ステージ・支給ブキ）を記録する機能。
 
 - 永続化は SQLite（`node:sqlite` の `DatabaseSync`）。パスは `OVERLAY_DB_PATH`（既定 `data/overlay.db`）。スキーマは初回接続時に `CREATE TABLE IF NOT EXISTS`
 - 集計は **配信セッション単位**。最後に開始したセッションが「現在のセッション」。記録時にセッションが無ければ自動作成
@@ -264,13 +275,26 @@ Twitch のフォロワー数とフォロワー目標を受け取る機能と、�
 - コントロールパネルの「サーモンラン」タブ（`components/SalmonRunPanel.tsx`）は API に直接保存する（「OBSに反映」ボタンや localStorage は使わない）
 - テストは `vite.config.mts` の `OVERLAY_DB_PATH=:memory:` で実データに触れない。各テストで `__TEST_ONLY_setDb(openDb(':memory:'))` してから使う
 
+### `/app/weapon-card-overlay/page.tsx` と `/app/api/weapon-card/route.ts`
+
+サーモンランのオールランダム編成で、支給されたブキを 1 種ずつ埋めて全種コンプを目指す「ブキ埋めカード」。
+
+- ブキの定義は `lib/salmonWeapons.ts` の `SALMON_WEAPONS`（71 種 = 通常 63 + クマサン印 8。サーモンランで支給されないスプラスコープ・4Kスコープは除く）。key は stat.ink の `/api/v3/salmon/weapon` の key、`image` はゲーム内部のブキ名。並び順（カテゴリ順）がカード・パレットの並び。ブキが追加されたらここに足す
+- 画像は Nintendo の画像を同梱しないよう Leanny/splat3 の `images/weapon_flat/Path_Wst_<内部名>.png` を参照する（`weaponImageUrl`）。リンク切れに備え、`WeaponIcon` は読み込めなければブキ名を文字で出す
+- 戦績の記録（`SalmonJob`）に `weapons`（支給されたブキの key、最大 `MAX_JOB_WEAPONS` = 4 = 3 WAVE + EX、重複可、省略可）を追加した。`salmon_jobs.weapons` は後から追加した列なので、`openDb` の `migrate` で既存の DB に `ALTER TABLE` で足す（列を足すときは同じようにする）。保存値の壊れた JSON・未知の key は読み込み時に捨てる
+- カードの状態は `app_state`（キー `weaponCard`）の `{startedAt, manual}`。埋まっているブキは「`startedAt` 以降に記録したバイトのブキ」と「手動で埋めたブキ」を合わせたもの（`getWeaponCard`）。記録から導出するので、記録を取り消すとマスも戻る。カードの区切りはサーモンランのセッションとは独立（セッションをまたいで続けられる）。両方で埋まったものは記録由来（`source: 'job'`）として扱い、手動では外せない
+- `GET /api/weapon-card`（`{startedAt, total, obtained: {key, at, source}[]}`、埋まった順）、`PATCH {weapon, obtained}`（手動で埋める / 外す）、`POST`（新しいカードを始める）。PATCH / POST は `Content-Type: application/json` 必須
+- コントロールパネルの「サーモンラン」タブでは記録フォームの `WeaponPicker` で支給ブキを選ぶ（押すたびに追加。外すときは選んだブキを押す）。「ブキ埋め」タブ（`components/WeaponCardPanel.tsx`）は進捗・手動の埋める / 外す・新しいカード（確認ダイアログ付き）。どちらもその場で保存
+- サイドパネルの `weaponCard` スロットにも出せる（`<WeaponCard compact/>`。幅 250px に 12 列で縮めた、試合中に埋まり具合がなんとなくわかる程度の表示。スケジュールなどと並べても下段に収まる高さにしている）。`/weapon-card-overlay` は試合の合間などにたまに出す拡大表示という位置づけ
+- オーバーレイは 2 秒ごとに `/api/weapon-card` と `/api/stream-data`（フォント）をポーリングする。`components/WeaponCard.tsx` は `ChallengeList` と同じく前回の状態と比べ、ポーリング中に新しく埋まったマスだけスタンプを押す演出をし、71 種そろった瞬間だけ花火を出す（表示した時点の状態・新しいカードの開始では演出しない）
+
 ### `/app/side-panel-overlay/page.tsx` と `/app/api/side-panel/route.ts`
 
 配信画面右側（250x584）のサイドパネル。上段はインクタンク型フォロワーゲージ（`components/InkTankGauge.tsx`）、下段は「スロット」を表示する。
 
-- スロットの定義は `lib/sidePanelTypes.ts` の `SIDE_PANEL_SLOTS`（現在は `schedule` / `salmon` / `challenges` / `burndown`。並び順が、固定枠で上から並べる順とローテーションの順）。スロットを追加するときは、ここと `SIDE_PANEL_SLOT_LABELS`、オーバーレイの `renderSlot` に足す
+- スロットの定義は `lib/sidePanelTypes.ts` の `SIDE_PANEL_SLOTS`（現在は `schedule` / `salmon` / `weaponCard` / `challenges` / `burndown`。並び順が、固定枠で上から並べる順とローテーションの順）。スロットを追加するときは、ここと `SIDE_PANEL_SLOT_LABELS`、オーバーレイの `renderSlot` に足す
 - 設定 `{fixedSlots, rotationSlots, rotateSeconds, followerGoal, challenges}` は SQLite のキーバリュー `app_state`（`getAppState` / `setAppState`、キー `sidePanel`）に保存。保存値が不正（スロット削除後など）なら既定値を返す
-- オーバーレイは2秒ごとに `/api/side-panel`・`/api/salmon`・`/api/stream-data` をポーリングし（1つが失敗しても他は表示を続ける）、下段は「固定枠」と「ローテーション枠」に分かれる。固定枠（`fixedSlots`）は上から順に常に表示し、その下の残りのスペースでローテーション枠（`rotationSlots`）を `rotateSeconds` ごとに1つずつ motion のクロスフェードで切り替える（`pickRotationSlot`。ローテーション枠が空なら切り替えない）
+- オーバーレイは2秒ごとに `/api/side-panel`・`/api/salmon`・`/api/stream-data`・`/api/salmon-schedule`・`/api/weapon-card` をポーリングし（1つが失敗しても他は表示を続ける）、下段は「固定枠」と「ローテーション枠」に分かれる。固定枠（`fixedSlots`）は上から順に常に表示し、その下の残りのスペースでローテーション枠（`rotationSlots`）を `rotateSeconds` ごとに1つずつ motion のクロスフェードで切り替える（`pickRotationSlot`。ローテーション枠が空なら切り替えない。お題が0個・データ未取得など表示するものが無いスロットは飛ばす）
 - 同じスロットを両方の枠に入れることはできず、両方の枠が空になることもできない。残りの高さいっぱいを使うスロット（`FULL_HEIGHT_SLOTS`、現在は `burndown`）は、固定枠に入れるときはそれ1つだけ（ローテーション枠も空）、ローテーション枠なら固定枠の下に表示できる。コントロールパネルでは、固定枠で選んだスロットはローテーション枠のボタンを無効にし、固定枠に移したスロットはローテーション枠から外す
 - 固定枠が多いとローテーション枠の高さが足りず見切れる。`estimateSlotHeight` / `exceedsSlotArea` でスロットの高さの目安を合計し、下段（`SLOT_AREA_HEIGHT` = 約 440px、ゲージ表示時）に収まらない見込みならコントロールパネルで警告する（保存は止めない）。スロットの見た目を変えたら目安の値も見直す
 - 以前の保存形式（`visibleSlots`、さらに前は `activeSlot` と、`autoRotate` / `enabledSlots`）は、自動ローテーション ON ならローテーション枠だけ、OFF なら固定枠だけとして読み込む（既存の設定を既定値に戻さない）

@@ -14,7 +14,7 @@ const totals = (overrides = {}) => ({ jobs: 0, goldenEggs: 0, bossKills: 0, deat
 const session = { id: 2, startedAt: new Date('2026-10-28T20:00:00').getTime(), title: '水曜の配信' };
 const pastSession: SalmonSessionWithTotals = { id: 1, startedAt: new Date('2026-10-27T20:00:00').getTime(), title: '', totals: totals({ jobs: 1, goldenEggs: 40 }) };
 const job = (overrides: Partial<SalmonJob> = {}): SalmonJob => ({
-  id: 1, sessionId: 2, createdAt: session.startedAt, goldenEggs: 30, bossKills: 12, deaths: 1, cleared: true, waveReached: 3, stage: 'アラマキ砦', ...overrides,
+  id: 1, sessionId: 2, createdAt: session.startedAt, goldenEggs: 30, bossKills: 12, deaths: 1, cleared: true, waveReached: 3, stage: 'アラマキ砦', weapons: [], ...overrides,
 });
 const summaryOf = (jobs: SalmonJob[]): SalmonSummary => ({
   session,
@@ -86,11 +86,36 @@ describe('SalmonRunPanel', () => {
     await act(async () => fireEvent.click(recordButton));
 
     expect(mockedAxios.post).toHaveBeenCalledWith('/api/salmon', {
-      goldenEggs: 30, bossKills: 12, deaths: 1, cleared: true, waveReached: 3, stage: 'アラマキ砦',
+      goldenEggs: 30, bossKills: 12, deaths: 1, cleared: true, waveReached: 3, stage: 'アラマキ砦', weapons: [],
     });
     await waitFor(() => expect(within(screen.getByTestId('salmon-history')).getByText(/クリア \| 金イクラ 30/)).toBeInTheDocument());
     expect(screen.getByLabelText('金イクラ')).toHaveValue(null);
     expect(screen.getByLabelText('ステージ')).toHaveValue('アラマキ砦');
+  });
+
+  it('records the supplied weapons, up to four, and clears them', async () => {
+    mockedAxios.post.mockResolvedValue({ data: summaryOf([job({ weapons: ['sshooter', 'sshooter', 'pablo', 'kuma_blaster'] })]), status: 200 });
+    render(<SalmonRunPanel />);
+    await screen.findByText(/今のセッション/);
+
+    const picker = screen.getByRole('group', { name: '支給ブキ' });
+    for (const name of ['スプラシューター', 'スプラシューター', 'ホクサイ', 'パブロ']) {
+      fireEvent.click(within(picker).getByRole('button', { name }));
+    }
+    // 4 つ選んだら、ほかは選べない
+    expect(within(picker).getByRole('button', { name: 'クマサン印のブラスター' })).toBeDisabled();
+    // 選んだブキを押すと外れる
+    fireEvent.click(screen.getByRole('button', { name: '支給ブキ 3 つ目のホクサイを外す' }));
+    fireEvent.click(within(picker).getByRole('button', { name: 'クマサン印のブラスター' }));
+
+    fillNumbers('30', '12', '1');
+    await act(async () => fireEvent.click(screen.getByRole('button', { name: '記録' })));
+
+    expect(mockedAxios.post).toHaveBeenCalledWith('/api/salmon', expect.objectContaining({
+      weapons: ['sshooter', 'sshooter', 'pablo', 'kuma_blaster'],
+    }));
+    await waitFor(() => expect(within(screen.getByTestId('salmon-selected-weapons')).queryAllByRole('button')).toHaveLength(0));
+    expect(within(screen.getByTestId('salmon-history')).getAllByRole('img', { name: 'スプラシューター' })).toHaveLength(2);
   });
 
   it('fills the stage from the running schedule', async () => {

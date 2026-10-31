@@ -39,7 +39,7 @@ describe('Salmon sessions API', () => {
   });
 
   it('lists sessions newest first with totals', async () => {
-    addJob({ goldenEggs: 30, bossKills: 12, deaths: 1, cleared: true, waveReached: 3, stage: '' });
+    addJob({ goldenEggs: 30, bossKills: 12, deaths: 1, cleared: true, waveReached: 3, stage: '', weapons: [] });
     await post({ title: 'second' });
 
     const sessions = await (await GET()).json();

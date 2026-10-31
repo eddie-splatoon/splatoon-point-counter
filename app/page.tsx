@@ -229,6 +229,17 @@ export default function Home() {
                         >
                             読み上げ（音声専用）オーバーレイ (Preview)
                         </Button>
+                        <Button
+                            variant="contained"
+                            color="secondary"
+                            href="/weapon-card-overlay"
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            fullWidth
+                            size="large"
+                        >
+                            ブキ埋めカードオーバーレイ (Preview)
+                        </Button>
                     </Box>
                 </Box>
                 <Typography variant="caption" sx={{mt: 4, color: 'text.secondary', zIndex: 1}}>

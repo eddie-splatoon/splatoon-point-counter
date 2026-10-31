@@ -10,6 +10,7 @@ import {
     SalmonSummary,
     SalmonTotals,
 } from './salmonTypes';
+import {MAX_JOB_WEAPONS, isSalmonWeaponKey} from './salmonWeapons';
 
 interface SessionRow {
     id: number;
@@ -27,6 +28,7 @@ interface JobRow {
     cleared: number;
     wave_reached: number;
     stage: string;
+    weapons: string;
 }
 
 const toSession = (row: SessionRow): SalmonSession => ({id: row.id, startedAt: row.started_at, title: row.title});
@@ -41,7 +43,18 @@ const toJob = (row: JobRow): SalmonJob => ({
     cleared: row.cleared === 1,
     waveReached: row.wave_reached,
     stage: row.stage,
+    weapons: parseStoredWeapons(row.weapons),
 });
+
+/** 保存済みのブキ。壊れた JSON や、定義から消えたブキは捨てる */
+export function parseStoredWeapons(value: string): string[] {
+    try {
+        const parsed: unknown = JSON.parse(value);
+        return Array.isArray(parsed) ? parsed.filter(isSalmonWeaponKey) : [];
+    } catch {
+        return [];
+    }
+}
 
 const TOTALS_COLUMNS = `
     COUNT(j.id) AS jobs,
@@ -90,9 +103,9 @@ export function listSessions(): SalmonSessionWithTotals[] {
 export function addJob(job: NewSalmonJob, now = Date.now()): SalmonJob {
     const session = getCurrentSession() ?? startSession('', now);
     const result = getDb().prepare(`
-        INSERT INTO salmon_jobs (session_id, created_at, golden_eggs, boss_kills, deaths, cleared, wave_reached, stage)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?)`).run(
-        session.id, now, job.goldenEggs, job.bossKills, job.deaths, job.cleared ? 1 : 0, job.waveReached, job.stage,
+        INSERT INTO salmon_jobs (session_id, created_at, golden_eggs, boss_kills, deaths, cleared, wave_reached, stage, weapons)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`).run(
+        session.id, now, job.goldenEggs, job.bossKills, job.deaths, job.cleared ? 1 : 0, job.waveReached, job.stage, JSON.stringify(job.weapons),
     );
     return {...job, id: Number(result.lastInsertRowid), sessionId: session.id, createdAt: now};
 }
@@ -125,7 +138,7 @@ export const parseId = (value: string | null): number | null => {
 
 /** POST の本文を検証して記録できる形にする。不正ならエラーメッセージを返す */
 export function parseJob(body: unknown): NewSalmonJob | string {
-    const {goldenEggs, bossKills, deaths, cleared, waveReached, stage} = (body ?? {}) as Record<string, unknown>;
+    const {goldenEggs, bossKills, deaths, cleared, waveReached, stage, weapons = []} = (body ?? {}) as Record<string, unknown>;
     if (!isCount(goldenEggs) || !isCount(bossKills) || !isCount(deaths)) {
         return `goldenEggs, bossKills and deaths must be integers between 0 and ${MAX_COUNT}.`;
     }
@@ -136,5 +149,9 @@ export function parseJob(body: unknown): NewSalmonJob | string {
         return `waveReached must be 1-${MAX_WAVE} (${MAX_WAVE} when cleared).`;
     }
     if (stage !== undefined && typeof stage !== 'string') return 'stage must be a string.';
-    return {goldenEggs, bossKills, deaths, cleared, waveReached: wave, stage: (stage ?? '').trim().slice(0, MAX_STAGE_LENGTH)};
+    // weapons は後から追加した項目なので省略可（ブキを記録しない）。同じブキが2回支給されることもあるので重複は許す
+    if (!Array.isArray(weapons) || weapons.length > MAX_JOB_WEAPONS || !weapons.every(isSalmonWeaponKey)) {
+        return `weapons must be an array of up to ${MAX_JOB_WEAPONS} known weapon keys.`;
+    }
+    return {goldenEggs, bossKills, deaths, cleared, waveReached: wave, stage: (stage ?? '').trim().slice(0, MAX_STAGE_LENGTH), weapons};
 }

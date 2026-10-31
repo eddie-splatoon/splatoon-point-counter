@@ -24,6 +24,7 @@ export interface SalmonJob {
     cleared: boolean;
     waveReached: number;
     stage: string;
+    weapons: string[]; // 支給されたブキの key（lib/salmonWeapons.ts）。WAVE ごとに変わるので最大 MAX_JOB_WEAPONS 個
 }
 
 export interface SalmonTotals {
