@@ -1,7 +1,7 @@
 // サイドパネル（配信画面右側）の型と定数。クライアントからも使うため DB に依存させない
 
 // 下段スロットに表示できるもの（並び順は、縦に並べるときの上からの順と、自動ローテーションの順）
-export const SIDE_PANEL_SLOTS = ['schedule', 'salmon', 'challenges', 'burndown'] as const;
+export const SIDE_PANEL_SLOTS = ['schedule', 'salmon', 'weaponCard', 'challenges', 'burndown'] as const;
 
 export type SidePanelSlot = typeof SIDE_PANEL_SLOTS[number];
 
@@ -11,6 +11,7 @@ export const FULL_HEIGHT_SLOTS: readonly SidePanelSlot[] = ['burndown'];
 export const SIDE_PANEL_SLOT_LABELS: Record<SidePanelSlot, string> = {
     schedule: 'スケジュール',
     salmon: '本日の戦績',
+    weaponCard: 'ブキ埋め',
     challenges: '本日のお題',
     burndown: 'バーンダウン',
 };
@@ -113,9 +114,14 @@ function parseChallenges(value: unknown): Challenge[] | string {
     return challenges;
 }
 
-/** ローテーション枠でいま表示するスロット。rotationIndex 番目から1つずつ回す。ローテーション枠が空なら null */
-export const pickRotationSlot = (settings: SidePanelSettings, rotationIndex: number): SidePanelSlot | null =>
-    settings.rotationSlots.length === 0 ? null : settings.rotationSlots[rotationIndex % settings.rotationSlots.length];
+/**
+ * ローテーション枠でいま表示するスロット。rotationIndex 番目から1つずつ回す。
+ * 表示するものが無いスロット（お題が0個・データ未取得など）は飛ばす（空白の時間を作らない）。表示できるものが無ければ null
+ */
+export function pickRotationSlot(settings: SidePanelSettings, rotationIndex: number, canShow: (slot: SidePanelSlot) => boolean = () => true): SidePanelSlot | null {
+    const slots = settings.rotationSlots.filter(canShow);
+    return slots.length === 0 ? null : slots[rotationIndex % slots.length];
+}
 
 export interface FollowerProgress {
     current: number;
@@ -148,6 +154,8 @@ export function estimateSlotHeight(slot: SidePanelSlot, challengeCount: number):
             return 200;
         case 'salmon':
             return 190;
+        case 'weaponCard':
+            return 180;
         case 'challenges':
             return challengeCount === 0 ? 0 : 50 + 50 * challengeCount;
         case 'burndown':

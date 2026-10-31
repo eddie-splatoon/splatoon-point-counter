@@ -1,11 +1,11 @@
 // @vitest-environment node
 import { beforeEach, describe, expect, it } from 'vitest';
 
-import { __TEST_ONLY_setDb, openDb } from './db';
+import { __TEST_ONLY_setDb, getDb, openDb } from './db';
 import { addJob, deleteJob, getSummary, listSessions, parseId, parseJob, startSession } from './salmon';
 import { MAX_COUNT, MAX_STAGE_LENGTH } from './salmonTypes';
 
-const job = { goldenEggs: 30, bossKills: 12, deaths: 1, cleared: true, waveReached: 3, stage: 'アラマキ砦' };
+const job = { goldenEggs: 30, bossKills: 12, deaths: 1, cleared: true, waveReached: 3, stage: 'アラマキ砦', weapons: ['sshooter', 'kuma_blaster'] };
 
 beforeEach(() => {
   __TEST_ONLY_setDb(openDb(':memory:'));
@@ -67,6 +67,14 @@ describe('salmon records', () => {
     expect(getSummary().totals.jobs).toBe(1);
   });
 
+  it('ignores broken or unknown stored weapons', () => {
+    const recorded = addJob(job, 1000);
+    getDb().prepare('UPDATE salmon_jobs SET weapons = ? WHERE id = ?').run('not json', recorded.id);
+    expect(getSummary().lastJob?.weapons).toEqual([]);
+    getDb().prepare('UPDATE salmon_jobs SET weapons = ? WHERE id = ?').run('["sshooter","removed_weapon"]', recorded.id);
+    expect(getSummary().lastJob?.weapons).toEqual(['sshooter']);
+  });
+
   it('returns an empty summary for an unknown session', () => {
     expect(getSummary(999).session).toBeNull();
   });
@@ -76,13 +84,18 @@ describe('parseJob', () => {
   const body = { goldenEggs: 30, bossKills: 12, deaths: 1, cleared: false, waveReached: 2, stage: '  シェケナダム ' };
 
   it('accepts a failed job and trims the stage', () => {
-    expect(parseJob(body)).toEqual({ ...body, stage: 'シェケナダム' });
+    expect(parseJob(body)).toEqual({ ...body, stage: 'シェケナダム', weapons: [] });
   });
 
   it('defaults waveReached to the last wave when cleared', () => {
     expect(parseJob({ goldenEggs: 0, bossKills: 0, deaths: 0, cleared: true })).toEqual({
-      goldenEggs: 0, bossKills: 0, deaths: 0, cleared: true, waveReached: 3, stage: '',
+      goldenEggs: 0, bossKills: 0, deaths: 0, cleared: true, waveReached: 3, stage: '', weapons: [],
     });
+  });
+
+  it('accepts up to four weapons including the same weapon twice', () => {
+    const weapons = ['sshooter', 'sshooter', 'kuma_roller', 'pablo'];
+    expect(parseJob({ ...body, weapons })).toMatchObject({ weapons });
   });
 
   it('accepts the maximum count', () => {
@@ -107,6 +120,9 @@ describe('parseJob', () => {
     ['waveReached 4', { ...body, waveReached: 4 }],
     ['cleared before the last wave', { ...body, cleared: true, waveReached: 2 }],
     ['non-string stage', { ...body, stage: 1 }],
+    ['non-array weapons', { ...body, weapons: 'sshooter' }],
+    ['an unknown weapon', { ...body, weapons: ['sshooter', 'splatscope'] }],
+    ['five weapons', { ...body, weapons: ['bold', 'bold', 'bold', 'bold', 'bold'] }],
   ])('rejects %s', (_, input) => {
     expect(typeof parseJob(input)).toBe('string');
   });

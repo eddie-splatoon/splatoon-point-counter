@@ -19,7 +19,8 @@ CREATE TABLE IF NOT EXISTS salmon_jobs (
     deaths INTEGER NOT NULL,
     cleared INTEGER NOT NULL,
     wave_reached INTEGER NOT NULL,
-    stage TEXT NOT NULL DEFAULT ''
+    stage TEXT NOT NULL DEFAULT '',
+    weapons TEXT NOT NULL DEFAULT '[]'
 );
 CREATE INDEX IF NOT EXISTS salmon_jobs_session_id ON salmon_jobs(session_id);
 -- 画面ごとの設定など、1つの値を JSON で丸ごと保存するキーバリュー
@@ -29,11 +30,18 @@ CREATE TABLE IF NOT EXISTS app_state (
 );
 `;
 
+/** CREATE TABLE IF NOT EXISTS では既存のテーブルに列が増えないので、後から追加した列を足す */
+function migrate(db: DatabaseSync): void {
+    const columns = (db.prepare('PRAGMA table_info(salmon_jobs)').all() as {name: string}[]).map((c) => c.name);
+    if (!columns.includes('weapons')) db.exec("ALTER TABLE salmon_jobs ADD COLUMN weapons TEXT NOT NULL DEFAULT '[]'");
+}
+
 export function openDb(path: string): DatabaseSync {
     if (path !== ':memory:') mkdirSync(dirname(path), {recursive: true});
     const db = new DatabaseSync(path);
     db.exec('PRAGMA foreign_keys = ON;');
     db.exec(SCHEMA);
+    migrate(db);
     return db;
 }
 

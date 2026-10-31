@@ -33,6 +33,11 @@ vi.mock('../../components/SalmonSchedule', () => ({
 vi.mock('../../components/ChallengeList', () => ({
   default: ({ challenges }: { challenges: { text: string }[] }) => <div data-testid="ChallengeList">{challenges.map((c) => c.text).join(',')}</div>,
 }));
+vi.mock('../../components/WeaponCard', () => ({
+  default: ({ card, compact }: { card: { obtained: unknown[]; total: number }; compact?: boolean }) => (
+    <div data-testid="WeaponCard" data-compact={compact}>{card.obtained.length} / {card.total}</div>
+  ),
+}));
 vi.mock('../../components/BurndownChart', () => ({
   default: ({ data }: { data: { label: string } }) => <div data-testid="BurndownChart">{data.label}</div>,
 }));
@@ -62,6 +67,7 @@ const mockApis = (settings: SidePanelSettings, failing: string[] = [], twitch: o
     if (url === '/api/stream-data') return { data: getInitialStreamData(), status: 200 };
     if (url === '/api/twitch') return { data: twitch, status: 200 };
     if (url === '/api/salmon-schedule') return { data: schedule, status: 200 };
+    if (url === '/api/weapon-card') return { data: { startedAt: 0, total: 71, obtained: [{ key: 'sshooter', at: 1, source: 'job' }] }, status: 200 };
     throw new Error(`unexpected ${url}`);
   });
 };
@@ -106,6 +112,15 @@ describe('SidePanelOverlayPage', () => {
     render(<SidePanelOverlayPage />);
 
     expect(await screen.findByTestId('ChallengeList')).toHaveTextContent('キケン度MAXでクリア');
+  });
+
+  it('shows the compact weapon card when it is selected', async () => {
+    mockApis({ ...getDefaultSidePanelSettings(), fixedSlots: ['weaponCard'] });
+    render(<SidePanelOverlayPage />);
+
+    const card = await screen.findByTestId('WeaponCard');
+    expect(card).toHaveTextContent('1 / 71');
+    expect(card).toHaveAttribute('data-compact', 'true');
   });
 
   it('shows several slots together from top to bottom', async () => {
@@ -160,6 +175,35 @@ describe('SidePanelOverlayPage', () => {
 
     await act(async () => vi.advanceTimersByTime(10_000));
     await waitFor(() => expect(rotationSlot()).toBe('salmon'));
+  });
+
+  it('rotates through three or more rotation slots in order and loops back', async () => {
+    mockApis({
+      ...rotating,
+      rotationSlots: ['schedule', 'salmon', 'weaponCard', 'challenges'],
+      challenges: [{ id: 1, text: 'お題', done: false }],
+    });
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    render(<SidePanelOverlayPage />);
+    await waitFor(() => expect(rotationSlot()).toBe('schedule'));
+
+    for (const expected of ['salmon', 'weaponCard', 'challenges', 'schedule', 'salmon']) {
+      await act(async () => vi.advanceTimersByTime(10_000));
+      await waitFor(() => expect(rotationSlot()).toBe(expected));
+    }
+  });
+
+  it('skips a rotation slot with nothing to show', async () => {
+    // お題が0個なら「本日のお題」は何も表示しないので、空白の時間を作らずに飛ばす
+    mockApis({ ...rotating, fixedSlots: ['schedule'], rotationSlots: ['salmon', 'weaponCard', 'challenges'], challenges: [] });
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    render(<SidePanelOverlayPage />);
+    await waitFor(() => expect(rotationSlot()).toBe('salmon'));
+
+    for (const expected of ['weaponCard', 'salmon', 'weaponCard']) {
+      await act(async () => vi.advanceTimersByTime(10_000));
+      await waitFor(() => expect(rotationSlot()).toBe(expected));
+    }
   });
 
   it('keeps the fixed slots while rotating below them', async () => {

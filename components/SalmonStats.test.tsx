@@ -4,7 +4,7 @@ import { describe, expect, it } from 'vitest';
 import SalmonStats from './SalmonStats';
 
 const totals = { jobs: 10, goldenEggs: 1234, bossKills: 98, deaths: 15, clears: 8, failures: 2 };
-const lastJob = { id: 10, sessionId: 1, createdAt: 0, goldenEggs: 23, bossKills: 12, deaths: 2, cleared: true, waveReached: 3, stage: '' };
+const lastJob = { id: 10, sessionId: 1, createdAt: 0, goldenEggs: 23, bossKills: 12, deaths: 2, cleared: true, waveReached: 3, stage: '', weapons: [] };
 
 const row = (label: string) => screen.getByRole('rowheader', { name: label }).closest('tr') as HTMLElement;
 

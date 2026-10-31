@@ -21,8 +21,11 @@ import React, {useCallback, useEffect, useRef, useState} from 'react';
 
 import {SalmonScheduleData, pickCurrentSchedule} from '../lib/salmonSchedule';
 import {MAX_COUNT, MAX_WAVE, SalmonJob, SalmonSessionWithTotals, SalmonSummary} from '../lib/salmonTypes';
+import {MAX_JOB_WEAPONS, findSalmonWeapon} from '../lib/salmonWeapons';
 
 import SalmonStats from './SalmonStats';
+import WeaponIcon from './WeaponIcon';
+import WeaponPicker from './WeaponPicker';
 
 const paperSx = {mb: 3, p: 3, bgcolor: 'background.paper', backdropFilter: 'blur(10px)', border: '1px solid rgba(255, 255, 255, 0.1)'};
 const listSx = {my: 2, maxHeight: 240, overflowY: 'auto', p: 1, bgcolor: 'rgba(255, 255, 255, 0.03)', borderRadius: '4px'};
@@ -51,6 +54,12 @@ const JobRow: React.FC<{job: SalmonJob; index: number; onDelete?: (id: number) =
             {index} | {job.cleared ? 'クリア' : `WAVE${job.waveReached} 失敗`} | 金イクラ {job.goldenEggs} / オオモノ {job.bossKills} / デス {job.deaths}
             {job.stage && ` | ${job.stage}`} | {formatDateTime(job.createdAt)}
         </Typography>
+        <Box sx={{display: 'flex', ml: 'auto', mr: 1}}>
+            {job.weapons.map((key, i) => {
+                const weapon = findSalmonWeapon(key);
+                return weapon && <WeaponIcon key={i} weapon={weapon} size={24}/>;
+            })}
+        </Box>
         {onDelete && (
             <IconButton size="small" color="error" onClick={() => onDelete(job.id)} aria-label={`記録 ${index} を削除`}>
                 <RemoveCircleIcon fontSize="small"/>
@@ -67,6 +76,7 @@ const SalmonRunPanel: React.FC = () => {
     const [cleared, setCleared] = useState(true);
     const [waveReached, setWaveReached] = useState(1);
     const [stage, setStage] = useState('');
+    const [weapons, setWeapons] = useState<string[]>([]);
     const [newSessionTitle, setNewSessionTitle] = useState('');
     const [pastSessionId, setPastSessionId] = useState<number | ''>('');
     const [pastSummary, setPastSummary] = useState<SalmonSummary | null>(null);
@@ -128,9 +138,11 @@ const SalmonRunPanel: React.FC = () => {
                 cleared,
                 waveReached: cleared ? MAX_WAVE : waveReached,
                 stage,
+                weapons,
             });
             setSummary(res.data);
             setNumbers(EMPTY_NUMBERS);
+            setWeapons([]);
             setCleared(true);
             await loadSessions();
         } catch {
@@ -220,11 +232,38 @@ const SalmonRunPanel: React.FC = () => {
                     )}
                     <TextField label="ステージ" value={stage} onChange={(e) => setStage(e.target.value)} sx={{flex: 1, minWidth: 160}}/>
                 </Box>
+                <Box sx={{mt: 2}}>
+                    <Box sx={{display: 'flex', alignItems: 'center', gap: 1, mb: 1, minHeight: 48}}>
+                        <Typography variant="body2" sx={{color: 'text.secondary'}}>支給ブキ（任意・{MAX_JOB_WEAPONS} つまで）</Typography>
+                        <Box data-testid="salmon-selected-weapons" sx={{display: 'flex', gap: 0.5}}>
+                            {weapons.map((key, i) => {
+                                const weapon = findSalmonWeapon(key);
+                                return weapon && (
+                                    <IconButton
+                                        key={i}
+                                        size="small"
+                                        onClick={() => setWeapons(weapons.filter((_, j) => j !== i))}
+                                        aria-label={`支給ブキ ${i + 1} つ目の${weapon.name}を外す`}
+                                    >
+                                        <WeaponIcon weapon={weapon} size={36}/>
+                                    </IconButton>
+                                );
+                            })}
+                        </Box>
+                    </Box>
+                    {/* 同じブキが続けて支給されることもあるので、押すたびに追加する（外すときは上の選んだブキを押す） */}
+                    <WeaponPicker
+                        label="支給ブキ"
+                        selected={weapons}
+                        onSelect={(key) => setWeapons((current) => current.length < MAX_JOB_WEAPONS ? [...current, key] : current)}
+                        isDisabled={() => weapons.length >= MAX_JOB_WEAPONS}
+                    />
+                </Box>
                 <Button variant="contained" onClick={handleSubmit} disabled={!canSubmit} fullWidth sx={{mt: 2}}>
                     {saving ? '記録中...' : '記録'}
                 </Button>
                 <Typography variant="caption" sx={{display: 'block', mt: 1, color: 'text.secondary'}}>
-                    記録はすぐに保存され、オーバーレイに反映されます（「OBSに反映」ボタンは不要です）。ステージは次の記録にも引き継がれます。
+                    記録はすぐに保存され、オーバーレイに反映されます（「OBSに反映」ボタンは不要です）。ステージは次の記録にも引き継がれます。支給ブキを選ぶと、ブキ埋めカードも埋まります。
                 </Typography>
             </Paper>
 

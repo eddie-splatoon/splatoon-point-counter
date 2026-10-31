@@ -9,8 +9,10 @@ import ChallengeList from '../../components/ChallengeList';
 import InkTankGauge from '../../components/InkTankGauge';
 import SalmonSchedule from '../../components/SalmonSchedule';
 import SalmonStats from '../../components/SalmonStats';
+import WeaponCard from '../../components/WeaponCard';
 import {SalmonScheduleData, pickCurrentSchedule} from '../../lib/salmonSchedule';
 import {SalmonSummary} from '../../lib/salmonTypes';
+import {WeaponCard as WeaponCardData} from '../../lib/salmonWeapons';
 import {FULL_HEIGHT_SLOTS, SidePanelSettings, SidePanelSlot, getFollowerProgress, pickRotationSlot} from '../../lib/sidePanelTypes';
 import {StreamData} from '../api/stream-data/route';
 
@@ -29,6 +31,7 @@ const SidePanelOverlayPage: React.FC = () => {
     const [streamData, setStreamData] = useState<StreamData | null>(null);
     const [twitch, setTwitch] = useState<TwitchData | null>(null);
     const [schedule, setSchedule] = useState<SalmonScheduleData | null>(null);
+    const [weaponCard, setWeaponCard] = useState<WeaponCardData | null>(null);
     // スケジュールの開催中の判定と残り時間に使う現在時刻（ポーリングのたびに更新する）
     const [now, setNow] = useState(0);
     // ローテーションの位置。key（ローテーションの設定）が変わったら先頭からやり直す
@@ -36,13 +39,14 @@ const SidePanelOverlayPage: React.FC = () => {
 
     const fetchData = useCallback(async () => {
         // 1つの API が落ちていても、他のスロットは表示し続ける
-        const [settingsRes, salmonRes, streamRes, twitchRes, scheduleRes] = await Promise.allSettled([
+        const [settingsRes, salmonRes, streamRes, twitchRes, scheduleRes, weaponCardRes] = await Promise.allSettled([
             axios.get<SidePanelSettings>('/api/side-panel', {headers: NO_CACHE_HEADERS}),
             axios.get<SalmonSummary>('/api/salmon', {headers: NO_CACHE_HEADERS}),
             axios.get<StreamData>('/api/stream-data', {headers: NO_CACHE_HEADERS}),
             axios.get<TwitchData>('/api/twitch', {headers: NO_CACHE_HEADERS}),
             // 外部 API への問い合わせはサーバー側で5分ごとにまとめている
             axios.get<SalmonScheduleData>('/api/salmon-schedule', {headers: NO_CACHE_HEADERS}),
+            axios.get<WeaponCardData>('/api/weapon-card', {headers: NO_CACHE_HEADERS}),
         ]);
         setNow(Date.now());
         if (settingsRes.status === 'fulfilled') setSettings(settingsRes.value.data);
@@ -50,6 +54,7 @@ const SidePanelOverlayPage: React.FC = () => {
         if (streamRes.status === 'fulfilled') setStreamData(streamRes.value.data);
         if (twitchRes.status === 'fulfilled') setTwitch(twitchRes.value.data);
         if (scheduleRes.status === 'fulfilled') setSchedule(scheduleRes.value.data);
+        if (weaponCardRes.status === 'fulfilled') setWeaponCard(weaponCardRes.value.data);
     }, []);
 
     useEffect(() => {
@@ -74,7 +79,22 @@ const SidePanelOverlayPage: React.FC = () => {
 
     if (!settings) return <div className="w-[250px] h-[584px]"/>;
 
-    const rotationSlot = pickRotationSlot(settings, rotationIndex);
+    // 何も表示しないスロットはローテーションで飛ばす（renderSlot が null を返す条件と合わせる）
+    const canShow = (slot: SidePanelSlot) => {
+        switch (slot) {
+            case 'schedule':
+                return schedule !== null;
+            case 'salmon':
+                return salmon !== null;
+            case 'weaponCard':
+                return weaponCard !== null;
+            case 'challenges':
+                return settings.challenges.length > 0;
+            case 'burndown':
+                return Boolean(streamData?.burndown);
+        }
+    };
+    const rotationSlot = pickRotationSlot(settings, rotationIndex, canShow);
     // Twitch 連携スクリプトが未起動、または目標が無いときはゲージを出さない
     const followerProgress = twitch && getFollowerProgress(twitch, settings.followerGoal);
 
@@ -85,6 +105,8 @@ const SidePanelOverlayPage: React.FC = () => {
                 return schedule && <SalmonSchedule schedule={pickCurrentSchedule(schedule.entries, now)} now={now}/>;
             case 'salmon':
                 return salmon && <SalmonStats lastJob={salmon.lastJob} totals={salmon.totals}/>;
+            case 'weaponCard':
+                return weaponCard && <WeaponCard card={weaponCard} compact/>;
             case 'challenges':
                 return <ChallengeList challenges={settings.challenges}/>;
             case 'burndown':

@@ -165,6 +165,13 @@ describe('pickRotationSlot', () => {
     expect([0, 1, 2, 3].map((i) => pickRotationSlot(settings, i))).toEqual(['salmon', 'challenges', 'burndown', 'salmon']);
   });
 
+  it('skips the slots with nothing to show', () => {
+    const settings: SidePanelSettings = { ...getDefaultSidePanelSettings(), rotationSlots: ['salmon', 'weaponCard', 'challenges'] };
+    const canShow = (slot: string) => slot !== 'challenges';
+    expect([0, 1, 2, 3].map((i) => pickRotationSlot(settings, i, canShow))).toEqual(['salmon', 'weaponCard', 'salmon', 'weaponCard']);
+    expect(pickRotationSlot(settings, 0, () => false)).toBeNull();
+  });
+
   it('returns null without rotation slots', () => {
     expect(pickRotationSlot({ ...getDefaultSidePanelSettings(), rotationSlots: [] }, 3)).toBeNull();
   });
@@ -185,6 +192,7 @@ describe('exceedsSlotArea', () => {
     ['the stats alone', settings(['salmon'], [])],
     ['the schedule with the stats rotating below', settings(['schedule'], ['salmon', 'challenges'], 3)],
     ['the burndown rotating alone', settings([], ['burndown'])],
+    ['the schedule with the stats and the weapon card rotating below', settings(['schedule'], ['salmon', 'weaponCard'])],
   ])('fits %s', (_, s) => {
     expect(exceedsSlotArea(s)).toBe(false);
   });
@@ -193,6 +201,7 @@ describe('exceedsSlotArea', () => {
     ['three fixed slots', settings(['schedule', 'salmon', 'challenges'], [], 4)],
     ['the burndown rotating below two fixed slots', settings(['schedule', 'salmon'], ['burndown'])],
     ['many challenges rotating below the schedule', settings(['schedule'], ['challenges'], 8)],
+    ['the weapon card below the schedule and the stats', settings(['schedule', 'salmon', 'weaponCard'], [])],
   ])('does not fit %s', (_, s) => {
     expect(exceedsSlotArea(s)).toBe(true);
   });
