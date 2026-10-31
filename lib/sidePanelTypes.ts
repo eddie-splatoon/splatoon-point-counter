@@ -172,3 +172,43 @@ export function exceedsSlotArea(settings: Pick<SidePanelSettings, 'fixedSlots' |
     const total = parts.reduce((sum, h) => sum + h, 0) + SLOT_GAP * Math.max(0, parts.length - 1);
     return total > SLOT_AREA_HEIGHT;
 }
+
+// ---- 縦型配信用のレイアウト（1080x1920 のキャンバス上部の横長の枠） ----
+
+export const VERTICAL_PANEL_WIDTH = 990;
+export const VERTICAL_PANEL_HEIGHT = 440;
+// 枠の端に付かないようにする余白と、左に置くフォロワーゲージの列の幅
+export const VERTICAL_PANEL_PADDING = 16;
+export const VERTICAL_GAUGE_WIDTH = 260; // 5 桁の「12,345 / 50,000」が 1 行に収まる幅
+// スロットのカードの幅（サイドパネルの幅）と、拡大の上限（スロットが少ないときに大きくなりすぎないように）
+const SLOT_WIDTH = 250;
+const MAX_VERTICAL_SCALE = 1.5;
+
+/** 縦型レイアウトでスロットを並べる領域の大きさ（px）。ゲージを出すときはその分だけ狭い */
+export function verticalSlotArea(gaugeShown: boolean): {width: number; height: number} {
+    const width = VERTICAL_PANEL_WIDTH - VERTICAL_PANEL_PADDING * 2;
+    return {
+        width: gaugeShown ? width - VERTICAL_GAUGE_WIDTH - SLOT_GAP : width,
+        height: VERTICAL_PANEL_HEIGHT - VERTICAL_PANEL_PADDING * 2,
+    };
+}
+
+/**
+ * 縦型レイアウトでスロットのカードを拡大する倍率。固定枠を左から横に並べ、ローテーション枠を最後の列に置いたとき、
+ * 領域に収まる最大の倍率（上限 MAX_VERTICAL_SCALE）。ローテーション枠は一番高いスロットに合わせる（切り替えのたびに大きさが変わらないように）。
+ * 表示するものが無いスロット（データ未取得など。canShow が false）は、オーバーレイで列を作らないので数えない
+ */
+export function verticalSlotScale(
+    settings: Pick<SidePanelSettings, 'fixedSlots' | 'rotationSlots' | 'challenges'>,
+    gaugeShown: boolean,
+    canShow: (slot: SidePanelSlot) => boolean = () => true,
+): number {
+    const heights = (slots: SidePanelSlot[]) => slots.filter(canShow).map((slot) => estimateSlotHeight(slot, settings.challenges.length)).filter((h) => h > 0);
+    const fixed = heights(settings.fixedSlots);
+    const rotation = Math.max(0, ...heights(settings.rotationSlots));
+    const columns = rotation > 0 ? [...fixed, rotation] : fixed;
+    if (columns.length === 0) return 1;
+    const area = verticalSlotArea(gaugeShown);
+    const width = SLOT_WIDTH * columns.length + SLOT_GAP * (columns.length - 1);
+    return Math.min(MAX_VERTICAL_SCALE, area.width / width, area.height / Math.max(...columns));
+}

@@ -272,6 +272,9 @@ const SidePanelSettingsPanel: React.FC = () => {
                 <Typography variant="caption" sx={{display: 'block', mt: 1, color: 'text.secondary'}}>
                     設定はすぐに保存され、オーバーレイに反映されます（「OBSに反映」ボタンは不要です）。
                 </Typography>
+                <Typography variant="caption" sx={{display: 'block', mt: 0.5, color: 'text.secondary'}}>
+                    縦型配信（1080x1920）では /side-panel-overlay/vertical を 990x440 のブラウザソースとして画面上部（x=45, y=115 付近）に置くと、同じ設定のスロットを横並びで表示します（スロットは枠に収まる大きさに自動で拡大・縮小）。
+                </Typography>
             </Paper>
         </>
     );
