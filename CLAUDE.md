@@ -127,7 +127,8 @@
 │   ├── voiceTypes.ts             # 読み上げの型・設定の検証（クライアントからも使う）
 │   ├── speech.ts                 # 読み上げキュー・設定・VOICEVOX との通信（サーバー専用）
 │   ├── salmonWeapons.ts          # サーモンランのブキの定義・ブキ埋めカードの型（クライアントからも使う）
-│   └── weaponCard.ts             # ブキ埋めカードの状態（サーバー専用）
+│   ├── weaponCard.ts             # ブキ埋めカードの状態（サーバー専用）
+│   └── weaponCardImage.ts        # ブキ埋めカードの SNS 投稿用の画像（Canvas で描く。クライアント専用）
 ├── data/                          # SQLite・Twitch トークン（Git / Docker イメージ管理外）
 ├── public/                        # 静的アセット
 │   └── tips.tsv                  # Tips データ
@@ -289,6 +290,7 @@ Twitch のフォロワー数とフォロワー目標を受け取る機能と、�
 - `GET /api/weapon-card`（`{startedAt, total, obtained: {key, at, source}[]}`、埋まった順）、`PATCH {weapon, obtained}`（手動で埋める / 外す）、`POST`（新しいカードを始める）。PATCH / POST は `Content-Type: application/json` 必須
 - コントロールパネルの「サーモンラン」タブでは記録フォームの `WeaponPicker` で支給ブキを選ぶ（押すたびに追加。外すときは選んだブキを押す）。「ブキ埋め」タブ（`components/WeaponCardPanel.tsx`）は進捗・手動の埋める / 外す・新しいカード（確認ダイアログ付き）。どちらもその場で保存
 - サイドパネルの `weaponCard` スロットにも出せる（`<WeaponCard compact/>`。幅 250px に 12 列で縮めた、試合中に埋まり具合がなんとなくわかる程度の表示。スケジュールなどと並べても下段に収まる高さにしている）。`/weapon-card-overlay` は試合の合間などにたまに出す拡大表示という位置づけ
+- 「ブキ埋め」タブの「画像をダウンロード」で、今のカードを SNS 投稿用の PNG（12 列 × 6 行の横長）にする（`lib/weaponCardImage.ts` の `renderWeaponCardImage`。DOM のキャプチャではなく Canvas に直接描く）。ブキの画像は `crossOrigin = 'anonymous'` で読み込み（raw.githubusercontent.com は CORS を許可している）、読み込めないブキはブキ名を文字で描く（Canvas を汚して書き出せなくならないように）。フォントはオーバーレイと同じく共通設定のもの（`/api/stream-data` の `fontFamily`）。Canvas は書式が不正な font を黙って無視するので `canvasFontFamily` でフォント名を引用符で囲み、そのフォントに無い文字用に日本語のシステムフォントを後ろに足す。描く前に `document.fonts.load` で読み込む
 - オーバーレイは 2 秒ごとに `/api/weapon-card` と `/api/stream-data`（フォント）をポーリングする。`components/WeaponCard.tsx` は `ChallengeList` と同じく前回の状態と比べ、ポーリング中に新しく埋まったマスだけスタンプを押す演出をし、71 種そろった瞬間だけ花火を出す（表示した時点の状態・新しいカードの開始では演出しない）
 
 ### `/app/side-panel-overlay/page.tsx` と `/app/api/side-panel/route.ts`
