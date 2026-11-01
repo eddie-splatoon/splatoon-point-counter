@@ -117,5 +117,11 @@ describe('WeaponCardPanel', () => {
 
     expect(screen.getByRole('alert')).toHaveTextContent('画像を作れませんでした。');
     expect(downloadBlob).not.toHaveBeenCalled();
+
+    // 次に成功したら、前回のエラーは消える
+    vi.mocked(renderWeaponCardImage).mockResolvedValue(new Blob(['png']));
+    await act(async () => fireEvent.click(screen.getByRole('button', { name: '画像をダウンロード' })));
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+    expect(downloadBlob).toHaveBeenCalled();
   });
 });

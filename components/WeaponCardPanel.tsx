@@ -74,6 +74,7 @@ const WeaponCardPanel: React.FC = () => {
 
     const handleDownload = async () => {
         setDownloading(true);
+        setError('');
         try {
             // オーバーレイと同じく、OBS に反映済みの共通設定のフォントで描く（取れなければ代わりのフォント）
             const fontFamily = await axios.get<StreamData>('/api/stream-data').then((res) => res.data.fontFamily, () => '');
