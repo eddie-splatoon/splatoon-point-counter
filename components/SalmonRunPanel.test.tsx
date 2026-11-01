@@ -116,7 +116,8 @@ describe('SalmonRunPanel', () => {
     }));
     await waitFor(() => expect(within(screen.getByTestId('salmon-selected-weapons')).queryAllByRole('button')).toHaveLength(0));
     expect(within(screen.getByTestId('salmon-history')).getAllByRole('img', { name: 'スプラシューター' })).toHaveLength(2);
-  });
+    // 71 種のパレットから getByRole で何度も探すので、カバレッジ計測中の CI では既定の 5 秒を超えることがある
+  }, 15_000);
 
   it('fills the stage from the running schedule', async () => {
     mockGet(summaryOf([]), undefined, runningSchedule('ムニ・エール海洋発電所'));

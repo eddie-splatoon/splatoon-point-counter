@@ -77,6 +77,14 @@ const rotationSlot = () => screen.queryByTestId('side-panel-rotation')?.querySel
 const fixedSlots = () => [...screen.getByTestId('side-panel-slot').querySelectorAll('[data-area="fixed"]')].map((el) => el.getAttribute('data-slot'));
 const rotating: SidePanelSettings = { ...getDefaultSidePanelSettings(), fixedSlots: [], rotationSlots: ['salmon', 'burndown'], rotateSeconds: 10 };
 
+// React の Scheduler は偽タイマーを入れる前の本物の setImmediate で effect を流す。負荷が高いと、スロットが表示された時点で
+// ローテーションのタイマー（effect で作る setInterval）がまだ作られていないことがあるので、effect を流してから時間を進める
+const realSetImmediate = globalThis.setImmediate;
+const advance = async (ms: number) => {
+  await act(() => new Promise<void>((resolve) => realSetImmediate(() => resolve())));
+  await act(async () => vi.advanceTimersByTime(ms));
+};
+
 beforeEach(() => {
   vi.clearAllMocks();
 });
@@ -157,7 +165,7 @@ describe('SidePanelOverlayPage', () => {
     await screen.findByTestId('SalmonStats');
 
     mockApis({ ...getDefaultSidePanelSettings(), fixedSlots: ['burndown'] });
-    await act(async () => vi.advanceTimersByTime(2000));
+    await advance(2000);
 
     expect(await screen.findByTestId('BurndownChart')).toBeInTheDocument();
     await waitFor(() => expect(screen.queryByTestId('SalmonStats')).not.toBeInTheDocument());
@@ -170,10 +178,10 @@ describe('SidePanelOverlayPage', () => {
     await screen.findByTestId('SalmonStats');
     expect(rotationSlot()).toBe('salmon');
 
-    await act(async () => vi.advanceTimersByTime(10_000));
+    await advance(10_000);
     await waitFor(() => expect(rotationSlot()).toBe('burndown'));
 
-    await act(async () => vi.advanceTimersByTime(10_000));
+    await advance(10_000);
     await waitFor(() => expect(rotationSlot()).toBe('salmon'));
   });
 
@@ -188,7 +196,7 @@ describe('SidePanelOverlayPage', () => {
     await waitFor(() => expect(rotationSlot()).toBe('schedule'));
 
     for (const expected of ['salmon', 'weaponCard', 'challenges', 'schedule', 'salmon']) {
-      await act(async () => vi.advanceTimersByTime(10_000));
+      await advance(10_000);
       await waitFor(() => expect(rotationSlot()).toBe(expected));
     }
   });
@@ -201,7 +209,7 @@ describe('SidePanelOverlayPage', () => {
     await waitFor(() => expect(rotationSlot()).toBe('salmon'));
 
     for (const expected of ['weaponCard', 'salmon', 'weaponCard']) {
-      await act(async () => vi.advanceTimersByTime(10_000));
+      await advance(10_000);
       await waitFor(() => expect(rotationSlot()).toBe(expected));
     }
   });
@@ -214,7 +222,7 @@ describe('SidePanelOverlayPage', () => {
     expect(fixedSlots()).toEqual(['schedule']);
     expect(rotationSlot()).toBe('salmon');
 
-    await act(async () => vi.advanceTimersByTime(10_000));
+    await advance(10_000);
     await waitFor(() => expect(rotationSlot()).toBe('challenges'));
     expect(fixedSlots()).toEqual(['schedule']);
     expect(screen.getByTestId('SalmonSchedule')).toBeInTheDocument();
@@ -234,13 +242,13 @@ describe('SidePanelOverlayPage', () => {
     vi.useFakeTimers({ shouldAdvanceTime: true });
     render(<SidePanelOverlayPage />);
     await screen.findByTestId('SalmonStats');
-    await act(async () => vi.advanceTimersByTime(10_000));
+    await advance(10_000);
     await waitFor(() => expect(rotationSlot()).toBe('burndown'));
 
     mockApis({ ...rotating, fixedSlots: ['burndown'], rotationSlots: [] });
-    await act(async () => vi.advanceTimersByTime(2000));
+    await advance(2000);
     mockApis(rotating);
-    await act(async () => vi.advanceTimersByTime(2000));
+    await advance(2000);
 
     await waitFor(() => expect(rotationSlot()).toBe('salmon'));
   });
@@ -250,15 +258,15 @@ describe('SidePanelOverlayPage', () => {
     vi.useFakeTimers({ shouldAdvanceTime: true });
     render(<SidePanelOverlayPage />);
     await screen.findByTestId('SalmonStats');
-    await act(async () => vi.advanceTimersByTime(10_000));
+    await advance(10_000);
     await waitFor(() => expect(rotationSlot()).toBe('burndown'));
 
     mockApis({ ...rotating, rotationSlots: ['burndown'] });
-    await act(async () => vi.advanceTimersByTime(2000));
+    await advance(2000);
     await waitFor(() => expect(rotationSlot()).toBe('burndown'));
 
     // 1スロットだけなら、周期が来ても同じスロットのまま
-    await act(async () => vi.advanceTimersByTime(10_000));
+    await advance(10_000);
     expect(rotationSlot()).toBe('burndown');
   });
 
@@ -269,7 +277,7 @@ describe('SidePanelOverlayPage', () => {
     await screen.findByTestId('BurndownChart');
 
     mockApis(getDefaultSidePanelSettings(), ['/api/side-panel']);
-    await act(async () => vi.advanceTimersByTime(2000));
+    await advance(2000);
 
     expect(fixedSlots()).toEqual(['burndown']);
   });
