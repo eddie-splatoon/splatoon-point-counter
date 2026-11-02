@@ -33,10 +33,14 @@ export const clipUrl = (clipId: string) => `https://clips.twitch.tv/${encodeURIC
 
 export const isClipSource = (value: unknown): value is ClipSource => CLIP_SOURCES.includes(value as ClipSource);
 
-const isHttpsUrl = (value: unknown): value is string => {
+// 編集 URL はコントロールパネルでリンクにするので、Twitch のページに限る（偽のログイン画面へ誘導されないように）
+const TWITCH_HOSTS = ['clips.twitch.tv', 'www.twitch.tv', 'twitch.tv', 'dashboard.twitch.tv'];
+
+const isTwitchUrl = (value: unknown): value is string => {
     if (typeof value !== 'string' || value.length > MAX_EDIT_URL_LENGTH) return false;
     try {
-        return new URL(value).protocol === 'https:';
+        const url = new URL(value);
+        return url.protocol === 'https:' && TWITCH_HOSTS.includes(url.hostname);
     } catch {
         return false;
     }
@@ -48,7 +52,7 @@ export function parseClipResult(body: unknown): {id: number; result: ClipResult}
     if (typeof id !== 'number' || !Number.isInteger(id) || id <= 0) return 'id must be a positive integer.';
     if (status === 'created') {
         if (typeof clipId !== 'string' || !CLIP_ID_PATTERN.test(clipId)) return 'clipId must be a Twitch clip ID.';
-        if (!isHttpsUrl(editUrl)) return 'editUrl must be an https URL.';
+        if (!isTwitchUrl(editUrl)) return 'editUrl must be an https URL on twitch.tv.';
         return {id, result: {status, clipId, editUrl}};
     }
     if (status === 'failed') {

@@ -362,7 +362,7 @@ Twitch のフォロワー数とフォロワー目標を受け取る機能と、�
 - Twitch のトークンは Twitch 連携スクリプトだけが持つ（Public クライアントのリフレッシュトークンは使い捨てなので、別のプロセスと共有しない）。そのため依頼は API を介して受け渡す。スコープ `clips:edit` を追加した（保存済みのトークンは承認し直し）
 - 依頼は SQLite の `twitch_clips`（`pending` / `created` / `failed`）。処理待ちの依頼があれば新しく作らずにそれを返す（連呼・連打で同じ場面を重ねて作らない）。`CLIP_REQUEST_TTL_MS`（30 秒）以内に処理されなかった依頼は、一覧・取得のたびに `expireStaleRequests` で期限切れ（失敗）にする（スクリプトを後から起動したときに、別の場面のクリップを作らないように）。作成中に期限切れにされたものも、結果は書き込める
 - Twitch 連携スクリプトの `createClipProcessor` は前回の処理中なら何もせず、一度試した依頼はやり直さない（結果を送れなくても同じ依頼から 2 つ作らない）。文字起こし側（`ClipTrigger`）も 30 秒は依頼し直さず、合言葉を言った発話は字幕・テロップにしない。`CLIP_MATCH=off` で無効
-- `DELETE /api/clip?id=` は履歴から消すだけ（Twitch 上のクリップは消さない）。PATCH の `editUrl` は https のみ、`clipId` は英数字・`-`・`_` のみ受け付ける（コントロールパネルでリンクにするため）。POST / PATCH は `Content-Type: application/json` 必須
+- `DELETE /api/clip?id=` は履歴から消すだけ（Twitch 上のクリップは消さない）。PATCH の `editUrl` は twitch.tv の https のページのみ（偽のページへのリンクにしないため）、`clipId` は英数字・`-`・`_` のみ受け付ける（コントロールパネルでリンクにするため）。POST / PATCH は `Content-Type: application/json` 必須
 
 ### `/components/ScoreDisplay.tsx`
 

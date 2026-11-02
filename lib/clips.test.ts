@@ -77,6 +77,8 @@ describe('parseClipResult', () => {
     [{ id: 1, ...created, clipId: '../x' }, 'clipId'],
     [{ id: 1, ...created, editUrl: 'http://clips.twitch.tv/x/edit' }, 'editUrl'],
     [{ id: 1, ...created, editUrl: 'javascript:alert(1)' }, 'editUrl'],
+    [{ id: 1, ...created, editUrl: 'https://evil.example/clips.twitch.tv' }, 'editUrl'],
+    [{ id: 1, ...created, editUrl: 'https://clips.twitch.tv.evil.example/x' }, 'editUrl'],
     [{ id: 1, status: 'failed', error: ' ' }, 'error'],
   ])('rejects %j', (body, field) => {
     expect(parseClipResult(body)).toContain(field);
