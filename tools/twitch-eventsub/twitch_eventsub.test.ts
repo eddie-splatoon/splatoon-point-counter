@@ -6,6 +6,8 @@ import { join } from 'node:path';
 import { describe, it, expect, vi, beforeEach, afterEach, type Mock } from 'vitest';
 
 import {
+  CLIP_CREATED_TELOP,
+  CLIP_FAILED_TELOP,
   EVENTSUB_URL,
   EventSubConnection,
   HelixError,
@@ -13,9 +15,12 @@ import {
   TwitchClient,
   applyNotification,
   chatToSpeech,
+  clipFailureReason,
+  createClipProcessor,
   loadToken,
   parseIgnoredLogins,
   publishSpeech,
+  publishTelop,
   speakChatMessage,
   speakableName,
   pollDeviceToken,
@@ -260,6 +265,35 @@ describe('TwitchClient', () => {
 
       const chat = fetchFn.mock.calls.slice(1).map(([, init]) => JSON.parse(init.body)).find((b) => b.type === 'channel.chat.message');
       expect(chat).toMatchObject({ version: '1', condition: { broadcaster_user_id: '123', user_id: '123' } });
+    });
+
+    it('creates a clip of the broadcast', async () => {
+      const fetchFn = vi.fn();
+      const client = await authenticated(fetchFn);
+      fetchFn.mockResolvedValueOnce(json({ data: [{ id: 'FunnyClip', edit_url: 'https://clips.twitch.tv/FunnyClip/edit' }] }, 202));
+
+      expect(await client.createClip()).toEqual({ clipId: 'FunnyClip', editUrl: 'https://clips.twitch.tv/FunnyClip/edit' });
+      const [url, init] = fetchFn.mock.calls[1];
+      expect(url).toBe('https://api.twitch.tv/helix/clips?broadcaster_id=123');
+      expect(init.method).toBe('POST');
+    });
+
+    it('throws a HelixError when the clip cannot be created', async () => {
+      const fetchFn = vi.fn();
+      const client = await authenticated(fetchFn);
+      fetchFn.mockResolvedValueOnce(json({ message: 'not live' }, 404));
+
+      const error = await client.createClip().catch((e) => e);
+      expect(error).toBeInstanceOf(HelixError);
+      expect(error.status).toBe(404);
+    });
+
+    it('throws when the clip response is unexpected', async () => {
+      const fetchFn = vi.fn();
+      const client = await authenticated(fetchFn);
+      fetchFn.mockResolvedValueOnce(json({ data: [] }, 202));
+
+      await expect(client.createClip()).rejects.toThrow('クリップの作成結果');
     });
 
     it('throws when a subscription is rejected', async () => {
@@ -644,6 +678,116 @@ describe('publishSpeech', () => {
   it('throws when the app rejects the request', async () => {
     const fetchFn = vi.fn().mockImplementation(async () => json({}, 500));
     await expect(publishSpeech('http://x', 'a', fetchFn)).rejects.toThrow('500');
+  });
+});
+
+describe('scopes', () => {
+  it('includes the scope to create clips', () => {
+    expect(SCOPES).toContain('clips:edit');
+  });
+});
+
+describe('createClipProcessor', () => {
+  const clipApiUrl = 'http://localhost:3000/api/clip';
+  const clip = { clipId: 'FunnyClip', editUrl: 'https://clips.twitch.tv/FunnyClip/edit' };
+
+  const setup = (pending: { id: number }[], createClip: () => Promise<typeof clip>) => {
+    const fetchFn = vi.fn(async (url: string, init?: RequestInit) => (init?.method === 'PATCH' ? json({}) : json({ clips: pending })));
+    const announce = vi.fn(async () => {});
+    const process = createClipProcessor({ clipApiUrl, createClip, announce, fetchFn: fetchFn as unknown as typeof fetch, log: silent });
+    const patches = () => fetchFn.mock.calls.filter(([, init]) => init?.method === 'PATCH').map(([, init]) => JSON.parse(String(init!.body)));
+    return { fetchFn, announce, process, patches };
+  };
+
+  it('creates a clip for each pending request and reports the result', async () => {
+    const createClip = vi.fn(async () => clip);
+    const { fetchFn, announce, process, patches } = setup([{ id: 1 }, { id: 2 }], createClip);
+
+    await process();
+
+    expect(fetchFn.mock.calls[0][0]).toBe(`${clipApiUrl}?status=pending`);
+    expect(createClip).toHaveBeenCalledTimes(2);
+    expect(patches()).toEqual([{ id: 1, status: 'created', ...clip }, { id: 2, status: 'created', ...clip }]);
+    expect(announce).toHaveBeenCalledWith(CLIP_CREATED_TELOP);
+  });
+
+  it('reports a failure and announces it', async () => {
+    const { announce, process, patches } = setup([{ id: 1 }], async () => {
+      throw new HelixError(404, 'not live');
+    });
+
+    await process();
+
+    expect(patches()).toEqual([{ id: 1, status: 'failed', error: '配信していないため作れませんでした' }]);
+    expect(announce).toHaveBeenCalledWith(CLIP_FAILED_TELOP);
+  });
+
+  it('does not create a second clip for a request it already tried', async () => {
+    const createClip = vi.fn(async () => clip);
+    const { fetchFn, process } = setup([{ id: 1 }], createClip);
+    fetchFn.mockImplementation(async (_url: string, init?: RequestInit) => (init?.method === 'PATCH' ? json({}, 503) : json({ clips: [{ id: 1 }] })));
+
+    await expect(process()).rejects.toThrow('503');
+    await process();
+
+    expect(createClip).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not run while the previous run is in progress', async () => {
+    let finish: (value: typeof clip) => void = () => {};
+    const createClip = vi.fn(() => new Promise<typeof clip>((resolve) => {
+      finish = resolve;
+    }));
+    const { process } = setup([{ id: 1 }], createClip);
+
+    const first = process();
+    await vi.waitFor(() => expect(createClip).toHaveBeenCalled());
+    await process();
+    finish(clip);
+    await first;
+
+    expect(createClip).toHaveBeenCalledTimes(1);
+  });
+
+  it('keeps going when the announcement fails', async () => {
+    const { announce, process, patches } = setup([{ id: 1 }], async () => clip);
+    announce.mockRejectedValue(new Error('down'));
+
+    await process();
+
+    expect(patches()).toHaveLength(1);
+  });
+
+  it('throws when the pending requests cannot be fetched', async () => {
+    const { fetchFn, process } = setup([], async () => clip);
+    fetchFn.mockResolvedValueOnce(json({}, 500));
+
+    await expect(process()).rejects.toThrow('500');
+  });
+});
+
+describe('clipFailureReason', () => {
+  it('explains common failures', () => {
+    expect(clipFailureReason(new HelixError(404, 'x'))).toContain('配信していない');
+    expect(clipFailureReason(new HelixError(403, 'x'))).toContain('設定');
+    expect(clipFailureReason(new Error('boom'))).toBe('boom');
+  });
+});
+
+describe('publishTelop', () => {
+  it('shows the telop and asks to speak it', async () => {
+    const fetchFn = vi.fn(async () => json({}));
+    await publishTelop('http://localhost:3000/api/telop', 'クリップしました！', fetchFn as unknown as typeof fetch);
+
+    const [url, init] = fetchFn.mock.calls[0] as unknown as [string, RequestInit];
+    expect(url).toBe('http://localhost:3000/api/telop');
+    expect(init.headers).toEqual({ 'Content-Type': 'application/json' });
+    expect(JSON.parse(String(init.body))).toEqual({ text: 'クリップしました！', speak: true });
+  });
+
+  it('throws when the telop cannot be shown', async () => {
+    const fetchFn = vi.fn(async () => json({}, 500));
+    await expect(publishTelop('http://localhost:3000/api/telop', 'x', fetchFn as unknown as typeof fetch)).rejects.toThrow('500');
   });
 });
 

@@ -3,6 +3,7 @@
 Silero VAD で発話を区切り、発話ごとに mlx-whisper (Apple Silicon) で文字起こしする。
 発話がテロップのプリセットに近ければ、字幕の代わりに /api/telop でそのテロップを出す。
 決まった言葉（「ナイス」など）を含めば、/api/stream-data でスコア表示オーバーレイにエフェクトを出す。
+「クリップ撮って」などと言えば、/api/clip で Twitch のクリップを依頼する（作るのは tools/twitch-eventsub）。
 """
 
 import argparse
@@ -34,7 +35,7 @@ DEFAULT_WHISPER_MODEL = "mlx-community/whisper-large-v3-turbo"
 GLOSSARY = (
     "スプラトゥーン3のサーモンラン。バイト、金イクラ、納品、オオモノシャケ、カタパッド、テッパン、"
     "バクダン、ヘビ、タワー、モグラ、コウモリ、ハシラ、ダイバー、テッキュウ、ナベブタ、トキシラズ、"
-    "満潮、干潮、ラッシュ、グリル、霧、ドスコイ、ヨコヅナ、タツ、ジョー、オカシラ、カンスト、野良、WAVE。"
+    "満潮、干潮、ラッシュ、グリル、霧、ドスコイ、ヨコヅナ、タツ、ジョー、オカシラ、カンスト、野良、WAVE、クリップ。"
 )
 
 # セグメントの信頼度のしきい値。除外したものはログに出るので、それを見て調整する
@@ -69,6 +70,15 @@ EFFECT_KEYWORDS = [
     ("SPARKLE", ("よっしゃ",)),
     ("BUBBLE", ("やべ", "やば")),
 ]
+
+# Twitch のクリップを依頼する合言葉（normalize_for_match した発話に対して調べる）。
+# 「クリップ」だけだと雑談（「クリップってさ」）でも作ってしまうので、頼む言い方か「今のクリップ」に限る。
+# 「クリップしてる」「クリップ撮ってた」のような説明・過去の話では作らない
+CLIP_PATTERN = re.compile(
+    r"くりっぷ(とって|撮って|取って|録って|きって|切って|して|しといて|おねがい|お願い|たのむ|頼む)(?!る|た|い|ない|ま)"
+    r"|(いま|今)の(とこ|ところ)?くりっぷ"
+)
+CLIP_COOLDOWN_SECONDS = 30  # 続けて言っても、この時間内は依頼し直さない
 
 _PUNCTUATION = re.compile(r"[\s、。．，,.!！?？…・「」『』（）()\-ー〜~]+")
 _LATIN_WORD = re.compile(r"[A-Za-z]+")
@@ -177,6 +187,36 @@ def match_effect(text: str) -> str | None:
     return None
 
 
+def match_clip(text: str) -> bool:
+    """発話がクリップの合言葉を含むか。"""
+    return CLIP_PATTERN.search(normalize_for_match(text)) is not None
+
+
+class ClipTrigger:
+    """発話が合言葉を含めば、クリップを依頼する。"""
+
+    def __init__(self, url: str, request_clip, clock=time.monotonic):
+        self.url = url
+        self._request_clip = request_clip
+        self._clock = clock
+        self._requested_at: float | None = None
+
+    def try_request(self, text: str) -> bool:
+        """合言葉を含めば依頼して True を返す（その発話は字幕・テロップにしない）。"""
+        if not match_clip(text):
+            return False
+        now = self._clock()
+        if self._requested_at is not None and now - self._requested_at < CLIP_COOLDOWN_SECONDS:
+            return True  # 依頼したばかり（言い直し・連呼）
+        try:
+            self._request_clip(self.url)
+        except Exception as e:  # noqa: BLE001 - 依頼できなくても字幕は続ける
+            print(f"[caption-stt] クリップを依頼できませんでした: {e}", file=sys.stderr)
+            return True
+        self._requested_at = now
+        return True
+
+
 class TelopMatcher:
     """テロップのプリセットを定期的に取得し、発話に近いものがあればテロップを出す。"""
 
@@ -224,6 +264,16 @@ def default_telop_url(caption_url: str) -> str:
 
 def default_effect_url(caption_url: str) -> str:
     return urljoin(caption_url, "/api/stream-data")
+
+
+def default_clip_url(caption_url: str) -> str:
+    return urljoin(caption_url, "/api/clip")
+
+
+def request_clip(url: str) -> None:
+    import requests
+
+    requests.post(url, json={"source": "voice"}, timeout=3).raise_for_status()
 
 
 def trigger_effect(url: str, effect: str) -> None:
@@ -355,6 +405,7 @@ def run(
     device: int | str | None,
     telop: TelopMatcher | None,
     effect_url: str | None,
+    clip: ClipTrigger | None,
     save_dir: Path | None,
 ) -> None:
     import numpy as np
@@ -406,6 +457,9 @@ def run(
         reason = caption_rejection(text)
         if reason:
             print(f"[caption-stt] (除外: {reason}) {text}")
+            return
+        if clip and clip.try_request(text):
+            print(f"[caption-stt] (クリップ) {text}")
             return
         # エフェクトは字幕・テロップとは別に出す（「ナイス」ならテロップとエフェクトの両方）
         effect = match_effect(text) if effect_url else None
@@ -467,6 +521,9 @@ def main() -> None:
         telop_url, fetch_telop_presets, partial(show_telop, speak=os.environ.get("TELOP_SPEAK") == "on")
     )
     effect_url = None if os.environ.get("EFFECT_MATCH") == "off" else (os.environ.get("EFFECT_URL") or default_effect_url(caption_url))
+    clip = None if os.environ.get("CLIP_MATCH") == "off" else ClipTrigger(
+        os.environ.get("CLIP_URL") or default_clip_url(caption_url), request_clip
+    )
 
     if args.compare:
         models = [m.strip() for m in (args.models or model).split(",") if m.strip()]
@@ -485,6 +542,7 @@ def main() -> None:
             device=parse_device(os.environ.get("MIC_DEVICE")),
             telop=telop,
             effect_url=effect_url,
+            clip=clip,
             save_dir=Path(save_dir) if save_dir else None,
         )
     except KeyboardInterrupt:

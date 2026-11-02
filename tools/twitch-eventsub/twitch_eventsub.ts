@@ -1,6 +1,7 @@
 /**
  * Twitch のフォロワー数とフォロワー目標を EventSub WebSocket で受信し、/api/twitch へ送信する常駐スクリプト。
  * チャットも受信し、初めてコメントした視聴者への挨拶と配信者自身のコメントを /api/speech（読み上げキュー）へ送る。
+ * /api/clip に届いたクリップの依頼（声・ボタン）を受けて、クリップを作る。
  *
  *   pnpm twitch    # リポジトリのルートで起動（README.md 参照）
  *
@@ -11,13 +12,15 @@ import { chmod, mkdir, readFile, writeFile } from 'node:fs/promises';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-export const SCOPES = ['moderator:read:followers', 'channel:read:goals', 'user:read:chat'];
+export const SCOPES = ['moderator:read:followers', 'channel:read:goals', 'user:read:chat', 'clips:edit'];
 export const EVENTSUB_URL = 'wss://eventsub.wss.twitch.tv/ws';
 const ID_URL = 'https://id.twitch.tv/oauth2';
 const HELIX_URL = 'https://api.twitch.tv/helix';
 
 // unfollow はイベントが無いため、定期的に総数を取り直す（Next.js 再起動でインメモリの値が消えた場合の再送も兼ねる）
 const RESYNC_INTERVAL_MS = 60_000;
+// クリップの依頼を確認する間隔（言ってからクリップになるまでの遅れを小さくする）
+const CLIP_POLL_INTERVAL_MS = 1_000;
 const INITIAL_RECONNECT_DELAY_MS = 1_000;
 const MAX_RECONNECT_DELAY_MS = 60_000;
 // keepalive_timeout_seconds を過ぎてもメッセージが来なければ切断とみなす（ネットワーク遅延分の猶予）
@@ -229,6 +232,14 @@ export class TwitchClient {
     const res = await this.helix(`/goals?broadcaster_id=${this.userId}`);
     const goal = ((await res.json()).data as GoalEvent[]).find((g) => g.type === 'follower');
     return goal ? { current: goal.current_amount, target: goal.target_amount } : null;
+  }
+
+  /** 配信のクリップを作る（直前の場面）。配信していないときなどは HelixError */
+  async createClip(): Promise<Clip> {
+    const res = await this.helix(`/clips?broadcaster_id=${this.userId}`, { method: 'POST' });
+    const clip = (await res.json()).data?.[0];
+    if (typeof clip?.id !== 'string' || typeof clip?.edit_url !== 'string') throw new Error('クリップの作成結果を読めませんでした');
+    return { clipId: clip.id, editUrl: clip.edit_url };
   }
 
   async subscribeAll(sessionId: string): Promise<void> {
@@ -562,6 +573,94 @@ export async function speakChatMessage(event: unknown, context: ChatSpeechContex
   }
 }
 
+// ---- クリップ ----
+
+export interface Clip {
+  clipId: string;
+  editUrl: string;
+}
+
+export const CLIP_CREATED_TELOP = 'クリップしました！';
+export const CLIP_FAILED_TELOP = 'クリップできませんでした';
+
+/** クリップを作れなかった理由（コントロールパネルの履歴に出す） */
+export function clipFailureReason(error: unknown): string {
+  if (error instanceof HelixError && error.status === 404) return '配信していないため作れませんでした';
+  if (error instanceof HelixError && error.status === 403) return 'クリップを作れない設定です（チャンネルのクリップの設定・権限を確認してください）';
+  return (error as Error).message;
+}
+
+interface ClipProcessorOptions {
+  clipApiUrl: string;
+  createClip: () => Promise<Clip>;
+  // 配信で知らせる（テロップ＋読み上げ）
+  announce: (text: string) => Promise<void>;
+  fetchFn?: FetchFn;
+  log?: (message: string) => void;
+}
+
+/**
+ * /api/clip の処理待ちの依頼を古い順に 1 件ずつクリップにして、結果を書き込む関数を作る。
+ * 前回の処理が終わっていなければ何もしない。一度試した依頼はやり直さない（同じ依頼から 2 つ作らない）
+ */
+export function createClipProcessor(options: ClipProcessorOptions): () => Promise<void> {
+  const { clipApiUrl, createClip, announce, fetchFn = fetch, log = console.log } = options;
+  let running = false;
+  // クリップを作ろうとした依頼。結果を書き込めなかったとき（Next.js の再起動など）に、同じ依頼でもう一度作らない
+  const attempted = new Set<number>();
+
+  const report = async (id: number, result: Record<string, unknown>) => {
+    const res = await fetchFn(clipApiUrl, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id, ...result }),
+    });
+    if (!res.ok) throw new Error(`${clipApiUrl} への結果の送信に失敗しました: ${res.status}`);
+  };
+
+  const processOne = async (id: number) => {
+    attempted.add(id);
+    let clip: Clip;
+    try {
+      clip = await createClip();
+    } catch (error) {
+      const reason = clipFailureReason(error);
+      log(`クリップを作れませんでした: ${reason}`);
+      await report(id, { status: 'failed', error: reason });
+      await announce(CLIP_FAILED_TELOP).catch(() => {});
+      return;
+    }
+    log(`クリップを作りました: ${clip.editUrl}`);
+    await report(id, { status: 'created', ...clip });
+    await announce(CLIP_CREATED_TELOP).catch(() => {});
+  };
+
+  return async () => {
+    if (running) return;
+    running = true;
+    try {
+      const res = await fetchFn(`${clipApiUrl}?status=pending`);
+      if (!res.ok) throw new Error(`${clipApiUrl} の取得に失敗しました: ${res.status}`);
+      const { clips } = (await res.json()) as { clips: { id: number }[] };
+      for (const { id } of clips) {
+        if (!attempted.has(id)) await processOne(id);
+      }
+    } finally {
+      running = false;
+    }
+  };
+}
+
+/** テロップを出して読み上げる（読み上げが無効ならテロップだけ） */
+export async function publishTelop(telopUrl: string, text: string, fetchFn: FetchFn = fetch): Promise<void> {
+  const res = await fetchFn(telopUrl, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ text, speak: true }),
+  });
+  if (!res.ok) throw new Error(`${telopUrl} への送信に失敗しました: ${res.status}`);
+}
+
 // ---- アプリへの送信 ----
 
 export async function publishState(apiUrl: string, state: TwitchState, fetchFn: FetchFn = fetch): Promise<void> {
@@ -581,6 +680,8 @@ async function main(): Promise<void> {
   }
   const apiUrl = process.env.TWITCH_API_URL ?? 'http://localhost:3000/api/twitch';
   const speechUrl = process.env.TWITCH_SPEECH_API_URL ?? new URL('/api/speech', apiUrl).toString();
+  const clipApiUrl = process.env.TWITCH_CLIP_API_URL ?? new URL('/api/clip', apiUrl).toString();
+  const telopUrl = new URL('/api/telop', clipApiUrl).toString();
   const log = (message: string) => console.log(`[twitch] ${message}`);
 
   const client = new TwitchClient({ clientId, tokenPath: process.env.TWITCH_TOKEN_PATH ?? DEFAULT_TOKEN_PATH, log });
@@ -610,6 +711,26 @@ async function main(): Promise<void> {
     }
     await publish();
   }, RESYNC_INTERVAL_MS);
+
+  const processClipRequests = createClipProcessor({
+    clipApiUrl,
+    createClip: () => client.createClip(),
+    announce: (text) => publishTelop(telopUrl, text),
+    log,
+  });
+  let clipWarned = false;
+  setInterval(() => {
+    processClipRequests().then(
+      () => {
+        clipWarned = false;
+      },
+      (error) => {
+        // Next.js が止まっている間、1 秒ごとに同じ警告を出し続けない
+        if (!clipWarned) log(`警告: クリップの依頼を処理できませんでした: ${(error as Error).message}`);
+        clipWarned = true;
+      },
+    );
+  }, CLIP_POLL_INTERVAL_MS);
 
   const chatContext: ChatSpeechContext = {
     broadcasterId: client.userId,

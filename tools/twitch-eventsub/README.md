@@ -1,6 +1,6 @@
 # twitch-eventsub
 
-Twitch のフォロワー数とフォロワー目標（クリエイターゴール）をリアルタイムに受信し、アプリの `/api/twitch` へ送信する常駐スクリプトです。チャットも受信し、初めてコメントした視聴者への挨拶と配信者自身のコメントを、アプリの読み上げキュー（`/api/speech`）へ送ります。
+Twitch のフォロワー数とフォロワー目標（クリエイターゴール）をリアルタイムに受信し、アプリの `/api/twitch` へ送信する常駐スクリプトです。チャットも受信し、初めてコメントした視聴者への挨拶と配信者自身のコメントを、アプリの読み上げキュー（`/api/speech`）へ送ります。声やコントロールパネルのボタンで依頼された（`/api/clip`）Twitch のクリップも作ります。
 
 - 受信: [EventSub WebSocket](https://dev.twitch.tv/docs/eventsub/handling-websocket-events/)（`channel.follow` v2、`channel.goal.begin` / `progress` / `end`、`channel.chat.message` v1）
 - 認証: [Device Code Flow](https://dev.twitch.tv/docs/authentication/getting-tokens-oauth/#device-code-grant-flow)（リダイレクト用のサーバーや公開 URL が不要）
@@ -14,6 +14,7 @@ sequenceDiagram
     participant Twitch as Twitch (Helix / EventSub)
     participant API as /api/twitch
     participant Speech as /api/speech
+    participant Clip as /api/clip
     Script->>Twitch: 認証（初回のみブラウザで承認）
     Script->>Twitch: GET /channels/followers, /goals
     Script->>API: POST {followerTotal, goal, lastFollowAt}
@@ -22,6 +23,9 @@ sequenceDiagram
     Script->>API: POST（通知ごと・60秒ごとの再同期）
     Twitch-->>Script: チャットの通知
     Script->>Speech: POST {text}（初コメの挨拶・配信者のコメント）
+    Script->>Clip: GET /api/clip?status=pending（1 秒ごと）
+    Script->>Twitch: POST /clips
+    Script->>Clip: PATCH {id, status, clipId, editUrl}
 ```
 
 ## 初回セットアップ
@@ -74,9 +78,18 @@ sequenceDiagram
 - 共有チャット（Shared Chat）で、ほかのチャンネルから届いたコメントは読みません
 - 視聴者の名前やコメントは、ログ・ファイルに残しません
 
+## クリップ
+
+配信中に「クリップ撮って」「今のクリップ」などと言う（文字起こしスクリプト `pnpm caption` が `/api/clip` に依頼する）か、コントロールパネルの「クリップ」タブの「今クリップする」を押すと、直前の場面をクリップにします。
+
+- 1 秒ごとに `/api/clip` の処理待ちの依頼を確認し、[Create Clip](https://dev.twitch.tv/docs/api/reference/#create-clip) で作ります
+- 作れたら「クリップしました！」、作れなかったら（配信していないなど）「クリップできませんでした」をテロップで出し、読み上げが有効なら読み上げます
+- 結果（クリップの URL・編集 URL・失敗理由）は SQLite に残り、コントロールパネルの「クリップ」タブで確認できます。タイトルは配信後に編集 URL から付けてください
+- 依頼から 30 秒以内に処理されなかった依頼（スクリプトを起動していなかったなど）は期限切れにします（後から別の場面のクリップが作られないように）
+
 ### 以前から使っている場合（再承認）
 
-チャットを読むためにスコープ `user:read:chat` を追加しました。保存済みのトークンにはこのスコープが無いため、更新後に初めて `pnpm twitch` を起動したときだけ、ブラウザでの承認をもう一度求められます。
+チャットを読むためのスコープ `user:read:chat`、クリップを作るためのスコープ `clips:edit` を追加しました。保存済みのトークンにこれらのスコープが無いと、更新後に初めて `pnpm twitch` を起動したときだけ、ブラウザでの承認をもう一度求められます。
 
 ## 環境変数
 
@@ -86,6 +99,7 @@ sequenceDiagram
 | `TWITCH_API_URL` | `http://localhost:3000/api/twitch` | 送信先 |
 | `TWITCH_TOKEN_PATH` | `data/twitch-token.json` | トークンの保存先 |
 | `TWITCH_SPEECH_API_URL` | `TWITCH_API_URL` と同じホストの `/api/speech` | 読み上げキューの送信先 |
+| `TWITCH_CLIP_API_URL` | `TWITCH_API_URL` と同じホストの `/api/clip` | クリップの依頼の取得先・結果の送信先（テロップは同じホストの `/api/telop` に出す） |
 | `TWITCH_SPEECH_IGNORE` | （なし） | 読み上げないアカウントのログイン名（カンマ区切り） |
 
 ## テスト

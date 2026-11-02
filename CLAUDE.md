@@ -17,9 +17,9 @@
 7. **実況テロップオーバーレイ** (`/telop-overlay`) - コントロールパネルのボタン・キーボードで出す定型文を数秒だけ大きく表示
 8. **読み上げ（音声専用）オーバーレイ** (`/voice-overlay`) - 読み上げキューの文を VOICEVOX で音声にして順に再生（画面には何も出さない）
 9. **ブキ埋めカードオーバーレイ** (`/weapon-card-overlay`) - サーモンランのオールランダムで支給された全ブキ種（71 種）を埋めていくカード
-10. **バックエンドAPI** (`/api/stream-data`, `/api/caption`, `/api/twitch`, `/api/salmon`, `/api/side-panel`, `/api/salmon-schedule`, `/api/telop`, `/api/speech`, `/api/voice`, `/api/weapon-card`) - データ管理とクライアント間の同期
-11. **文字起こしスクリプト** (`tools/caption-stt/`) - マイク音声を文字起こしして `/api/caption` へ送信（Python, Mac ネイティブ実行）
-12. **Twitch連携スクリプト** (`tools/twitch-eventsub/`) - フォロワー数・フォロワー目標を EventSub で受信して `/api/twitch` へ送信。チャットの初コメの挨拶・配信者のコメントを `/api/speech` へ送信（Node, 依存なし）
+10. **バックエンドAPI** (`/api/stream-data`, `/api/caption`, `/api/twitch`, `/api/salmon`, `/api/side-panel`, `/api/salmon-schedule`, `/api/telop`, `/api/speech`, `/api/voice`, `/api/weapon-card`, `/api/clip`) - データ管理とクライアント間の同期
+11. **文字起こしスクリプト** (`tools/caption-stt/`) - マイク音声を文字起こしして `/api/caption` へ送信。「クリップ撮って」などで `/api/clip` にクリップを依頼（Python, Mac ネイティブ実行）
+12. **Twitch連携スクリプト** (`tools/twitch-eventsub/`) - フォロワー数・フォロワー目標を EventSub で受信して `/api/twitch` へ送信。チャットの初コメの挨拶・配信者のコメントを `/api/speech` へ送信。`/api/clip` の依頼で Twitch のクリップを作成（Node, 依存なし）
 
 ## 技術スタック
 
@@ -90,8 +90,10 @@
 │       │   ├── route.ts          # 読み上げの設定API
 │       │   └── speakers/
 │       │       └── route.ts      # VOICEVOX の話者一覧の中継
-│       └── weapon-card/
-│           └── route.ts          # ブキ埋めカードAPI
+│       ├── weapon-card/
+│       │   └── route.ts          # ブキ埋めカードAPI
+│       └── clip/
+│           └── route.ts          # Twitch のクリップの依頼・結果API
 ├── components/                    # 再利用可能なReactコンポーネント
 │   ├── ScoreDisplay.tsx          # スコア表示
 │   ├── BurndownChart.tsx         # バーンダウンチャート
@@ -115,7 +117,8 @@
 │   ├── WeaponIcon.tsx            # ブキの画像（読み込めなければブキ名）
 │   ├── WeaponPicker.tsx          # カテゴリごとのブキのパレット（記録・ブキ埋めタブで使う）
 │   ├── WeaponCard.tsx            # ブキ埋めカード（オーバーレイ）
-│   └── WeaponCardPanel.tsx       # コントロールパネルのブキ埋めタブ
+│   ├── WeaponCardPanel.tsx       # コントロールパネルのブキ埋めタブ
+│   └── ClipPanel.tsx             # コントロールパネルのクリップタブ
 ├── lib/
 │   ├── localStorage.ts           # ローカルストレージのラッパー
 │   ├── db.ts                     # SQLite の接続とスキーマ
@@ -128,6 +131,8 @@
 │   ├── speech.ts                 # 読み上げキュー・設定・VOICEVOX との通信（サーバー専用）
 │   ├── salmonWeapons.ts          # サーモンランのブキの定義・ブキ埋めカードの型（クライアントからも使う）
 │   ├── weaponCard.ts             # ブキ埋めカードの状態（サーバー専用）
+│   ├── clipTypes.ts              # クリップの依頼の型・結果の検証（クライアントからも使う）
+│   ├── clips.ts                  # クリップの依頼の保存（サーバー専用）
 │   └── weaponCardImage.ts        # ブキ埋めカードの SNS 投稿用の画像（Canvas で描く。クライアント専用）
 ├── data/                          # SQLite・Twitch トークン（Git / Docker イメージ管理外）
 ├── public/                        # 静的アセット
@@ -348,6 +353,16 @@ Twitch のフォロワー数とフォロワー目標を受け取る機能と、�
 - オーバーレイは 0.5 秒ごとにキューを取得し、開いた時点でキューにあったものは再生しない。新しいものを 1 件ずつ順に `Audio` で再生し、再生できなかったとき（VOICEVOX 未起動・自動再生の拒否など）も止まらずに次へ進む
 - コントロールパネルの「テロップ」タブの下に `components/VoiceSettingsPanel.tsx`（有効/無効・話者・速度・音量・テスト再生・クレジット表記）。VOICEVOX に接続できなくても保存済みの話者は表示する
 - テストでは `fetch` を `vi.stubGlobal` で差し替える（実際の VOICEVOX には接続しない）
+
+### `/app/api/clip/route.ts` と `lib/clips.ts`
+
+配信中にゲームをしていてボタンを押せないので、声で Twitch のクリップを作る機能。
+
+- 流れ: 文字起こしスクリプトが合言葉（`CLIP_PATTERN`。「クリップ」＋「撮って / して / お願い」など、または「今の（とこ）クリップ」。「クリップ」単体では雑談で誤爆するので作らない）を聞くと `POST /api/clip {source: 'voice'}` → Twitch 連携スクリプトが 1 秒ごとに `GET /api/clip?status=pending` で拾い、Helix の `POST /clips` で作って `PATCH /api/clip {id, status, clipId, editUrl | error}` → `POST /api/telop {text, speak: true}` で「クリップしました！」/「クリップできませんでした」をテロップ＋読み上げで知らせる。コントロールパネルの「クリップ」タブ（`components/ClipPanel.tsx`）のボタンも同じ依頼を送る（`source: 'button'`）
+- Twitch のトークンは Twitch 連携スクリプトだけが持つ（Public クライアントのリフレッシュトークンは使い捨てなので、別のプロセスと共有しない）。そのため依頼は API を介して受け渡す。スコープ `clips:edit` を追加した（保存済みのトークンは承認し直し）
+- 依頼は SQLite の `twitch_clips`（`pending` / `created` / `failed`）。処理待ちの依頼があれば新しく作らずにそれを返す（連呼・連打で同じ場面を重ねて作らない）。`CLIP_REQUEST_TTL_MS`（30 秒）以内に処理されなかった依頼は、一覧・取得のたびに `expireStaleRequests` で期限切れ（失敗）にする（スクリプトを後から起動したときに、別の場面のクリップを作らないように）。作成中に期限切れにされたものも、結果は書き込める
+- Twitch 連携スクリプトの `createClipProcessor` は前回の処理中なら何もせず、一度試した依頼はやり直さない（結果を送れなくても同じ依頼から 2 つ作らない）。文字起こし側（`ClipTrigger`）も 30 秒は依頼し直さず、合言葉を言った発話は字幕・テロップにしない。`CLIP_MATCH=off` で無効
+- `DELETE /api/clip?id=` は履歴から消すだけ（Twitch 上のクリップは消さない）。作成待ちのものは 409（作成中に消すと結果を書き込めずに失われるため）。PATCH の `editUrl` は twitch.tv の https のページのみ（偽のページへのリンクにしないため）、`clipId` は英数字・`-`・`_` のみ受け付ける（コントロールパネルでリンクにするため）。POST / PATCH は `Content-Type: application/json` 必須
 
 ### `/components/ScoreDisplay.tsx`
 
