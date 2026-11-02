@@ -2,16 +2,20 @@ import numpy as np
 import pytest
 
 from caption_stt import (
+    CLIP_COOLDOWN_SECONDS,
     GLOSSARY,
     TELOP_COOLDOWN_SECONDS,
     TELOP_REFRESH_SECONDS,
+    ClipTrigger,
     TelopMatcher,
     build_prompt,
     caption_rejection,
+    default_clip_url,
     default_effect_url,
     default_telop_url,
     is_valid_caption,
     load_sample,
+    match_clip,
     match_effect,
     match_telop,
     parse_device,
@@ -250,3 +254,50 @@ def test_save_and_load_sample(tmp_path):
 )
 def test_parse_device(value, expected):
     assert parse_device(value) == expected
+
+
+@pytest.mark.parametrize(
+    "text",
+    ["クリップ撮って", "今のクリップ取って！", "クリップお願い", "くりっぷして", "今のとこクリップ", "いまのクリップ", "ク リ ッ プ、とって"],
+)
+def test_match_clip(text):
+    assert match_clip(text)
+
+
+@pytest.mark.parametrize("text", ["クリップってさ", "クリップ見たよ", "ナイス！", "取って"])
+def test_match_clip_ignores_other_speech(text):
+    assert not match_clip(text)
+
+
+def test_clip_trigger_requests_once_per_cooldown():
+    clock = FakeClock()
+    requested = []
+    trigger = ClipTrigger("http://localhost:3000/api/clip", requested.append, clock)
+
+    assert not trigger.try_request("こんにちは")
+    assert trigger.try_request("クリップ撮って")
+    assert trigger.try_request("クリップ撮って！")  # 言い直しは字幕にもしない
+    assert requested == ["http://localhost:3000/api/clip"]
+
+    clock.now += CLIP_COOLDOWN_SECONDS
+    assert trigger.try_request("今のクリップ")
+    assert len(requested) == 2
+
+
+def test_clip_trigger_retries_after_failure():
+    clock = FakeClock()
+    calls = []
+
+    def fail_once(url):
+        calls.append(url)
+        if len(calls) == 1:
+            raise RuntimeError("down")
+
+    trigger = ClipTrigger("http://localhost:3000/api/clip", fail_once, clock)
+    assert trigger.try_request("クリップ撮って")
+    assert trigger.try_request("クリップ撮って")
+    assert len(calls) == 2
+
+
+def test_default_clip_url():
+    assert default_clip_url("http://localhost:3000/api/caption") == "http://localhost:3000/api/clip"

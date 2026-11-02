@@ -65,6 +65,15 @@ MIC_DEVICE="デバイス名の一部" pnpm caption
 
 言葉を変えるときは `caption_stt.py` の `EFFECT_KEYWORDS` を編集します。無効にするときは `EFFECT_MATCH=off pnpm caption`。
 
+## クリップを作る
+
+「クリップ撮って」「クリップお願い」「今のクリップ」などと言うと、`/api/clip` に Twitch のクリップを依頼します（作るのは Twitch 連携スクリプト `pnpm twitch`。起動しておいてください）。作れたらテロップと読み上げで知らせます。
+
+- 雑談で作らないよう、「クリップ」＋「撮って / 取って / 切って / して / お願い / 頼む」か「今の（とこ）クリップ」を含む発話に限ります。言い方を変えるときは `caption_stt.py` の `CLIP_PATTERN` を編集します
+- 合言葉を言った発話は字幕・テロップにしません
+- 30 秒以内に言い直しても、依頼し直しません
+- 無効にするときは `CLIP_MATCH=off pnpm caption`
+
 ## モデルを比べる
 
 同じ音声で複数のモデル（や、しきい値・用語集を変えた後の結果）を比べられます。
@@ -104,6 +113,8 @@ MIC_DEVICE="デバイス名の一部" pnpm caption
 | `TELOP_MATCH` | （有効） | `off` で発話からテロップを出さない |
 | `EFFECT_URL` | `CAPTION_URL` と同じホストの `/api/stream-data` | エフェクトの送信先 |
 | `EFFECT_MATCH` | （有効） | `off` で話した言葉からエフェクトを出さない |
+| `CLIP_URL` | `CAPTION_URL` と同じホストの `/api/clip` | クリップの依頼の送信先 |
+| `CLIP_MATCH` | （有効） | `off` で話した言葉からクリップを依頼しない |
 | `CAPTION_SAVE_DIR` | （保存しない） | 発話の音声と文字起こし結果を保存するディレクトリ（モデルの比較用） |
 | `MIC_DEVICE` | `MIC (BRIDGE CAST ONE)`（`run.sh` 経由の場合。直接実行時はシステムの既定入力） | `--list-devices` で表示される番号、またはデバイス名の一部 |
 

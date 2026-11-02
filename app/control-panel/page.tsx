@@ -22,6 +22,7 @@ import axios from 'axios';
 import Image from 'next/image';
 import React, {useState, useEffect, useMemo, useCallback} from 'react';
 
+import ClipPanel from '../../components/ClipPanel';
 import SalmonRunPanel from '../../components/SalmonRunPanel';
 import SidePanelSettingsPanel from '../../components/SidePanelSettingsPanel';
 import TelopBar from '../../components/TelopBar';
@@ -399,6 +400,7 @@ const ControlPanelPage: React.FC = () => {
                         <Tab label="ブキ埋め" value="weaponCard"/>
                         <Tab label="サイドパネル" value="sidePanel"/>
                         <Tab label="テロップ" value="telop"/>
+                        <Tab label="クリップ" value="clip"/>
                         <Tab label="共通設定" value="common"/>
                     </Tabs>
 
@@ -506,6 +508,8 @@ const ControlPanelPage: React.FC = () => {
                     {formData.activeTab === 'weaponCard' && <WeaponCardPanel/>}
 
                     {formData.activeTab === 'sidePanel' && <SidePanelSettingsPanel/>}
+
+                    {formData.activeTab === 'clip' && <ClipPanel/>}
 
                     {formData.activeTab === 'telop' && (
                         <>

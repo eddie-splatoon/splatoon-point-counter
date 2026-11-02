@@ -23,6 +23,17 @@ CREATE TABLE IF NOT EXISTS salmon_jobs (
     weapons TEXT NOT NULL DEFAULT '[]'
 );
 CREATE INDEX IF NOT EXISTS salmon_jobs_session_id ON salmon_jobs(session_id);
+-- 声やボタンで依頼した Twitch のクリップ（tools/twitch-eventsub が作成して結果を書き込む）
+CREATE TABLE IF NOT EXISTS twitch_clips (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    source TEXT NOT NULL,
+    status TEXT NOT NULL,
+    requested_at INTEGER NOT NULL,
+    completed_at INTEGER,
+    clip_id TEXT,
+    edit_url TEXT,
+    error TEXT
+);
 -- 画面ごとの設定など、1つの値を JSON で丸ごと保存するキーバリュー
 CREATE TABLE IF NOT EXISTS app_state (
     key TEXT PRIMARY KEY,
