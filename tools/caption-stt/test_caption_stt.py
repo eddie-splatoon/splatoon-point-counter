@@ -258,13 +258,16 @@ def test_parse_device(value, expected):
 
 @pytest.mark.parametrize(
     "text",
-    ["クリップ撮って", "今のクリップ取って！", "クリップお願い", "くりっぷして", "今のとこクリップ", "いまのクリップ", "ク リ ッ プ、とって"],
+    ["クリップ撮って", "今のクリップ取って！", "クリップしてください", "クリップしてくれ", "クリップお願い", "くりっぷして", "今のとこクリップ", "いまのクリップ", "ク リ ッ プ、とって"],
 )
 def test_match_clip(text):
     assert match_clip(text)
 
 
-@pytest.mark.parametrize("text", ["クリップってさ", "クリップ見たよ", "ナイス！", "取って"])
+@pytest.mark.parametrize(
+    "text",
+    ["クリップってさ", "クリップ見たよ", "ナイス！", "取って", "クリップしてるんだけど画質が", "クリップしてたから", "クリップ撮ってました", "クリップしています"],
+)
 def test_match_clip_ignores_other_speech(text):
     assert not match_clip(text)
 
