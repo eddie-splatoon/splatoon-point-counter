@@ -3,56 +3,49 @@ import { describe, it, expect } from 'vitest';
 
 import Home from './page';
 
-describe('Home Page', () => {
-  it('renders the main heading and navigation buttons', () => {
-    render(<Home />);
-    
-    // Check for the main heading
-    const heading = screen.getByRole('heading', {
-      name: /OBS Overlay Launcher/i,
-    });
-    expect(heading).toBeInTheDocument();
+const PREVIEWED_PAGES = [
+  { label: 'スコア＆メッセージ', href: '/obs-overlay' },
+  { label: 'バーンダウンチャート', href: '/burndown-overlay' },
+  { label: '字幕', href: '/caption-overlay' },
+  { label: 'サイドパネル', href: '/side-panel-overlay' },
+  { label: 'サイドパネル 縦型配信用', href: '/side-panel-overlay/vertical' },
+  { label: '実況テロップ', href: '/telop-overlay' },
+  { label: 'ブキ埋めカード', href: '/weapon-card-overlay' },
+];
 
-    // Check for Control Panel button
+describe('Home Page', () => {
+  it('renders the heading, the control panel link and the copyright', () => {
+    render(<Home />);
+
+    expect(screen.getByRole('heading', { name: /OBS Overlay Launcher/i })).toBeInTheDocument();
+
     const controlPanelButton = screen.getByRole('link', { name: /コントロールパネル/i });
-    expect(controlPanelButton).toBeInTheDocument();
     expect(controlPanelButton).toHaveAttribute('href', '/control-panel');
     expect(controlPanelButton).toHaveAttribute('target', '_blank');
 
-    // Check for Score & Message Overlay button
-    const scoreOverlayButton = screen.getByRole('link', { name: /スコア＆メッセージオーバーレイ \(Preview\)/i });
-    expect(scoreOverlayButton).toBeInTheDocument();
-    expect(scoreOverlayButton).toHaveAttribute('href', '/obs-overlay');
-    expect(scoreOverlayButton).toHaveAttribute('target', '_blank');
-
-    // Check for Burndown Chart Overlay button
-    const burndownOverlayButton = screen.getByRole('link', { name: /バーンダウンチャートオーバーレイ \(Preview\)/i });
-    expect(burndownOverlayButton).toBeInTheDocument();
-    expect(burndownOverlayButton).toHaveAttribute('href', '/burndown-overlay');
-    expect(burndownOverlayButton).toHaveAttribute('target', '_blank');
-
-    // Check for Caption Overlay button
-    const captionOverlayButton = screen.getByRole('link', { name: /字幕オーバーレイ \(Preview\)/i });
-    expect(captionOverlayButton).toBeInTheDocument();
-    expect(captionOverlayButton).toHaveAttribute('href', '/caption-overlay');
-    expect(captionOverlayButton).toHaveAttribute('target', '_blank');
-
-    // Check for Side Panel Overlay button
-    const sidePanelOverlayButton = screen.getByRole('link', { name: /サイドパネルオーバーレイ \(Preview\)/i });
-    expect(sidePanelOverlayButton).toHaveAttribute('href', '/side-panel-overlay');
-    expect(sidePanelOverlayButton).toHaveAttribute('target', '_blank');
-
-    // Check for Telop Overlay button
-    const telopOverlayButton = screen.getByRole('link', { name: /実況テロップオーバーレイ \(Preview\)/i });
-    expect(telopOverlayButton).toHaveAttribute('href', '/telop-overlay');
-    expect(telopOverlayButton).toHaveAttribute('target', '_blank');
-
-    // Check for Voice Overlay button
-    const voiceOverlayButton = screen.getByRole('link', { name: /読み上げ（音声専用）オーバーレイ \(Preview\)/i });
-    expect(voiceOverlayButton).toHaveAttribute('href', '/voice-overlay');
-    expect(voiceOverlayButton).toHaveAttribute('target', '_blank');
-
-    // Check for copyright text
     expect(screen.getByText(/© 2025 eddie-splatoon/i)).toBeInTheDocument();
+  });
+
+  it.each(PREVIEWED_PAGES)('shows a preview of $href and a link to open it in a new tab', ({ label, href }) => {
+    render(<Home />);
+
+    const link = screen.getByRole('link', { name: `${label}を別タブで開く` });
+    expect(link).toHaveAttribute('href', href);
+    expect(link).toHaveAttribute('target', '_blank');
+    expect(link).toHaveAttribute('rel', 'noopener noreferrer');
+
+    expect(screen.getByTitle(`${label}のプレビュー`)).toHaveAttribute('src', href);
+  });
+
+  it('links to the voice overlay without embedding it so that the launcher does not play speech', () => {
+    render(<Home />);
+
+    const link = screen.getByRole('link', { name: '読み上げ（音声専用）を別タブで開く' });
+    expect(link).toHaveAttribute('href', '/voice-overlay');
+    expect(link).toHaveAttribute('target', '_blank');
+
+    expect(screen.queryByTitle('読み上げ（音声専用）のプレビュー')).not.toBeInTheDocument();
+    expect(document.querySelector('iframe[src="/voice-overlay"]')).toBeNull();
+    expect(screen.getByText('音声のみ（画面表示なし）')).toBeInTheDocument();
   });
 });
