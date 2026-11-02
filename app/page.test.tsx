@@ -34,7 +34,7 @@ describe('Home Page', () => {
     expect(link).toHaveAttribute('target', '_blank');
     expect(link).toHaveAttribute('rel', 'noopener noreferrer');
 
-    expect(screen.getByTitle(`${label}のプレビュー`)).toHaveAttribute('src', href);
+    expect(screen.getByTitle(`${label}のプレビュー`)).toHaveAttribute('src', `${href}?preview=1`);
   });
 
   it('links to the voice overlay without embedding it so that the launcher does not play speech', () => {
@@ -45,7 +45,7 @@ describe('Home Page', () => {
     expect(link).toHaveAttribute('target', '_blank');
 
     expect(screen.queryByTitle('読み上げ（音声専用）のプレビュー')).not.toBeInTheDocument();
-    expect(document.querySelector('iframe[src="/voice-overlay"]')).toBeNull();
+    expect(document.querySelector('iframe[src^="/voice-overlay"]')).toBeNull();
     expect(screen.getByText('音声のみ（画面表示なし）')).toBeInTheDocument();
   });
 });

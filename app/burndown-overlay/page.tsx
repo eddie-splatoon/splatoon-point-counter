@@ -47,6 +47,8 @@ const BurndownOverlayPage: React.FC = () => {
 
     // Effect to trigger fireworks via API
     useEffect(() => {
+        // ランチャーのプレビュー（?preview）からは書き込まない（開いたままのランチャーが設定を古い値で上書きしないように）
+        if (new URLSearchParams(window.location.search).has('preview')) return;
         if (hasReachedZero && data && data.burndown) {
             // Only trigger if lastEvent is not already FIREWORKS or if it has expired
             if (!data.lastEvent || data.lastEvent.name !== 'FIREWORKS' || (Date.now() - data.lastEvent.timestamp) > FIREWORKS_DURATION) {

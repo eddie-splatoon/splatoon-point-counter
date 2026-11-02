@@ -84,6 +84,44 @@ describe('BurndownOverlayPage', () => {
             expect(fireworks.getAttribute('data-trigger')).toBe('false');
             expect(mockedAxios.post).not.toHaveBeenCalled();
         });
+
+        describe('when the goal is reached', () => {
+            const reachedData = (): StreamData => {
+                const mockData = getInitialStreamData();
+                mockData.burndown.targetValue = 100;
+                mockData.burndown.entries = [{ score: 100, timestamp: Date.now() }];
+                return mockData;
+            };
+
+            afterEach(() => {
+                window.history.replaceState(null, '', '/');
+            });
+
+            it('triggers fireworks via the API', async () => {
+                mockedAxios.get.mockResolvedValueOnce({ data: reachedData(), status: 200 });
+                mockedAxios.post.mockResolvedValue({ data: {}, status: 200 });
+
+                render(<BurndownOverlayPage />);
+                await screen.findByTestId('BurndownChart');
+
+                await waitFor(() => {
+                    expect(mockedAxios.post).toHaveBeenCalledWith('/api/stream-data', expect.objectContaining({
+                        lastEvent: expect.objectContaining({ name: 'FIREWORKS' }),
+                    }));
+                });
+            });
+
+            it('does not write to the API when shown as a preview in the launcher', async () => {
+                window.history.replaceState(null, '', '/burndown-overlay?preview=1');
+                mockedAxios.get.mockResolvedValueOnce({ data: reachedData(), status: 200 });
+                mockedAxios.post.mockResolvedValue({ data: {}, status: 200 });
+
+                render(<BurndownOverlayPage />);
+
+                await screen.findByTestId('BurndownChart');
+                expect(mockedAxios.post).not.toHaveBeenCalled();
+            });
+        });
     });
     
     // This setup is for tests that DO need timers.

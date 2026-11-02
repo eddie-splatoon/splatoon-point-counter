@@ -167,7 +167,8 @@ function OverlayPreview({page}: {page: OverlayPage}) {
                     transform: 'translate(-50%, -50%)',
                 }}>
                     <iframe
-                        src={page.href}
+                        // オーバーレイ側はプレビュー中だと分かるようにし、書き込みをしない（バーンダウンの花火の発火など）
+                        src={`${page.href}?preview=1`}
                         title={`${page.label}のプレビュー`}
                         width={size.width}
                         height={size.height}
