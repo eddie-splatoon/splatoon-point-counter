@@ -87,11 +87,11 @@ const ClipPanel: React.FC = () => {
                             <ListItem
                                 key={clip.id}
                                 divider
-                                secondaryAction={
+                                secondaryAction={clip.status !== 'pending' && (
                                     <IconButton edge="end" size="small" onClick={() => handleDelete(clip.id)} aria-label={`${formatDateTime(clip.requestedAt)} のクリップを履歴から削除`}>
                                         <DeleteIcon fontSize="small"/>
                                     </IconButton>
-                                }
+                                )}
                             >
                                 <Box sx={{display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 1}}>
                                     <Typography variant="body2" sx={{fontVariantNumeric: 'tabular-nums'}}>{formatDateTime(clip.requestedAt)}</Typography>

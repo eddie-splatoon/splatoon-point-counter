@@ -53,9 +53,15 @@ describe('clip requests', () => {
     const second = requestClip('button', 2000);
     expect(listClips(50, 2000).map((c) => c.id)).toEqual([second.id, first.id]);
 
-    expect(deleteClip(first.id)).toBe(true);
-    expect(deleteClip(first.id)).toBe(false);
+    expect(deleteClip(first.id, 2000)).toBe('deleted');
+    expect(deleteClip(first.id, 2000)).toBe('notFound');
     expect(listClips(50, 2000).map((c) => c.id)).toEqual([second.id]);
+  });
+
+  it('does not delete a pending request until it expires', () => {
+    const { id } = requestClip('voice', 1000);
+    expect(deleteClip(id, 2000)).toBe('pending');
+    expect(deleteClip(id, 1000 + CLIP_REQUEST_TTL_MS + 1)).toBe('deleted');
   });
 });
 

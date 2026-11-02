@@ -88,6 +88,14 @@ describe('ClipPanel', () => {
     expect(await screen.findByText('まだクリップはありません。')).toBeInTheDocument();
   });
 
+  it('does not offer deleting a pending request', async () => {
+    mockedAxios.get.mockResolvedValue({ data: { clips: [clip({ id: 3 })] }, status: 200 });
+    render(<ClipPanel />);
+
+    expect(await within(await screen.findByRole('list', { name: 'クリップの履歴' })).findByText('作成待ち')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /のクリップを履歴から削除/ })).not.toBeInTheDocument();
+  });
+
   it('shows an error when the history cannot be loaded', async () => {
     mockedAxios.get.mockRejectedValue(new Error('down'));
     render(<ClipPanel />);

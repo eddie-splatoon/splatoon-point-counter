@@ -60,8 +60,14 @@ describe('Clip API', () => {
     expect((await send(PATCH, 'PATCH', { id: clip.id, ...created, editUrl: 'http://example.com' })).status).toBe(400);
   });
 
+  it('does not delete a pending request', async () => {
+    const { clip } = await (await send(POST, 'POST', {})).json();
+    expect((await DELETE(new NextRequest(url(`?id=${clip.id}`), { method: 'DELETE' }))).status).toBe(409);
+  });
+
   it('deletes a clip from the history', async () => {
     const { clip } = await (await send(POST, 'POST', {})).json();
+    await send(PATCH, 'PATCH', { id: clip.id, status: 'failed', error: 'offline' });
     expect((await DELETE(new NextRequest(url('?id=abc'), { method: 'DELETE' }))).status).toBe(400);
     expect((await DELETE(new NextRequest(url('?id=999'), { method: 'DELETE' }))).status).toBe(404);
     const response = await DELETE(new NextRequest(url(`?id=${clip.id}`), { method: 'DELETE' }));

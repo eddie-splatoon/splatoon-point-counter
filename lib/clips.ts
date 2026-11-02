@@ -68,7 +68,15 @@ export function completeClip(id: number, result: ClipResult, now = Date.now()): 
     return Number(changes) === 0 ? null : findClip(id);
 }
 
-/** 履歴から消す（Twitch 上のクリップは消さない）。消せたら true */
-export function deleteClip(id: number): boolean {
-    return Number(getDb().prepare('DELETE FROM twitch_clips WHERE id = ?').run(id).changes) > 0;
+/**
+ * 履歴から消す（Twitch 上のクリップは消さない）。作成待ちのものは消さない
+ * （作成中に消すと、作れたクリップの結果を書き込めずに失われるため）
+ */
+export function deleteClip(id: number, now = Date.now()): 'deleted' | 'pending' | 'notFound' {
+    expireStaleRequests(now);
+    const clip = findClip(id);
+    if (!clip) return 'notFound';
+    if (clip.status === 'pending') return 'pending';
+    getDb().prepare('DELETE FROM twitch_clips WHERE id = ?').run(id);
+    return 'deleted';
 }

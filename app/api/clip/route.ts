@@ -45,6 +45,8 @@ export async function PATCH(request: Request) {
 export async function DELETE(request: Request) {
     const id = Number(new URL(request.url).searchParams.get('id'));
     if (!Number.isInteger(id) || id <= 0) return NextResponse.json({message: 'id must be a positive integer.'}, {status: 400});
-    if (!deleteClip(id)) return NextResponse.json({message: 'Clip not found.'}, {status: 404});
+    const result = deleteClip(id);
+    if (result === 'notFound') return NextResponse.json({message: 'Clip not found.'}, {status: 404});
+    if (result === 'pending') return NextResponse.json({message: 'A pending clip request cannot be deleted.'}, {status: 409});
     return NextResponse.json({clips: listClips()});
 }
