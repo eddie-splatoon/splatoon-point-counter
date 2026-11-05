@@ -33,6 +33,12 @@ describe('SalmonSchedule', () => {
     expect(screen.getByText(label)).toBeInTheDocument();
   });
 
+  it('does not break the rule name or the remaining time in the middle of a word', () => {
+    render(<SalmonSchedule schedule={schedule} now={now} />);
+    expect(screen.getByText('サーモンラン')).toHaveClass('whitespace-nowrap');
+    expect(screen.getByText('残り 1時間30分')).toHaveClass('whitespace-nowrap');
+  });
+
   it('says so when no schedule is running', () => {
     render(<SalmonSchedule schedule={null} now={now} />);
     expect(screen.getByText('スケジュールを取得できません')).toBeInTheDocument();

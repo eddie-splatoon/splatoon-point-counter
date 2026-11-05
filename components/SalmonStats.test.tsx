@@ -36,6 +36,12 @@ describe('SalmonStats', () => {
     expect(screen.getByText('前回: WAVE2 失敗')).toBeInTheDocument();
   });
 
+  it('does not break the clear counts or the last result in the middle of a word', () => {
+    render(<SalmonStats lastJob={{ ...lastJob, cleared: false, waveReached: 1 }} totals={totals} />);
+    expect(screen.getByTestId('salmon-stats-totals')).toHaveClass('whitespace-nowrap');
+    expect(screen.getByText('前回: WAVE1 失敗')).toHaveClass('whitespace-nowrap');
+  });
+
   it('shows placeholders before the first job', () => {
     render(<SalmonStats lastJob={null} totals={{ jobs: 0, goldenEggs: 0, bossKills: 0, deaths: 0, clears: 0, failures: 0 }} />);
 

@@ -23,7 +23,7 @@ const SalmonStats: React.FC<SalmonStatsProps> = ({lastJob, totals, title = '本�
          data-testid="salmon-stats">
         <p className="text-center font-bold" style={{color: '#FF6F00', fontSize: '20px'}}>{title}</p>
 
-        <table className="w-full mt-1" style={{fontSize: '18px'}}>
+        <table className="w-full mt-1 leading-snug" style={{fontSize: '18px'}}>
             <thead>
             <tr className="text-gray-400" style={{fontSize: '13px'}}>
                 <th/>
@@ -42,14 +42,15 @@ const SalmonStats: React.FC<SalmonStatsProps> = ({lastJob, totals, title = '本�
             </tbody>
         </table>
 
-        <div className="mt-2 pt-2 border-t border-white/20 flex justify-between items-baseline" style={{fontSize: '15px'}}>
-            <span>
+        {/* 回数が 2 桁になると 1 行に入らないので、語の途中ではなく「前回: …」全体を次の行に送る */}
+        <div className="mt-1 pt-1 border-t border-white/20 flex flex-wrap justify-between items-baseline gap-x-2" style={{fontSize: '13px'}}>
+            <span className="whitespace-nowrap" data-testid="salmon-stats-totals">
                 <span style={{color: '#32E675'}}>{totals.clears}クリア</span>
                 {' / '}
                 <span className="text-gray-400">{totals.failures}失敗</span>
             </span>
             {lastJob && (
-                <span className="text-gray-400" style={{fontSize: '12px'}}>
+                <span className="text-gray-400 whitespace-nowrap" style={{fontSize: '11px'}}>
                     前回: {resultLabel(lastJob)}
                 </span>
             )}

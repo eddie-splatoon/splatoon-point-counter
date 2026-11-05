@@ -151,9 +151,9 @@ const SLOT_GAP = 12;
 export function estimateSlotHeight(slot: SidePanelSlot, challengeCount: number): number {
     switch (slot) {
         case 'schedule':
-            return 200;
+            return 205;
         case 'salmon':
-            return 190;
+            return 200;
         case 'weaponCard':
             return 180;
         case 'challenges':
