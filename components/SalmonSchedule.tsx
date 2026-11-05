@@ -26,9 +26,10 @@ const SalmonSchedule: React.FC<SalmonScheduleProps> = ({schedule, now}) => {
 
     return (
         <div className="w-[250px] max-w-full bg-black/80 text-white rounded-2xl shadow-2xl border-2 border-white/20 p-3" data-testid="salmon-schedule">
-            <div className="flex justify-between items-baseline">
-                <p className="font-bold" style={{color: KIND_COLORS[schedule.kind], fontSize: '18px'}}>{SALMON_SCHEDULE_KIND_LABELS[schedule.kind]}</p>
-                <p className="text-gray-300 tabular-nums" style={{fontSize: '13px'}}>{formatRemaining(schedule.endTime, now)}</p>
+            {/* 1 行に入らないとき（バイトチームコンテストなど）は、語の途中ではなく残り時間全体を次の行に送る */}
+            <div className="flex flex-wrap justify-between items-baseline gap-x-2">
+                <p className="font-bold whitespace-nowrap" style={{color: KIND_COLORS[schedule.kind], fontSize: '16px'}}>{SALMON_SCHEDULE_KIND_LABELS[schedule.kind]}</p>
+                <p className="text-gray-300 tabular-nums whitespace-nowrap" style={{fontSize: '12px'}}>{formatRemaining(schedule.endTime, now)}</p>
             </div>
             <div className="relative mt-1 rounded-lg overflow-hidden" style={{height: 90}}>
                 <img src={schedule.stage.image} alt="" className="w-full h-full object-cover"/>
