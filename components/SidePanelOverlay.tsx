@@ -22,6 +22,7 @@ import {
     verticalSlotScale,
 } from '../lib/sidePanelTypes';
 
+import BossRanking from './BossRanking';
 import BurndownChart from './BurndownChart';
 import ChallengeList from './ChallengeList';
 import InkTankGauge from './InkTankGauge';
@@ -103,6 +104,9 @@ const SidePanelOverlay: React.FC<SidePanelOverlayProps> = ({layout}) => {
                 return schedule !== null;
             case 'salmon':
                 return salmon !== null;
+            case 'bossRanking':
+                // オオモノの数はイカリング3から取り込んだバイトにしか無いので、本日まだ 1 体も無ければ出さない
+                return (salmon?.bossRanking.session.length ?? 0) > 0;
             case 'weaponCard':
                 return weaponCard !== null;
             case 'challenges':
@@ -122,6 +126,8 @@ const SidePanelOverlay: React.FC<SidePanelOverlayProps> = ({layout}) => {
                 return schedule && <SalmonSchedule schedule={pickCurrentSchedule(schedule.entries, now)} now={now}/>;
             case 'salmon':
                 return salmon && <SalmonStats lastJob={salmon.lastJob} totals={salmon.totals}/>;
+            case 'bossRanking':
+                return salmon && salmon.bossRanking.session.length > 0 && <BossRanking ranking={salmon.bossRanking}/>;
             case 'weaponCard':
                 return weaponCard && <WeaponCard card={weaponCard} compact/>;
             case 'challenges':

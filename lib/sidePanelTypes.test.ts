@@ -195,6 +195,7 @@ describe('exceedsSlotArea', () => {
     ['the schedule with the stats rotating below', settings(['schedule'], ['salmon', 'challenges'], 3)],
     ['the burndown rotating alone', settings([], ['burndown'])],
     ['the schedule with the stats and the weapon card rotating below', settings(['schedule'], ['salmon', 'weaponCard'])],
+    ['the schedule with the stats and the boss ranking rotating below', settings(['schedule'], ['salmon', 'bossRanking'])],
   ])('fits %s', (_, s) => {
     expect(exceedsSlotArea(s)).toBe(false);
   });
@@ -204,6 +205,7 @@ describe('exceedsSlotArea', () => {
     ['the burndown rotating below two fixed slots', settings(['schedule', 'salmon'], ['burndown'])],
     ['many challenges rotating below the schedule', settings(['schedule'], ['challenges'], 8)],
     ['the weapon card below the schedule and the stats', settings(['schedule', 'salmon', 'weaponCard'], [])],
+    ['the boss ranking below the schedule and the stats', settings(['schedule', 'salmon', 'bossRanking'], [])],
   ])('does not fit %s', (_, s) => {
     expect(exceedsSlotArea(s)).toBe(true);
   });
