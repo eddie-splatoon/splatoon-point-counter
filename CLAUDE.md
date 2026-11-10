@@ -17,10 +17,11 @@
 7. **実況テロップオーバーレイ** (`/telop-overlay`) - コントロールパネルのボタン・キーボードで出す定型文を数秒だけ大きく表示
 8. **読み上げ（音声専用）オーバーレイ** (`/voice-overlay`) - 読み上げキューの文を VOICEVOX で音声にして順に再生（画面には何も出さない）
 9. **ブキ埋めカードオーバーレイ** (`/weapon-card-overlay`) - サーモンランのオールランダムで支給された全ブキ種（71 種）を埋めていくカード
-10. **バックエンドAPI** (`/api/stream-data`, `/api/caption`, `/api/twitch`, `/api/salmon`, `/api/side-panel`, `/api/salmon-schedule`, `/api/telop`, `/api/speech`, `/api/voice`, `/api/weapon-card`, `/api/clip`, `/api/salmon/import`) - データ管理とクライアント間の同期
-11. **文字起こしスクリプト** (`tools/caption-stt/`) - マイク音声を文字起こしして `/api/caption` へ送信。「クリップ撮って」などで `/api/clip` にクリップを依頼（Python, Mac ネイティブ実行）
-12. **リザルト取り込みスクリプト** (`tools/salmon-result/`) - iPhone ミラーリングのイカリング3を操作し、サーモンランの最新のリザルトを OCR で読み取って `/api/salmon/import` へ送信（Python, Mac ネイティブ実行）
-13. **Twitch連携スクリプト** (`tools/twitch-eventsub/`) - フォロワー数・フォロワー目標を EventSub で受信して `/api/twitch` へ送信。チャットの初コメの挨拶・配信者のコメントを `/api/speech` へ送信。`/api/clip` の依頼で Twitch のクリップを作成（Node, 依存なし）
+10. **サーモンランの振り返りオーバーレイ** (`/salmon-review-overlay`) - 配信の最後に、その日（セッション）のサーモンランの記録をグラフで大きく出す（1920x1080）
+11. **バックエンドAPI** (`/api/stream-data`, `/api/caption`, `/api/twitch`, `/api/salmon`, `/api/side-panel`, `/api/salmon-schedule`, `/api/telop`, `/api/speech`, `/api/voice`, `/api/weapon-card`, `/api/clip`, `/api/salmon/import`, `/api/salmon/review`) - データ管理とクライアント間の同期
+12. **文字起こしスクリプト** (`tools/caption-stt/`) - マイク音声を文字起こしして `/api/caption` へ送信。「クリップ撮って」などで `/api/clip` にクリップを依頼（Python, Mac ネイティブ実行）
+13. **リザルト取り込みスクリプト** (`tools/salmon-result/`) - iPhone ミラーリングのイカリング3を操作し、サーモンランの最新のリザルトを OCR で読み取って `/api/salmon/import` へ送信（Python, Mac ネイティブ実行）
+14. **Twitch連携スクリプト** (`tools/twitch-eventsub/`) - フォロワー数・フォロワー目標を EventSub で受信して `/api/twitch` へ送信。チャットの初コメの挨拶・配信者のコメントを `/api/speech` へ送信。`/api/clip` の依頼で Twitch のクリップを作成（Node, 依存なし）
 
 ## 技術スタック
 
@@ -67,6 +68,8 @@
 │   │   └── page.tsx              # 読み上げ（音声専用）オーバーレイ
 │   ├── weapon-card-overlay/
 │   │   └── page.tsx              # ブキ埋めカードオーバーレイ
+│   ├── salmon-review-overlay/
+│   │   └── page.tsx              # サーモンランの振り返りオーバーレイ
 │   └── api/
 │       ├── stream-data/
 │       │   └── route.ts          # データ管理API
@@ -78,8 +81,10 @@
 │       │   ├── route.ts          # サーモンラン記録API
 │       │   ├── sessions/
 │       │   │   └── route.ts      # サーモンランのセッションAPI
-│       │   └── import/
-│       │       └── route.ts      # リザルトの取り込みの依頼・結果API
+│       │   ├── import/
+│       │   │   └── route.ts      # リザルトの取り込みの依頼・結果API
+│       │   └── review/
+│       │       └── route.ts      # 振り返りAPI
 │       ├── side-panel/
 │       │   └── route.ts          # サイドパネル設定API
 │       ├── salmon-schedule/
@@ -123,6 +128,7 @@
 │   ├── WeaponPicker.tsx          # カテゴリごとのブキのパレット（記録・ブキ埋めタブで使う）
 │   ├── WeaponCard.tsx            # ブキ埋めカード（オーバーレイ）
 │   ├── WeaponCardPanel.tsx       # コントロールパネルのブキ埋めタブ
+│   ├── SalmonReview.tsx          # サーモンランの振り返り（オーバーレイの本体）
 │   └── ClipPanel.tsx             # コントロールパネルのクリップタブ
 ├── lib/
 │   ├── localStorage.ts           # ローカルストレージのラッパー
@@ -136,6 +142,7 @@
 │   ├── speech.ts                 # 読み上げキュー・設定・VOICEVOX との通信（サーバー専用）
 │   ├── salmonWeapons.ts          # サーモンランのブキの定義・ブキ埋めカードの型（クライアントからも使う）
 │   ├── weaponCard.ts             # ブキ埋めカードの状態（サーバー専用）
+│   ├── salmonReview.ts           # サーモンランの振り返りの集計（サーバー専用）
 │   ├── clipTypes.ts              # クリップの依頼の型・結果の検証（クライアントからも使う）
 │   ├── clips.ts                  # クリップの依頼の保存（サーバー専用）
 │   ├── salmonImportTypes.ts      # リザルトの取り込みの依頼の型・定数（クライアントからも使う）
@@ -327,6 +334,15 @@ Twitch のフォロワー数とフォロワー目標を受け取る機能と、�
 - サイドパネルの `weaponCard` スロットにも出せる（`<WeaponCard compact/>`。幅 250px に 12 列で縮めた、試合中に埋まり具合がなんとなくわかる程度の表示。スケジュールなどと並べても下段に収まる高さにしている）。`/weapon-card-overlay` は試合の合間などにたまに出す拡大表示という位置づけ
 - 「ブキ埋め」タブの「画像をダウンロード」で、今のカードを SNS 投稿用の PNG（12 列 × 6 行の横長）にする（`lib/weaponCardImage.ts` の `renderWeaponCardImage`。DOM のキャプチャではなく Canvas に直接描く）。ブキの画像は `crossOrigin = 'anonymous'` で読み込み（raw.githubusercontent.com は CORS を許可している）、読み込めないブキはブキ名を文字で描く（Canvas を汚して書き出せなくならないように）。フォントはオーバーレイと同じく共通設定のもの（`/api/stream-data` の `fontFamily`）。Canvas は書式が不正な font を黙って無視するので `canvasFontFamily` でフォント名を引用符で囲み、そのフォントに無い文字用に日本語のシステムフォントを後ろに足す。描く前に `document.fonts.load` で読み込む
 - オーバーレイは 2 秒ごとに `/api/weapon-card` と `/api/stream-data`（フォント）をポーリングする。`components/WeaponCard.tsx` は `ChallengeList` と同じく前回の状態と比べ、ポーリング中に新しく埋まったマスだけスタンプを押す演出をし、71 種そろった瞬間だけ花火を出す（表示した時点の状態・新しいカードの開始では演出しない）
+
+### `/app/salmon-review-overlay/page.tsx` と `/app/api/salmon/review/route.ts`
+
+配信の最後に、その日のサーモンランの記録を配信画面に大きく被せて振り返るオーバーレイ（1920x1080。背景は半透明の暗幕）。
+
+- `GET /api/salmon/review`（`?sessionId=` で過去のセッション）。集計は `lib/salmonReview.ts` の `getSessionReview`（型は `lib/salmonTypes.ts` の `SalmonSessionReview`）。合計・バイトごとの金イクラ（古い順）・WAVE ごとの失敗数のほか、取り込んだバイトの詳細（赤イクラ・救助・獲得ポイント・最高キケン度・評価の最初と最後・オカシラ・オオモノごとの数・チームの金イクラ納品数の上位 5 件（`teamHighScores`。同数なら先のバイト））、支給ブキの回数、セッション中にブキ埋めカードで埋まったブキ・作ったクリップ（次のセッションの開始まで）、本日のお題の達成数（今のセッションのときだけ。サイドパネルの設定にしか無いため）を返す。**味方の名前は返さない**
+- 詳細の集計は、詳細を取り込んだバイト（`detailedJobs`）だけ。手入力のバイトがあると、画面に「取り込んだ n 件の合計」と添える
+- 本体は `components/SalmonReview.tsx`。グラフは依存を増やさず SVG・div で描く（dataviz スキルの作法: ダークの配色だけ、クリア / 失敗はどのグラフでも青 / オレンジ（色覚の違いでも見分けられることを検証済み）、棒は細く根元は四角・先は丸く、値は最多のバイトにだけ出す、目盛りはきりのいい数（`niceTicks`）、2 つの値を 1 つのグラフの左右の軸に出さない）。OBS ではマウスを使わないので、ツールチップは付けない
+- 開いたときにカードを上から順に出す motion の演出（初回だけ）。5 秒ごとにポーリングし、フォントは `/api/stream-data` の `fontFamily`
 
 ### `/app/side-panel-overlay/page.tsx` と `/app/api/side-panel/route.ts`
 

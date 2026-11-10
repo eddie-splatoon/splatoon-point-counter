@@ -17,6 +17,9 @@ export const SIDE_PANEL_SLOT_LABELS: Record<SidePanelSlot, string> = {
     burndown: 'バーンダウン',
 };
 
+// app_state に保存するときのキー
+export const SIDE_PANEL_STATE_KEY = 'sidePanel';
+
 export const MIN_ROTATE_SECONDS = 5;
 export const MAX_ROTATE_SECONDS = 600;
 export const MAX_FOLLOWER_GOAL = 1_000_000;

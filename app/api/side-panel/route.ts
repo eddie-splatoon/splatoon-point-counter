@@ -1,9 +1,7 @@
 import {NextResponse} from 'next/server';
 
 import {getAppState, setAppState} from '../../../lib/db';
-import {getDefaultSidePanelSettings, parseSidePanelSettings} from '../../../lib/sidePanelTypes';
-
-const STATE_KEY = 'sidePanel';
+import {SIDE_PANEL_STATE_KEY as STATE_KEY, getDefaultSidePanelSettings, parseSidePanelSettings} from '../../../lib/sidePanelTypes';
 
 /** 保存済みの設定。未保存、または保存後にスロットが無くなるなどして不正なら既定値 */
 export async function GET() {
