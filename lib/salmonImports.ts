@@ -164,10 +164,10 @@ const parseImportedJob = (value: unknown): ImportedJob | string => {
     if (typeof playedAt !== 'string' || playedAt.trim() === '' || playedAt.length > MAX_PLAYED_AT_LENGTH) {
         return `playedAt must be a non-empty string up to ${MAX_PLAYED_AT_LENGTH} characters.`;
     }
-    // details は後から追加した項目なので省略可（以前のスクリプトから送られても記録できるように）
+    // details は後から追加した項目なので省略可（以前のスクリプトから送られても記録できるように）。
+    // 詳細は「おまけ」なので、OCR の読み間違い・未知のオオモノなどで不正なら詳細だけ捨てて、金イクラなどは記録する
     const parsedDetails = details === null ? null : parseJobDetails(details);
-    if (typeof parsedDetails === 'string') return parsedDetails;
-    return {job: parsedJob, playedAt: playedAt.trim(), details: parsedDetails};
+    return {job: parsedJob, playedAt: playedAt.trim(), details: typeof parsedDetails === 'string' ? null : parsedDetails};
 };
 
 /** PATCH /api/salmon/import の本文を検証する。不正ならエラーメッセージ */

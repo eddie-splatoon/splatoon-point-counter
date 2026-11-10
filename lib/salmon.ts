@@ -246,7 +246,6 @@ const isNullableCount = (value: unknown): value is number | null => value === nu
 /** 名前などの文字列。全角をそろえ、制御文字を除いて長さを切り詰める。空なら null */
 const toText = (value: unknown, maxLength: number): string | null => {
     if (typeof value !== 'string') return null;
-     
     const text = value.normalize('NFKC').replace(/[\u0000-\u001f\u007f]/g, '').trim();
     return text === '' ? null : Array.from(text).slice(0, maxLength).join('');
 };

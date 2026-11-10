@@ -135,7 +135,18 @@ describe('parseImportResult', () => {
     expect(parseImportResult({ id: 1, status: 'succeeded', jobs: [valid], captures: ['../overlay.db'] })).toMatch(/captures/);
     expect(parseImportResult({ id: 1, status: 'succeeded', jobs: [valid], captures: ['x.jpg'] })).toMatch(/captures/);
     expect(parseImportResult({ id: 1, status: 'failed', error: ' ' })).toMatch(/error/);
-    expect(parseImportResult({ id: 1, status: 'succeeded', jobs: [{ ...valid, details: { hazardLevel: -1 } }] })).toMatch(/hazardLevel/);
+  });
+
+  it('keeps the job and drops only the details when the details are invalid', () => {
+    const valid = { job: job(), playedAt: '2026/11/10 21:05' };
+    for (const details of [
+      { hazardLevel: -1 },
+      { bosses: [{ boss: 'unknown', appearances: 1, teamKills: 1, selfKills: 0 }] },
+      { bosses: [{ boss: 'hebi', appearances: 2, teamKills: 3, selfKills: 0 }] },
+    ]) {
+      expect(parseImportResult({ id: 1, status: 'succeeded', jobs: [{ ...valid, details }] }))
+        .toMatchObject({ result: { jobs: [{ job: valid.job, details: null }] } });
+    }
   });
 
   it('accepts jobs with details', () => {
