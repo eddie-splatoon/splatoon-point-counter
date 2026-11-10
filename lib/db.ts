@@ -34,6 +34,18 @@ CREATE TABLE IF NOT EXISTS twitch_clips (
     edit_url TEXT,
     error TEXT
 );
+-- iPhone ミラーリングのイカリング3からのリザルトの取り込み依頼（tools/salmon-result が読み取って結果を書き込む）
+CREATE TABLE IF NOT EXISTS salmon_imports (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    status TEXT NOT NULL,
+    requested_at INTEGER NOT NULL,
+    started_at INTEGER,
+    completed_at INTEGER,
+    job_id INTEGER,
+    played_at TEXT,
+    captures TEXT NOT NULL DEFAULT '[]',
+    error TEXT
+);
 -- 画面ごとの設定など、1つの値を JSON で丸ごと保存するキーバリュー
 CREATE TABLE IF NOT EXISTS app_state (
     key TEXT PRIMARY KEY,

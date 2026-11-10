@@ -11,6 +11,7 @@
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",
     "caption": "tools/caption-stt/run.sh",
+    "salmon-result": "tools/salmon-result/run.sh",
     "twitch": "node --env-file-if-exists=.env.local tools/twitch-eventsub/twitch_eventsub.ts"
   },
   "dependencies": {

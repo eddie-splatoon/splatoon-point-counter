@@ -17,9 +17,10 @@
 7. **実況テロップオーバーレイ** (`/telop-overlay`) - コントロールパネルのボタン・キーボードで出す定型文を数秒だけ大きく表示
 8. **読み上げ（音声専用）オーバーレイ** (`/voice-overlay`) - 読み上げキューの文を VOICEVOX で音声にして順に再生（画面には何も出さない）
 9. **ブキ埋めカードオーバーレイ** (`/weapon-card-overlay`) - サーモンランのオールランダムで支給された全ブキ種（71 種）を埋めていくカード
-10. **バックエンドAPI** (`/api/stream-data`, `/api/caption`, `/api/twitch`, `/api/salmon`, `/api/side-panel`, `/api/salmon-schedule`, `/api/telop`, `/api/speech`, `/api/voice`, `/api/weapon-card`, `/api/clip`) - データ管理とクライアント間の同期
+10. **バックエンドAPI** (`/api/stream-data`, `/api/caption`, `/api/twitch`, `/api/salmon`, `/api/side-panel`, `/api/salmon-schedule`, `/api/telop`, `/api/speech`, `/api/voice`, `/api/weapon-card`, `/api/clip`, `/api/salmon/import`) - データ管理とクライアント間の同期
 11. **文字起こしスクリプト** (`tools/caption-stt/`) - マイク音声を文字起こしして `/api/caption` へ送信。「クリップ撮って」などで `/api/clip` にクリップを依頼（Python, Mac ネイティブ実行）
-12. **Twitch連携スクリプト** (`tools/twitch-eventsub/`) - フォロワー数・フォロワー目標を EventSub で受信して `/api/twitch` へ送信。チャットの初コメの挨拶・配信者のコメントを `/api/speech` へ送信。`/api/clip` の依頼で Twitch のクリップを作成（Node, 依存なし）
+12. **リザルト取り込みスクリプト** (`tools/salmon-result/`) - iPhone ミラーリングのイカリング3を操作し、サーモンランの最新のリザルトを OCR で読み取って `/api/salmon/import` へ送信（Python, Mac ネイティブ実行）
+13. **Twitch連携スクリプト** (`tools/twitch-eventsub/`) - フォロワー数・フォロワー目標を EventSub で受信して `/api/twitch` へ送信。チャットの初コメの挨拶・配信者のコメントを `/api/speech` へ送信。`/api/clip` の依頼で Twitch のクリップを作成（Node, 依存なし）
 
 ## 技術スタック
 
@@ -30,6 +31,7 @@
 - **リアルタイム通信**: REST API + クライアントサイドポーリング
 - **HTTPクライアント**: Axios
 - **文字起こし**: mlx-whisper + Silero VAD (Python 3.12, `tools/caption-stt/`)
+- **リザルトの読み取り**: macOS の Vision（OCR）+ pyobjc（iPhone ミラーリングの操作・撮影, Python 3.12, `tools/salmon-result/`）
 - **Twitch連携**: EventSub WebSocket + Device Code Flow（Node 24 標準の `fetch` / `WebSocket` と型除去で実行, `tools/twitch-eventsub/`）
 - **永続化**: SQLite（Node 24 標準の `node:sqlite`, `lib/db.ts`。`data/overlay.db`）
 - **合成音声**: VOICEVOX（配信 PC で別途起動。`VOICEVOX_URL`、既定 `http://localhost:50021`）
@@ -74,8 +76,10 @@
 │       │   └── route.ts          # Twitch API（フォロワー数・目標）
 │       ├── salmon/
 │       │   ├── route.ts          # サーモンラン記録API
-│       │   └── sessions/
-│       │       └── route.ts      # サーモンランのセッションAPI
+│       │   ├── sessions/
+│       │   │   └── route.ts      # サーモンランのセッションAPI
+│       │   └── import/
+│       │       └── route.ts      # リザルトの取り込みの依頼・結果API
 │       ├── side-panel/
 │       │   └── route.ts          # サイドパネル設定API
 │       ├── salmon-schedule/
@@ -133,12 +137,15 @@
 │   ├── weaponCard.ts             # ブキ埋めカードの状態（サーバー専用）
 │   ├── clipTypes.ts              # クリップの依頼の型・結果の検証（クライアントからも使う）
 │   ├── clips.ts                  # クリップの依頼の保存（サーバー専用）
+│   ├── salmonImportTypes.ts      # リザルトの取り込みの依頼の型・定数（クライアントからも使う）
+│   ├── salmonImports.ts          # リザルトの取り込みの依頼の保存・記録・入力検証（サーバー専用）
 │   └── weaponCardImage.ts        # ブキ埋めカードの SNS 投稿用の画像（Canvas で描く。クライアント専用）
 ├── data/                          # SQLite・Twitch トークン（Git / Docker イメージ管理外）
 ├── public/                        # 静的アセット
 │   └── tips.tsv                  # Tips データ
 ├── tools/
 │   ├── caption-stt/              # 文字起こしスクリプト（Python, README参照）
+│   ├── salmon-result/            # リザルト取り込みスクリプト（Python, README参照）
 │   └── twitch-eventsub/          # Twitch連携スクリプト（Node, README参照）
 ├── .github/
 │   ├── workflows/
@@ -283,6 +290,20 @@ Twitch のフォロワー数とフォロワー目標を受け取る機能と、�
 - `lib/salmon.ts` は `node:sqlite` に依存するのでクライアントコンポーネントから import しない。型と定数は `lib/salmonTypes.ts` から import する
 - コントロールパネルの「サーモンラン」タブ（`components/SalmonRunPanel.tsx`）は API に直接保存する（「OBSに反映」ボタンや localStorage は使わない）
 - テストは `vite.config.mts` の `OVERLAY_DB_PATH=:memory:` で実データに触れない。各テストで `__TEST_ONLY_setDb(openDb(':memory:'))` してから使う
+
+### `/app/api/salmon/import/route.ts` と `tools/salmon-result/`
+
+サーモンランのリザルトの手入力を減らすため、iPhone ミラーリングに映した NSO アプリ（イカリング3）から最新のリザルトを読み取って記録する機能。
+
+- イカリング3の API は直接呼ばない（以前、非公式の API の利用でイカリングを BAN されたため）。公式アプリの画面をタップ・スクロールし、撮影して OCR するだけ。キャプチャ映像の OCR ではオオモノ討伐数が取れないので使わない
+- 流れ: コントロールパネルの「サーモンラン」タブのボタン → `POST /api/salmon/import` → 取り込みスクリプト（`pnpm salmon-result`）が 1 秒ごとに `GET ?status=pending` で拾い `PATCH {id, status: 'processing'}` → ホーム → サーモンランのタブでヒストリーを読み込み直し、いちばん上のバイトの詳細を開いて撮影・OCR → `PATCH {id, status: 'succeeded', job, playedAt, captures}`（サーバーが `addJob` で今のセッションに記録）／ `{status: 'failed', error, captures}` → `POST /api/telop {text}` で知らせる
+- 依頼は SQLite の `salmon_imports`（`pending` / `processing` / `succeeded` / `failed`）。処理待ち・取り込み中の依頼があれば新しく作らずにそれを返す。拾われない依頼は `SALMON_IMPORT_REQUEST_TTL_MS`（30 秒）、取り込み中のまま止まった依頼は `SALMON_IMPORT_PROCESSING_TTL_MS`（6 分）で失敗にする（`expireStaleImports`）
+- 二重記録の防止: 画面の日時（`playedAt`）が、記録が残っている（取り消されていない）取り込みと同じなら 409 で記録しない。スクリプトはイカリング3にまだ反映されていないとみなし、15 秒ごとに最大 4 分読み直す。記録を削除したバイトは取り込み直せる
+- 読み取り（`salmon_result.py`）: 自分の行（プレイヤー一覧のいちばん上）の「オオモノシャケ x24」を OCR で見つけ、それを基準にした相対位置（`SelfRowCells`）の金イクラ・被救助数（= デス）を切り出して読む（全体を読むと隣の数字とつながるため）。数字のセルは倍率・白黒化を変えて何度か読んだ多数決（`vote_count`）。クリア / 失敗は見出しの「Clear!!」/「Failure」を切り出して読み、似ているほうで判定する（装飾文字で Cear! などと読むため。「クリアボーナス」があるので日本語の「クリア」では判定しない）。失敗した WAVE は表示されている WAVE の最大（失敗したバイトはそこまでしか表示されない）。オカシラ（EX-WAVE）に負けても WAVE 3 までクリアならクリア。ステージ名は切り出して読み直し、`KNOWN_STAGES` の似た名前に直す。読めない項目があれば推測で記録せず失敗にする
+- 支給ブキ: アイコンの数（WAVE 数とスペシャル）で並び方が 1 行 / 2 行と変わるので、位置は決め打ちせず、行の背景と色の違うまとまりを探す（`find_icon_blobs`）。外接矩形を埋める割合で、丸いブキ（0.77〜0.85）と四角いスペシャル（0.94〜0.96）を見分ける。ブキは Leanny/splat3 の画像（`lib/salmonWeapons.ts` を Node の型除去で読み、`data/salmon-weapon-refs/` にキャッシュ）と照合し、似ていなければ記録しない（`match_weapon`）。照合は丸の中の画素だけで、参照画像は黒い丸の中に 0.95 倍で置いて少しぼかし、小さなアイコンに見た目を合わせる（そのまま縮めると正解の類似度が 0.3 程度まで下がる）
+- 画面の操作は `CGEventPost`。クリック・スクロールのたびにカーソルの位置と前面のアプリを元に戻す。ミラーリングの「接続が一時停止されました」は「再開」を押してつなぎ直す。撮影は `screencapture -l<ウインドウ ID>`（隠れていても撮れる）
+- キャプチャは `data/salmon-results/`（ヒストリーとして残す）。PATCH の `captures` はファイル名のみ（`CAPTURE_FILE_PATTERN`。パスを含めさせない）。POST / PATCH は `Content-Type: application/json` 必須
+- Python 側のテストは `tools/salmon-result/` で `pytest`（CI 対象外。Vision を使うので Mac で実行）。`fixtures/` に実際の詳細画面（クリア・失敗・オカシラあり）を置いている。**プレイヤー名は塗りつぶしてから置く**
 
 ### `/app/weapon-card-overlay/page.tsx` と `/app/api/weapon-card/route.ts`
 
