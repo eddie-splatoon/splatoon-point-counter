@@ -620,3 +620,52 @@ def test_read_hazard_level_from_the_number_even_when_the_label_is_misread():
     # 全体の OCR が「キケン度85%」（2 が抜けた）でも、切り出した読みの多数決で 285
     assert s.read_hazard_level(blank_detail_image(), [Box("キケン度85%", 0.55, 0.24, 0.2, 0.02)], misread) == 285
     assert s.read_hazard_level(blank_detail_image(), [Box("Clear!!", 0.4, 0.2, 0.2, 0.03)], misread) is None
+
+
+@pytest.mark.parametrize(("read", "reread", "expected"), [
+    (35, 33, True), (1, 17, True), (17, 1, True), (33, 33, False), (35, 23, False), (5, 17, False), (100, 1, False),
+])
+def test_is_single_digit_misread(read, reread, expected):
+    assert s.is_single_digit_misread(read, reread) is expected
+
+
+def test_read_bosses_does_not_correct_a_distant_number(monkeypatch):
+    """詳細画面の数と 2 文字以上違う読み直しは、どちらかの読み間違いが重なっているかもしれないので採用しない"""
+    window, capture_screen, _ = fake_boss_screens(monkeypatch, [
+        (self_rows(33), {"bakudan": (10, 10, 20)}),
+        ([END_OF_LIST], {"hebi": (20, 20, 13)}),
+    ])
+    assert s.read_bosses(window, capture_screen, 24, PLAYED_AT, lambda m: None) == ([], 24)
+
+
+def test_read_bosses_keeps_the_bosses_when_the_date_cannot_be_read_again(monkeypatch):
+    """先頭に戻した画面の日時が読めなくても、切り替わったとは限らないので、合計が合えば記録する"""
+    window, capture_screen, _ = fake_boss_screens(monkeypatch, [([END_OF_LIST], {"bakudan": (8, 7, 3)})], played_at_after=None)
+    logs = []
+    bosses, _ = s.read_bosses(window, capture_screen, 3, PLAYED_AT, logs.append)
+    assert [b["boss"] for b in bosses] == ["bakudan"]
+    assert "読めませんでした" in logs[0]
+
+
+def test_every_glyph_template_reads_as_itself():
+    """数字・カッコの形（digit_glyphs.py）は、それぞれ自分の文字にいちばん近い（追加した形がほかの数字と取り違えられない）"""
+    from digit_glyphs import GLYPHS
+
+    for char, texts in GLYPHS.items():
+        for text in texts:
+            distances = s.glyph_distances(s._parse_glyph(text))
+            assert min(distances, key=distances.get) == char, (char, text)
+
+
+def test_read_hazard_level_prefers_the_labeled_percent():
+    """「%」の付いた文字が複数あれば、「キケン度」の付いた方を使う"""
+    crops = []
+
+    def fake_ocr(image, scale=1):
+        crops.append(image.width)
+        return [Box("290%", 0, 0, 1, 1)]
+
+    boxes = [Box("50%", 0.1, 0.24, 0.1, 0.02), Box("キケン度290%", 0.55, 0.24, 0.2, 0.02)]
+    assert s.read_hazard_level(blank_detail_image(), boxes, fake_ocr) == 290
+    # ラベルが無く「%」が 2 つあれば、どちらか分からないので「キケン度」を探す（無ければ読まない）
+    assert s.read_hazard_level(blank_detail_image(), [Box("50%", 0.1, 0.24, 0.1, 0.02), Box("約290%", 0.55, 0.24, 0.2, 0.02)], fake_ocr) is None

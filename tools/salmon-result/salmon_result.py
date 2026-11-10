@@ -827,7 +827,10 @@ HAZARD_CELL_WIDTH = 0.15
 def read_hazard_level(image, boxes: list[Box], ocr_fn=ocr) -> int | None:
     """キケン度（%）。全体の OCR では「キケン度」を「約」と読んで見つからなかったり、「285%」の 2 が抜けたりするので、
     「%」の付いた文字の右端から数字の部分を切り出し、何度か読んだ多数決にする"""
-    hazard = next((b for b in boxes if b.cy < 0.3 and HAZARD_PATTERN.search(normalize(b.text))), None) or find_box(boxes, "キケン", "ケン度", max_y=0.3)
+    # 「キケン度290%」のように 1 つに読めたものを優先し、無ければ「%」の付いた文字が 1 つだけのときに使う（ほかの「%」と取り違えない）
+    percents = [b for b in boxes if b.cy < 0.3 and HAZARD_PATTERN.search(normalize(b.text))]
+    labeled = [b for b in percents if "ケン" in normalize(b.text)]
+    hazard = (labeled or (percents if len(percents) == 1 else [None]))[0] or find_box(boxes, "キケン", "ケン度", max_y=0.3)
     if hazard is None:
         return None
     right = hazard.x + hazard.w
@@ -1281,6 +1284,18 @@ def read_self_kills_on_scroll(boxes: list[Box]) -> int | None:
     return parse_count(rows[0].text) if len(rows) == MAX_PLAYERS else None
 
 
+def is_single_digit_misread(read: int, reread: int) -> bool:
+    """読み直した数が、1 文字だけの読み間違い（33 と 35 のように 1 桁だけ違う、17 と 1 のように 1 桁抜けた）で説明できるか。
+    それ以上違うなら、どちらかの読み間違いが重なっているかもしれないので読み直しを採用しない"""
+    a, b = str(read), str(reread)
+    if a == b:
+        return False
+    if len(a) == len(b):
+        return sum(x != y for x, y in zip(a, b)) == 1
+    shorter, longer = sorted((a, b), key=len)
+    return len(longer) - len(shorter) == 1 and any(longer[:i] + longer[i + 1:] == shorter for i in range(len(longer)))
+
+
 def read_bosses(window: Window, capture_screen, self_kills: int, played_at: str, log=print) -> tuple[list[dict], int]:
     """詳細画面を少しずつ下にスクロールしてオオモノの欄を読み、先頭に戻す。capture_screen(label) は撮影して画像を返す。
     (オオモノごとの数, 記録する自分のオオモノの数) を返す。読めなければオオモノごとの数は空（記録は止めない）。
@@ -1309,14 +1324,18 @@ def read_bosses(window: Window, capture_screen, self_kills: int, played_at: str,
 
     time.sleep(BOSS_SCROLL_SETTLE_SECONDS)
     top = capture_screen("recheck")
-    if read_played_at(top, ocr(top, FULL_OCR_SCALE)) != played_at:
+    rechecked = read_played_at(top, ocr(top, FULL_OCR_SCALE))
+    if rechecked is None:
+        # 明るいステージでは日時が読めないことがある。切り替わったかは分からないので、合計の突き合わせに任せる
+        log("警告: 先頭に戻した画面の日時が読めませんでした")
+    elif rechecked != played_at:
         log("警告: オオモノの欄を読んでいる間に別のバイトに切り替わったので、オオモノごとの数は記録しません")
         return [], self_kills
 
     bosses = merge_boss_rows(readings, self_kills)
     if bosses is None:
         reread = majority(rereads)
-        corrected = merge_boss_rows(readings, reread) if reread is not None and reread != self_kills else None
+        corrected = merge_boss_rows(readings, reread) if reread is not None and is_single_digit_misread(self_kills, reread) else None
         if corrected is None:
             log(f"警告: オオモノの欄の自分の討伐数の合計が x{self_kills} と合わないので、オオモノごとの数は記録しません")
             return [], self_kills
