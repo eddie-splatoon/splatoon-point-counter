@@ -21,6 +21,7 @@ const summaryOf = (jobs: SalmonJob[]): SalmonSummary => ({
   lastJob: jobs[0] ?? null,
   totals: totals({ jobs: jobs.length, goldenEggs: jobs.reduce((sum, j) => sum + j.goldenEggs, 0) }),
   jobs,
+  bossRanking: { lastJob: [], session: [] },
 });
 
 const runningSchedule = (stage: string) => ({

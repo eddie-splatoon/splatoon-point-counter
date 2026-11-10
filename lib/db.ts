@@ -22,9 +22,60 @@ CREATE TABLE IF NOT EXISTS salmon_jobs (
     stage TEXT NOT NULL DEFAULT '',
     weapons TEXT NOT NULL DEFAULT '[]',
     -- イカリング3から取り込んだバイトの日時（同じバイトを二重に記録しないため）。手入力の記録は NULL
-    played_at TEXT
+    played_at TEXT,
+    -- 以下はイカリング3から取り込んだバイトの詳細（lib/salmonTypes.ts の SalmonJobDetails）。手入力・読めなかった項目は NULL
+    hazard_level INTEGER,
+    grade_name TEXT,
+    grade_point INTEGER,
+    job_point INTEGER,
+    job_score INTEGER,
+    job_rate_x100 INTEGER,
+    clear_bonus INTEGER,
+    team_golden_eggs INTEGER,
+    team_power_eggs INTEGER,
+    scale_bronze INTEGER,
+    scale_silver INTEGER,
+    scale_gold INTEGER,
+    king_name TEXT,
+    king_defeated INTEGER
 );
 CREATE INDEX IF NOT EXISTS salmon_jobs_session_id ON salmon_jobs(session_id);
+-- 取り込んだバイトの WAVE ごとの結果（EX-WAVE は wave = 4）
+CREATE TABLE IF NOT EXISTS salmon_job_waves (
+    job_id INTEGER NOT NULL REFERENCES salmon_jobs(id) ON DELETE CASCADE,
+    wave INTEGER NOT NULL,
+    delivered INTEGER,
+    quota INTEGER,
+    water_level TEXT,
+    event TEXT,
+    golden_appearances INTEGER,
+    specials_used INTEGER,
+    PRIMARY KEY (job_id, wave)
+);
+-- 取り込んだバイトのプレイヤーごとの成績（position = 0 が自分）。名前は DB に残すだけで API には出さない
+CREATE TABLE IF NOT EXISTS salmon_job_players (
+    job_id INTEGER NOT NULL REFERENCES salmon_jobs(id) ON DELETE CASCADE,
+    position INTEGER NOT NULL,
+    name TEXT,
+    boss_kills INTEGER,
+    golden_eggs INTEGER,
+    golden_assists INTEGER,
+    power_eggs INTEGER,
+    rescues INTEGER,
+    rescued INTEGER,
+    weapons TEXT NOT NULL DEFAULT '[]',
+    special TEXT,
+    PRIMARY KEY (job_id, position)
+);
+-- 取り込んだバイトのオオモノごとの出現数・討伐数
+CREATE TABLE IF NOT EXISTS salmon_job_bosses (
+    job_id INTEGER NOT NULL REFERENCES salmon_jobs(id) ON DELETE CASCADE,
+    boss TEXT NOT NULL,
+    appearances INTEGER NOT NULL,
+    team_kills INTEGER NOT NULL,
+    self_kills INTEGER NOT NULL,
+    PRIMARY KEY (job_id, boss)
+);
 -- 声やボタンで依頼した Twitch のクリップ（tools/twitch-eventsub が作成して結果を書き込む）
 CREATE TABLE IF NOT EXISTS twitch_clips (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -56,12 +107,23 @@ CREATE TABLE IF NOT EXISTS app_state (
 );
 `;
 
+// salmon_jobs に後から追加した、バイトの詳細の列
+const JOB_DETAIL_COLUMNS: [string, 'INTEGER' | 'TEXT'][] = [
+    ['hazard_level', 'INTEGER'], ['grade_name', 'TEXT'], ['grade_point', 'INTEGER'], ['job_point', 'INTEGER'],
+    ['job_score', 'INTEGER'], ['job_rate_x100', 'INTEGER'], ['clear_bonus', 'INTEGER'], ['team_golden_eggs', 'INTEGER'],
+    ['team_power_eggs', 'INTEGER'], ['scale_bronze', 'INTEGER'], ['scale_silver', 'INTEGER'], ['scale_gold', 'INTEGER'],
+    ['king_name', 'TEXT'], ['king_defeated', 'INTEGER'],
+];
+
 /** CREATE TABLE IF NOT EXISTS では既存のテーブルに列が増えないので、後から追加した列を足す */
 function migrate(db: DatabaseSync): void {
     const columnsOf = (table: string) => (db.prepare(`PRAGMA table_info(${table})`).all() as {name: string}[]).map((c) => c.name);
     const jobColumns = columnsOf('salmon_jobs');
     if (!jobColumns.includes('weapons')) db.exec("ALTER TABLE salmon_jobs ADD COLUMN weapons TEXT NOT NULL DEFAULT '[]'");
     if (!jobColumns.includes('played_at')) db.exec('ALTER TABLE salmon_jobs ADD COLUMN played_at TEXT');
+    for (const [column, type] of JOB_DETAIL_COLUMNS) {
+        if (!jobColumns.includes(column)) db.exec(`ALTER TABLE salmon_jobs ADD COLUMN ${column} ${type}`);
+    }
     if (!columnsOf('salmon_imports').includes('recorded_count')) {
         db.exec('ALTER TABLE salmon_imports ADD COLUMN recorded_count INTEGER NOT NULL DEFAULT 0');
     }

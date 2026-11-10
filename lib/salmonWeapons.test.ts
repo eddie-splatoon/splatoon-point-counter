@@ -1,6 +1,9 @@
 import { describe, expect, it } from 'vitest';
 
-import { SALMON_WEAPONS, SALMON_WEAPON_CATEGORIES, SALMON_WEAPON_COUNT, findSalmonWeapon, isSalmonWeaponKey, weaponImageUrl } from './salmonWeapons';
+import {
+  SALMON_SPECIALS, SALMON_WEAPONS, SALMON_WEAPON_CATEGORIES, SALMON_WEAPON_COUNT, findSalmonSpecial, findSalmonWeapon, isSalmonSpecialKey, isSalmonWeaponKey,
+  specialImageUrl, weaponImageUrl,
+} from './salmonWeapons';
 
 describe('SALMON_WEAPONS', () => {
   it('has 71 weapons: 63 regular and 8 Grizzco weapons', () => {
@@ -32,5 +35,18 @@ describe('SALMON_WEAPONS', () => {
 
   it.each([1, null, undefined, '', 'unknown'])('rejects %s as a weapon key', (value) => {
     expect(isSalmonWeaponKey(value)).toBe(false);
+  });
+});
+
+describe('SALMON_SPECIALS', () => {
+  it('has unique keys and images', () => {
+    expect(new Set(SALMON_SPECIALS.map((sp) => sp.key)).size).toBe(SALMON_SPECIALS.length);
+    expect(new Set(SALMON_SPECIALS.map((sp) => sp.image)).size).toBe(SALMON_SPECIALS.length);
+  });
+
+  it('finds a special and builds its image URL', () => {
+    expect(isSalmonSpecialKey('kanitank')).toBe(true);
+    expect(isSalmonSpecialKey('sshooter')).toBe(false);
+    expect(specialImageUrl(findSalmonSpecial('kanitank')!)).toBe('https://raw.githubusercontent.com/Leanny/splat3/main/images/subspe/Wsp_SpChariot00.png');
   });
 });

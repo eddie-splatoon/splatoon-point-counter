@@ -110,6 +110,33 @@ export const isSalmonWeaponKey = (value: unknown): value is string => typeof val
 export const weaponImageUrl = (weapon: SalmonWeapon): string =>
     `https://raw.githubusercontent.com/Leanny/splat3/main/images/weapon_flat/Path_Wst_${weapon.image}.png`;
 
+// ---- スペシャル ----
+
+export interface SalmonSpecial {
+    key: string; // stat.ink の key
+    name: string;
+    image: string; // ゲーム内部の名前（Leanny/splat3 の画像のファイル名に使う）
+}
+
+/** サーモンランで支給されるスペシャル */
+export const SALMON_SPECIALS: readonly SalmonSpecial[] = [
+    {key: 'nicedama', name: 'ナイスダマ', image: 'SpNiceBall'},
+    {key: 'megaphone51', name: 'メガホンレーザー5.1ch', image: 'SpMicroLaser'},
+    {key: 'jetpack', name: 'ジェットパック', image: 'SpJetpack'},
+    {key: 'kanitank', name: 'カニタンク', image: 'SpChariot'},
+    {key: 'sameride', name: 'サメライド', image: 'SpSkewer'},
+    {key: 'tripletornado', name: 'トリプルトルネード', image: 'SpTripleTornado'},
+];
+
+const SPECIALS_BY_KEY = new Map(SALMON_SPECIALS.map((special) => [special.key, special]));
+
+export const findSalmonSpecial = (key: string): SalmonSpecial | undefined => SPECIALS_BY_KEY.get(key);
+
+export const isSalmonSpecialKey = (value: unknown): value is string => typeof value === 'string' && SPECIALS_BY_KEY.has(value);
+
+export const specialImageUrl = (special: SalmonSpecial): string =>
+    `https://raw.githubusercontent.com/Leanny/splat3/main/images/subspe/Wsp_${special.image}00.png`;
+
 // ---- ブキ埋めカード ----
 
 export interface ObtainedWeapon {
