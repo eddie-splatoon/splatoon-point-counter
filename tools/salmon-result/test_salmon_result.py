@@ -450,15 +450,17 @@ def test_read_bosses_scrolls_back_to_the_top_when_reading_fails(monkeypatch):
     assert window.scrolls == [s.BOSS_SCROLL_PIXELS, s.SCROLL_TO_TOP_PIXELS]
 
 
-def test_read_bosses_gives_up_without_the_end_of_the_list(monkeypatch):
+def test_read_bosses_without_the_end_of_the_list_relies_on_the_total(monkeypatch):
     window = FakeWindow()
     monkeypatch.setattr(s, "scroll", lambda w, pixels: w.scrolls.append(pixels))
     monkeypatch.setattr(s, "time", type("T", (), {"sleep": staticmethod(lambda seconds: None)}))
     monkeypatch.setattr(s, "ocr", lambda image, scale=1: [])
-    monkeypatch.setattr(s, "read_boss_rows", lambda image, boxes, names: {})
+    monkeypatch.setattr(s, "read_boss_rows", lambda image, boxes, names: {"bakudan": (8, 7, 3)})
     logs = []
-    assert s.read_bosses(window, lambda label: blank_detail_image(), 0, logs.append) == []
+    # 下の注記を読み間違えただけかもしれないので、読めた行の合計が合えば記録する
+    assert [b["boss"] for b in s.read_bosses(window, lambda label: blank_detail_image(), 3, logs.append)] == ["bakudan"]
     assert window.scrolls.count(s.BOSS_SCROLL_PIXELS) == s.MAX_BOSS_SCROLLS
+    assert window.scrolls[-1] == s.SCROLL_TO_TOP_PIXELS
     assert "終わり" in logs[0]
 
 
@@ -469,3 +471,84 @@ def test_read_file_shows_the_bosses_of_a_boss_capture(capsys):
     shown = json.loads(capsys.readouterr().out)
     assert shown["endOfList"] is True
     assert {"boss": "tekkyu", "appearances": 4, "teamKills": 4, "selfKills": 1} in shown["bosses"]
+
+
+def test_read_waves_keeps_the_column_width_when_a_header_is_missing(monkeypatch):
+    """WAVE 2 の見出しが読めなくても、WAVE 1・3 の列は 1 列分の幅で切り出す（隣の WAVE の数字を読まない）"""
+    boxes = [Box("WAVE 1", 0.2, 0.4, 0.1, 0.015), Box("WAVE 3", 0.69, 0.4, 0.1, 0.015)]
+    crops = []
+    original = s.crop_relative
+    monkeypatch.setattr(s, "crop_relative", lambda image, box: crops.append(box) or original(image, box))
+    waves, _, _ = s.read_waves(blank_detail_image(), boxes, lambda image, scale=1: [])
+    assert [w["wave"] for w in waves] == [1, 3]
+    column = (0.74 - 0.25) / 2
+    assert max(right - left for left, _, right, _ in crops) == pytest.approx(column)
+
+
+class FakeApi:
+    def __init__(self, recorded):
+        self.recorded_played_at = recorded
+        self.updates = []
+
+    def update(self, body):
+        self.updates.append(body)
+        return 200
+
+    def recorded(self):
+        return set(self.recorded_played_at), 0.0
+
+    def telop(self, text):
+        pass
+
+
+def test_process_request_reads_the_bosses_of_new_jobs_only(monkeypatch, tmp_path):
+    """記録済みのバイトに着いたら遡るのをやめ、記録するバイトだけオオモノの欄を読む（詳細が読めないバイトは読まない）"""
+    screens = iter([
+        ({"bossKills": 26}, "2026/11/10 10:51", {"waves": []}),
+        ({"bossKills": 25}, "2026/11/10 10:42", None),
+        ({"bossKills": 33}, "2026/11/10 10:33", {"waves": []}),
+    ])
+    monkeypatch.setattr(s, "find_mirroring_window", lambda: FakeWindow())
+    monkeypatch.setattr(s, "ensure_connected", lambda window, log: None)
+    monkeypatch.setattr(s, "open_latest_job", lambda window: None)
+    monkeypatch.setattr(s, "open_previous_job", lambda window, played_at: True)
+    monkeypatch.setattr(s, "capture", lambda window, path: blank_detail_image())
+    monkeypatch.setattr(s, "read_result", lambda image, refs, special_refs, log: next(screens))
+    read_for = []
+
+    def fake_read_bosses(window, capture_screen, self_kills, log):
+        read_for.append(self_kills)
+        capture_screen("bosses")
+        return [{"boss": "bakudan", "appearances": 1, "teamKills": 1, "selfKills": self_kills}]
+
+    monkeypatch.setattr(s, "read_bosses", fake_read_bosses)
+    api = FakeApi({"2026/11/10 10:33"})
+    s.process_request(1, api, {}, tmp_path, log=lambda m: None)
+
+    assert read_for == [26]
+    succeeded = api.updates[-1]
+    assert succeeded["status"] == "succeeded"
+    assert [j["playedAt"] for j in succeeded["jobs"]] == ["2026/11/10 10:42", "2026/11/10 10:51"]
+    assert succeeded["jobs"][0]["details"] is None
+    assert succeeded["jobs"][1]["details"]["bosses"][0]["selfKills"] == 26
+    assert [name.rsplit("-", 1)[-1] for name in succeeded["captures"]] == ["detail.png", "bosses.png", "detail.png", "detail.png"]
+
+
+def test_process_request_keeps_the_details_when_reading_the_bosses_fails(monkeypatch, tmp_path):
+    monkeypatch.setattr(s, "find_mirroring_window", lambda: FakeWindow())
+    monkeypatch.setattr(s, "ensure_connected", lambda window, log: None)
+    monkeypatch.setattr(s, "open_latest_job", lambda window: None)
+    monkeypatch.setattr(s, "open_previous_job", lambda window, played_at: False)
+    monkeypatch.setattr(s, "capture", lambda window, path: blank_detail_image())
+    monkeypatch.setattr(s, "read_result", lambda image, refs, special_refs, log: ({"bossKills": 26}, "2026/11/10 10:51", {"waves": []}))
+
+    def broken(*args, **kwargs):
+        raise ValueError("想定外の画面")
+
+    monkeypatch.setattr(s, "read_bosses", broken)
+    api = FakeApi(set())
+    logs = []
+    s.process_request(1, api, {}, tmp_path, log=logs.append)
+    assert api.updates[-1]["status"] == "succeeded"
+    assert api.updates[-1]["jobs"][0]["details"] == {"waves": []}
+    assert any("オオモノの欄を読み取れませんでした" in m for m in logs)

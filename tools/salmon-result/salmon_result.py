@@ -916,7 +916,9 @@ def read_waves(image, boxes: list[Box], ocr_fn=ocr) -> tuple[list[dict], str | N
     if not headers:
         return [], None, None
     centers = [h.cx for _, h in headers]
-    width = (centers[-1] - centers[0]) / (len(centers) - 1) if len(centers) > 1 else DEFAULT_WAVE_COLUMN_WIDTH
+    # 見出しを 1 つ読み落としても列の幅がずれないよう、列の数ではなく WAVE の番号の差で割る（EX-WAVE は 4 列目）
+    span = headers[-1][0] - headers[0][0]
+    width = (centers[-1] - centers[0]) / span if span > 0 else DEFAULT_WAVE_COLUMN_WIDTH
     waves = []
     king_name = king_defeated = None
     for wave, header in headers:
@@ -1272,8 +1274,8 @@ def read_bosses(window: Window, capture_screen, self_kills: int, log=print) -> l
             if is_boss_list_end(boxes):
                 break
         else:
-            log("警告: オオモノの欄の終わりが見つからないので、オオモノごとの数は記録しません")
-            return []
+            # 下の注記を読み間違えただけかもしれないので、読めた行で合計を突き合わせる
+            log("警告: オオモノの欄の終わりが見つかりませんでした")
     finally:
         scroll(window, SCROLL_TO_TOP_PIXELS)
     bosses = merge_boss_rows(readings, self_kills)
