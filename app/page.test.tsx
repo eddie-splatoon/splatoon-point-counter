@@ -12,6 +12,7 @@ const PREVIEWED_PAGES = [
   { label: '実況テロップ', href: '/telop-overlay' },
   { label: 'ブキ埋めカード', href: '/weapon-card-overlay' },
   { label: 'サーモンランの振り返り', href: '/salmon-review-overlay' },
+  { label: 'サーモンランの振り返り 縦型配信用', href: '/salmon-review-overlay/vertical' },
 ];
 
 describe('Home Page', () => {
