@@ -193,3 +193,8 @@ def test_find_icon_blobs_tells_weapons_from_specials():
     blobs = s.find_icon_blobs(region)
     assert [(x, y) for x, y, *_ in blobs] == [(5, 2), (40, 2), (5, 30)]
     assert [fill < s.MAX_WEAPON_ICON_FILL for *_, fill in blobs] == [True, True, False]
+
+
+def test_is_job_detail():
+    assert s.is_job_detail(DETAIL_BOXES)
+    assert not s.is_job_detail(HISTORY_BOXES)

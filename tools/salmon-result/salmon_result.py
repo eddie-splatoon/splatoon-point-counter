@@ -607,6 +607,11 @@ def ensure_connected(window: Window, log=print) -> None:
         raise ImportError_("iPhone ミラーリングに接続できませんでした")
 
 
+def is_job_detail(boxes: list[Box]) -> bool:
+    """バイトの詳細画面か（下に「最新のバイトへ」「前のバイト」のボタンがある）"""
+    return find_box(boxes, "前のバイト", "最新のバイト", "最新のパイト", "前のパイト") is not None
+
+
 def tab_position(boxes: list[Box], label: str) -> tuple[float, float] | None:
     tab = find_box(boxes, label, min_y=0.88)
     return (tab.cx, tab.cy) if tab else None
@@ -619,6 +624,13 @@ def open_latest_job(window: Window) -> None:
     salmon = tab_position(boxes, "サーモンラン")
     if home is None or salmon is None:
         raise ImportError_("イカリング3が開かれていません（NSO アプリでイカリング3を開いてください）")
+    # イカリング3はタブごとに画面を覚えているので、バイトの詳細画面のままホーム → サーモンランと移ると詳細画面に戻る。
+    # 詳細画面（前回の取り込みの後など）なら、先にサーモンランのタブを押して一覧に戻す
+    if is_job_detail(boxes):
+        tap(window, *salmon)
+        _, boxes = wait_for_screen(window, "ヒストリー")
+        if find_box(boxes, "ヒストリー") is None:
+            raise ImportError_("バイトの詳細画面からヒストリーに戻れませんでした")
     tap(window, *home)
     time.sleep(2.5)
     tap(window, *salmon)
@@ -671,6 +683,7 @@ def process_request(request_id: int, api: Api, refs: dict, capture_dir: Path, lo
         return
     log(f"依頼 {request_id}: 最新のリザルトを取り込みます")
     captures: list[str] = []
+    window: Window | None = None
     deadline = time.monotonic() + MAX_WAIT_FOR_NEW_JOB_SECONDS
     try:
         window = find_mirroring_window()
@@ -698,6 +711,14 @@ def process_request(request_id: int, api: Api, refs: dict, capture_dir: Path, lo
     except Exception as error:  # 想定外の失敗でも依頼を取り込み中のまま残さない
         reason = f"想定外のエラー: {error}"
     log(f"依頼 {request_id}: 取り込めませんでした: {reason}")
+    if window is not None:
+        # どの画面で失敗したかを後から確認できるように残す
+        try:
+            name = capture_name(datetime.now(), "error")
+            capture(window, capture_dir / name)
+            captures = [*captures, name][-10:]
+        except Exception:
+            pass
     api.update({"id": request_id, "status": "failed", "error": reason, "captures": captures})
     api.telop(TELOP_FAILED)
 
