@@ -156,7 +156,7 @@ export function estimateSlotHeight(slot: SidePanelSlot, challengeCount: number):
         case 'salmon':
             return 200;
         case 'bossRanking':
-            return 170; // 前回・本日とも 3 体ずつ出たときの高さ
+            return 180; // 前回・本日とも 3 体ずつ出たときの高さ（約 172px）に余裕を持たせた値
         case 'weaponCard':
             return 180;
         case 'challenges':
