@@ -153,7 +153,7 @@ def test_read_job_fails_instead_of_guessing():
 
 
 def test_vote_count_takes_the_majority():
-    readings = iter(["x12<8>", "x121", "", "x12"])
+    readings = iter(["x12<8>", "x121", "", "", "x12"])
     assert s.vote_count(blank_detail_image(), lambda image, scale: [Box(next(readings), 0, 0, 1, 1)]) == 12
     assert s.vote_count(blank_detail_image(), lambda image, scale: []) is None
 
@@ -198,3 +198,24 @@ def test_find_icon_blobs_tells_weapons_from_specials():
 def test_is_job_detail():
     assert s.is_job_detail(DETAIL_BOXES)
     assert not s.is_job_detail(HISTORY_BOXES)
+
+
+def test_should_stop_backfill():
+    session_started_at = datetime(2026, 11, 10, 20, 0).timestamp() * 1000
+    recorded = {"2026/11/10 20:30"}
+    assert not s.should_stop_backfill("2026/11/10 20:45", recorded, session_started_at)
+    # 記録済みのバイトまで来たらやめる
+    assert s.should_stop_backfill("2026/11/10 20:30", recorded, session_started_at)
+    # 今のセッションより前（前の配信）のバイトは記録しない
+    assert s.should_stop_backfill("2026/11/10 19:55", recorded, session_started_at)
+    # セッションが無ければ遡らない
+    assert s.should_stop_backfill("2026/11/10 20:45", recorded, None)
+
+
+@pytest.mark.parametrize(("text_color", "expected"), [((255, 255, 255), False), ((117, 117, 117), True)])
+def test_is_latest_job(text_color, expected):
+    """最新のバイトでは「次のバイト」が押せず、文字が灰色になる"""
+    image = Image.new("RGB", (407, 897), (60, 60, 60))
+    left, top, right, bottom = s.NEXT_JOB_BUTTON_REGION
+    ImageDraw.Draw(image).rectangle((left * 407 + 10, top * 897 + 2, left * 407 + 30, bottom * 897 - 2), fill=text_color)
+    assert s.is_latest_job(image, DETAIL_BOXES) is expected

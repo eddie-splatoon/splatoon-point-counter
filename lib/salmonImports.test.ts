@@ -2,18 +2,37 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 
 import { __TEST_ONLY_setDb, openDb } from './db';
-import { deleteJob, getSummary } from './salmon';
-import { SalmonImportResult, listImports, listPendingImports, parseImportResult, requestImport, updateImport } from './salmonImports';
+import { deleteJob, getSummary, startSession } from './salmon';
 import {
+  SalmonImportResult,
+  getRecordedJobs,
+  listImports,
+  listPendingImports,
+  parseImportResult,
+  requestImport,
+  updateImport,
+} from './salmonImports';
+import {
+  MAX_IMPORT_JOBS,
   SALMON_IMPORT_EXPIRED_ERROR,
   SALMON_IMPORT_PROCESSING_TTL_MS,
   SALMON_IMPORT_REQUEST_TTL_MS,
   SALMON_IMPORT_TIMED_OUT_ERROR,
 } from './salmonImportTypes';
 
-const job = { goldenEggs: 85, bossKills: 12, deaths: 2, cleared: true, waveReached: 3, stage: 'シェケナダム', weapons: [] };
-const succeeded = (playedAt = '2026/11/10 21:05'): SalmonImportResult =>
-  ({ status: 'succeeded', job, playedAt, captures: ['20261110-210600-1.png'] });
+const job = (goldenEggs = 85) => ({ goldenEggs, bossKills: 12, deaths: 2, cleared: true, waveReached: 3, stage: 'シェケナダム', weapons: [] });
+const succeeded = (...playedAts: string[]): SalmonImportResult => ({
+  status: 'succeeded',
+  jobs: playedAts.map((playedAt, i) => ({ job: job(80 + i), playedAt })),
+  captures: ['20261110-210600-detail.png'],
+});
+
+/** 依頼して取り込み中にする */
+const startImport = (now = 1000) => {
+  const { id } = requestImport(now);
+  updateImport(id, { status: 'processing' }, now);
+  return id;
+};
 
 beforeEach(() => {
   __TEST_ONLY_setDb(openDb(':memory:'));
@@ -22,7 +41,7 @@ beforeEach(() => {
 describe('salmon result imports', () => {
   it('requests an import and returns the active one instead of creating another', () => {
     const first = requestImport(1000);
-    expect(first).toMatchObject({ status: 'pending', requestedAt: 1000, jobId: null, captures: [] });
+    expect(first).toMatchObject({ status: 'pending', requestedAt: 1000, jobId: null, recordedCount: 0, captures: [] });
     expect(listPendingImports(1000)).toEqual([first]);
     expect(requestImport(2000)).toEqual(first);
 
@@ -37,66 +56,84 @@ describe('salmon result imports', () => {
     expect(listImports(20, later)[0]).toMatchObject({ id: first.id, status: 'failed', error: SALMON_IMPORT_EXPIRED_ERROR });
     expect(updateImport(first.id, { status: 'processing' }, later)).toBe('notFound');
 
-    const second = requestImport(later);
-    updateImport(second.id, { status: 'processing' }, later);
+    const second = startImport(later);
     const stopped = later + SALMON_IMPORT_PROCESSING_TTL_MS + 1;
-    expect(listImports(20, stopped)[0]).toMatchObject({ id: second.id, status: 'failed', error: SALMON_IMPORT_TIMED_OUT_ERROR });
+    expect(listImports(20, stopped)[0]).toMatchObject({ id: second, status: 'failed', error: SALMON_IMPORT_TIMED_OUT_ERROR });
   });
 
   it('records the job when the import succeeds', () => {
     const { id } = requestImport(1000);
-    expect(updateImport(id, succeeded(), 1500)).toBe('notFound'); // 開始前は結果を書き込めない
+    expect(updateImport(id, succeeded('2026/11/10 21:05'), 1500)).toBe('notFound'); // 開始前は結果を書き込めない
     updateImport(id, { status: 'processing' }, 1500);
-    const result = updateImport(id, succeeded(), 2000);
+    const result = updateImport(id, succeeded('2026/11/10 21:05'), 2000);
     const summary = getSummary();
     expect(summary.jobs).toHaveLength(1);
-    expect(summary.lastJob).toMatchObject(job);
-    expect(result).toMatchObject({ status: 'succeeded', jobId: summary.lastJob!.id, playedAt: '2026/11/10 21:05', captures: ['20261110-210600-1.png'], completedAt: 2000 });
+    expect(summary.lastJob).toMatchObject(job(80));
+    expect(result).toMatchObject({
+      status: 'succeeded', jobId: summary.lastJob!.id, playedAt: '2026/11/10 21:05', recordedCount: 1, captures: ['20261110-210600-detail.png'], completedAt: 2000,
+    });
 
     // 結果は 1 回だけ
     expect(updateImport(id, succeeded('2026/11/10 21:15'), 3000)).toBe('notFound');
   });
 
-  it('does not record the same job twice unless the earlier record was deleted', () => {
-    const first = requestImport(1000);
-    updateImport(first.id, { status: 'processing' }, 1000);
-    updateImport(first.id, succeeded(), 1000);
+  it('records missed jobs oldest first and skips the ones already recorded', () => {
+    updateImport(startImport(), succeeded('2026/11/10 20:50'), 1000);
 
-    const second = requestImport(2000);
-    updateImport(second.id, { status: 'processing' }, 2000);
-    expect(updateImport(second.id, succeeded(), 2000)).toBe('duplicate');
-    expect(listImports(20, 2000)[0]).toMatchObject({ id: second.id, status: 'processing' });
+    const id = startImport(2000);
+    const result = updateImport(id, succeeded('2026/11/10 20:50', '2026/11/10 20:58', '2026/11/10 21:05'), 2000);
+    expect(result).toMatchObject({ status: 'succeeded', playedAt: '2026/11/10 21:05', recordedCount: 2 });
+    // 「前回」が最新のバイトになるよう、古い順に記録する
+    expect(getSummary().jobs.map((j) => j.goldenEggs)).toEqual([82, 81, 80]);
+    expect(getRecordedJobs().playedAt).toEqual(['2026/11/10 21:05', '2026/11/10 20:58', '2026/11/10 20:50']);
+  });
+
+  it('does not record the same job twice unless the earlier record was deleted', () => {
+    updateImport(startImport(), succeeded('2026/11/10 21:05'), 1000);
+
+    const second = startImport(2000);
+    expect(updateImport(second, succeeded('2026/11/10 21:05'), 2000)).toBe('duplicate');
+    expect(listImports(20, 2000)[0]).toMatchObject({ id: second, status: 'processing' });
     expect(getSummary().jobs).toHaveLength(1);
 
     // 読み間違いで記録を消したら、同じバイトを取り込み直せる
     deleteJob(getSummary().lastJob!.id);
-    expect(updateImport(second.id, succeeded(), 2500)).toMatchObject({ status: 'succeeded' });
+    expect(updateImport(second, succeeded('2026/11/10 21:05'), 2500)).toMatchObject({ status: 'succeeded' });
     expect(getSummary().jobs).toHaveLength(1);
   });
 
   it('records failures with the captures', () => {
-    const { id } = requestImport(1000);
-    updateImport(id, { status: 'processing' }, 1000);
+    const id = startImport();
     expect(updateImport(id, { status: 'failed', error: 'ミラーリングが見つかりません', captures: ['a.png'] }, 2000))
       .toMatchObject({ status: 'failed', error: 'ミラーリングが見つかりません', captures: ['a.png'], completedAt: 2000 });
     expect(getSummary().jobs).toHaveLength(0);
+  });
+
+  it('returns the start of the current session for the script', () => {
+    expect(getRecordedJobs()).toEqual({ playedAt: [], sessionStartedAt: null });
+    startSession('', 5000);
+    expect(getRecordedJobs().sessionStartedAt).toBe(5000);
   });
 });
 
 describe('parseImportResult', () => {
   it('accepts valid bodies', () => {
     expect(parseImportResult({ id: 1, status: 'processing' })).toEqual({ id: 1, result: { status: 'processing' } });
-    expect(parseImportResult({ id: 1, ...succeeded(' 2026/11/10 21:05 ') })).toEqual({ id: 1, result: succeeded() });
+    expect(parseImportResult({ id: 1, status: 'succeeded', jobs: [{ job: job(80), playedAt: ' 2026/11/10 21:05 ' }], captures: ['20261110-210600-detail.png'] }))
+      .toEqual({ id: 1, result: succeeded('2026/11/10 21:05') });
     expect(parseImportResult({ id: 1, status: 'failed', error: ' x ' })).toEqual({ id: 1, result: { status: 'failed', error: 'x', captures: [] } });
   });
 
   it('rejects invalid bodies', () => {
+    const valid = { job: job(), playedAt: '2026/11/10 21:05' };
     expect(parseImportResult({ id: 0, status: 'processing' })).toMatch(/id/);
     expect(parseImportResult({ id: 1, status: 'done' })).toMatch(/status/);
-    expect(parseImportResult({ id: 1, ...succeeded(), job: { ...job, goldenEggs: -1 } })).toMatch(/goldenEggs/);
-    expect(parseImportResult({ id: 1, ...succeeded(''), })).toMatch(/playedAt/);
-    expect(parseImportResult({ id: 1, ...succeeded(), captures: ['../overlay.db'] })).toMatch(/captures/);
-    expect(parseImportResult({ id: 1, ...succeeded(), captures: ['x.jpg'] })).toMatch(/captures/);
+    expect(parseImportResult({ id: 1, status: 'succeeded', jobs: [] })).toMatch(/jobs/);
+    expect(parseImportResult({ id: 1, status: 'succeeded', jobs: Array(MAX_IMPORT_JOBS + 1).fill(valid) })).toMatch(/jobs/);
+    expect(parseImportResult({ id: 1, status: 'succeeded', jobs: [{ ...valid, job: { ...job(), goldenEggs: -1 } }] })).toMatch(/goldenEggs/);
+    expect(parseImportResult({ id: 1, status: 'succeeded', jobs: [{ ...valid, playedAt: '' }] })).toMatch(/playedAt/);
+    expect(parseImportResult({ id: 1, status: 'succeeded', jobs: [valid], captures: ['../overlay.db'] })).toMatch(/captures/);
+    expect(parseImportResult({ id: 1, status: 'succeeded', jobs: [valid], captures: ['x.jpg'] })).toMatch(/captures/);
     expect(parseImportResult({ id: 1, status: 'failed', error: ' ' })).toMatch(/error/);
   });
 });

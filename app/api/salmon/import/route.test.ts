@@ -29,7 +29,7 @@ describe('Salmon import API', () => {
     expect((await (await GET(new NextRequest(url('?status=pending')))).json()).imports).toEqual([requested]);
 
     expect((await send(PATCH, 'PATCH', { id: requested.id, status: 'processing' })).status).toBe(200);
-    const response = await send(PATCH, 'PATCH', { id: requested.id, status: 'succeeded', job, playedAt: '2026/11/10 21:05' });
+    const response = await send(PATCH, 'PATCH', { id: requested.id, status: 'succeeded', jobs: [{ job, playedAt: '2026/11/10 21:05' }] });
     expect(response.status).toBe(200);
     expect((await response.json()).import).toMatchObject({ status: 'succeeded', jobId: getSummary().lastJob!.id });
     expect((await (await GET(new NextRequest(url()))).json()).imports[0]).toMatchObject({ id: requested.id, status: 'succeeded' });
@@ -48,10 +48,11 @@ describe('Salmon import API', () => {
     const importJob = async () => {
       const { import: requested } = await (await send(POST, 'POST', {})).json();
       await send(PATCH, 'PATCH', { id: requested.id, status: 'processing' });
-      return send(PATCH, 'PATCH', { id: requested.id, status: 'succeeded', job, playedAt: '2026/11/10 21:05' });
+      return send(PATCH, 'PATCH', { id: requested.id, status: 'succeeded', jobs: [{ job, playedAt: '2026/11/10 21:05' }] });
     };
     expect((await importJob()).status).toBe(200);
     expect((await importJob()).status).toBe(409);
+    expect(await (await GET(new NextRequest(url('?view=recorded')))).json()).toEqual({ playedAt: ['2026/11/10 21:05'], sessionStartedAt: expect.any(Number) });
     expect(getSummary().jobs).toHaveLength(1);
   });
 });

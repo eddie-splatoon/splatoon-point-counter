@@ -20,7 +20,9 @@ CREATE TABLE IF NOT EXISTS salmon_jobs (
     cleared INTEGER NOT NULL,
     wave_reached INTEGER NOT NULL,
     stage TEXT NOT NULL DEFAULT '',
-    weapons TEXT NOT NULL DEFAULT '[]'
+    weapons TEXT NOT NULL DEFAULT '[]',
+    -- イカリング3から取り込んだバイトの日時（同じバイトを二重に記録しないため）。手入力の記録は NULL
+    played_at TEXT
 );
 CREATE INDEX IF NOT EXISTS salmon_jobs_session_id ON salmon_jobs(session_id);
 -- 声やボタンで依頼した Twitch のクリップ（tools/twitch-eventsub が作成して結果を書き込む）
@@ -41,8 +43,9 @@ CREATE TABLE IF NOT EXISTS salmon_imports (
     requested_at INTEGER NOT NULL,
     started_at INTEGER,
     completed_at INTEGER,
-    job_id INTEGER,
+    job_id INTEGER, -- 記録したうちの最新のバイト
     played_at TEXT,
+    recorded_count INTEGER NOT NULL DEFAULT 0, -- 取りこぼしも含めて記録したバイトの数
     captures TEXT NOT NULL DEFAULT '[]',
     error TEXT
 );
@@ -55,8 +58,13 @@ CREATE TABLE IF NOT EXISTS app_state (
 
 /** CREATE TABLE IF NOT EXISTS では既存のテーブルに列が増えないので、後から追加した列を足す */
 function migrate(db: DatabaseSync): void {
-    const columns = (db.prepare('PRAGMA table_info(salmon_jobs)').all() as {name: string}[]).map((c) => c.name);
-    if (!columns.includes('weapons')) db.exec("ALTER TABLE salmon_jobs ADD COLUMN weapons TEXT NOT NULL DEFAULT '[]'");
+    const columnsOf = (table: string) => (db.prepare(`PRAGMA table_info(${table})`).all() as {name: string}[]).map((c) => c.name);
+    const jobColumns = columnsOf('salmon_jobs');
+    if (!jobColumns.includes('weapons')) db.exec("ALTER TABLE salmon_jobs ADD COLUMN weapons TEXT NOT NULL DEFAULT '[]'");
+    if (!jobColumns.includes('played_at')) db.exec('ALTER TABLE salmon_jobs ADD COLUMN played_at TEXT');
+    if (!columnsOf('salmon_imports').includes('recorded_count')) {
+        db.exec('ALTER TABLE salmon_imports ADD COLUMN recorded_count INTEGER NOT NULL DEFAULT 0');
+    }
 }
 
 export function openDb(path: string): DatabaseSync {

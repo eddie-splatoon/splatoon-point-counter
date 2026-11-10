@@ -1,16 +1,19 @@
 import {getDb} from './db';
-import {addJob, parseJob} from './salmon';
+import {addJob, getCurrentSession, parseJob} from './salmon';
 import {
     CAPTURE_FILE_PATTERN,
     MAX_CAPTURES,
+    MAX_IMPORT_JOBS,
     MAX_PLAYED_AT_LENGTH,
     MAX_SALMON_IMPORT_ERROR_LENGTH,
     SALMON_IMPORT_EXPIRED_ERROR,
     SALMON_IMPORT_PROCESSING_TTL_MS,
     SALMON_IMPORT_REQUEST_TTL_MS,
     SALMON_IMPORT_TIMED_OUT_ERROR,
+    RECORDED_PLAYED_AT_LIMIT,
     SalmonImportRequest,
     SalmonImportStatus,
+    SalmonRecordedJobs,
 } from './salmonImportTypes';
 import {NewSalmonJob} from './salmonTypes';
 
@@ -22,6 +25,7 @@ interface ImportRow {
     completed_at: number | null;
     job_id: number | null;
     played_at: string | null;
+    recorded_count: number;
     captures: string;
     error: string | null;
 }
@@ -43,6 +47,7 @@ const toImport = (row: ImportRow): SalmonImportRequest => ({
     completedAt: row.completed_at,
     jobId: row.job_id,
     playedAt: row.played_at,
+    recordedCount: row.recorded_count,
     captures: parseStoredCaptures(row.captures),
     error: row.error,
 });
@@ -85,21 +90,31 @@ export function listImports(limit = 20, now = Date.now()): SalmonImportRequest[]
     return (getDb().prepare('SELECT * FROM salmon_imports ORDER BY id DESC LIMIT ?').all(limit) as unknown as ImportRow[]).map(toImport);
 }
 
+/** イカリング3から読み取ったバイトと、その日時 */
+export interface ImportedJob {
+    job: NewSalmonJob;
+    playedAt: string;
+}
+
 export type SalmonImportResult =
     | {status: 'processing'}
-    | {status: 'succeeded'; job: NewSalmonJob; playedAt: string; captures: string[]}
+    | {status: 'succeeded'; jobs: ImportedJob[]; captures: string[]}
     | {status: 'failed'; error: string; captures: string[]};
 
-/** 記録が残っている（取り消されていない）取り込みに、同じ日時のバイトがあるか */
-const isAlreadyImported = (playedAt: string): boolean =>
-    getDb().prepare(`
-        SELECT 1 FROM salmon_imports i JOIN salmon_jobs j ON j.id = i.job_id
-        WHERE i.status = 'succeeded' AND i.played_at = ?`).get(playedAt) !== undefined;
+const isRecorded = (playedAt: string): boolean =>
+    getDb().prepare('SELECT 1 FROM salmon_jobs WHERE played_at = ?').get(playedAt) !== undefined;
+
+/** 記録済みのバイトの日時（新しい順）と今のセッションの開始時刻。スクリプトが取りこぼしをどこまで遡るか決めるのに使う */
+export function getRecordedJobs(): SalmonRecordedJobs {
+    const rows = getDb().prepare('SELECT played_at FROM salmon_jobs WHERE played_at IS NOT NULL ORDER BY id DESC LIMIT ?')
+        .all(RECORDED_PLAYED_AT_LIMIT) as {played_at: string}[];
+    return {playedAt: rows.map((r) => r.played_at), sessionStartedAt: getCurrentSession()?.startedAt ?? null};
+}
 
 /**
  * 依頼の状態を進める。processing は処理待ちの依頼だけ、結果は取り込み中の依頼だけに書き込める。
- * succeeded ならバイトを現在のセッションに記録する。同じバイトを取り込み済みなら記録せず 'duplicate'
- * （イカリングにまだ新しいバイトが反映されていない。スクリプトは待って読み直す）
+ * succeeded なら、jobs（古い順。取りこぼしを含む）のうち記録していないバイトを、その順に今のセッションに記録する。
+ * すべて記録済みなら何も記録せず 'duplicate'（イカリング3にまだ新しいバイトが反映されていない。スクリプトは待って読み直す）
  */
 export function updateImport(id: number, result: SalmonImportResult, now = Date.now()): SalmonImportRequest | 'notFound' | 'duplicate' {
     expireStaleImports(now);
@@ -114,12 +129,20 @@ export function updateImport(id: number, result: SalmonImportResult, now = Date.
             .run(now, result.error, JSON.stringify(result.captures), id);
         return findImport(id)!;
     }
-    if (isAlreadyImported(result.playedAt)) return 'duplicate';
+    const seen = new Set<string>();
+    const newJobs = result.jobs.filter(({playedAt}) => {
+        if (seen.has(playedAt) || isRecorded(playedAt)) return false;
+        seen.add(playedAt);
+        return true;
+    });
+    if (newJobs.length === 0) return 'duplicate';
     db.exec('BEGIN');
     try {
-        const job = addJob(result.job, now);
-        db.prepare("UPDATE salmon_imports SET status = 'succeeded', completed_at = ?, job_id = ?, played_at = ?, captures = ?, error = NULL WHERE id = ?")
-            .run(now, job.id, result.playedAt, JSON.stringify(result.captures), id);
+        const recorded = newJobs.map(({job, playedAt}) => addJob(job, now, playedAt));
+        const latest = newJobs[newJobs.length - 1];
+        db.prepare(`
+            UPDATE salmon_imports SET status = 'succeeded', completed_at = ?, job_id = ?, played_at = ?, recorded_count = ?, captures = ?, error = NULL
+            WHERE id = ?`).run(now, recorded[recorded.length - 1].id, latest.playedAt, recorded.length, JSON.stringify(result.captures), id);
         db.exec('COMMIT');
     } catch (error) {
         db.exec('ROLLBACK');
@@ -133,20 +156,34 @@ const parseCaptures = (value: unknown): string[] | null =>
         ? value as string[]
         : null;
 
+const parseImportedJob = (value: unknown): ImportedJob | string => {
+    const {job, playedAt} = (value ?? {}) as Record<string, unknown>;
+    const parsedJob = parseJob(job);
+    if (typeof parsedJob === 'string') return parsedJob;
+    if (typeof playedAt !== 'string' || playedAt.trim() === '' || playedAt.length > MAX_PLAYED_AT_LENGTH) {
+        return `playedAt must be a non-empty string up to ${MAX_PLAYED_AT_LENGTH} characters.`;
+    }
+    return {job: parsedJob, playedAt: playedAt.trim()};
+};
+
 /** PATCH /api/salmon/import の本文を検証する。不正ならエラーメッセージ */
 export function parseImportResult(body: unknown): {id: number; result: SalmonImportResult} | string {
-    const {id, status, job, playedAt, captures = [], error} = (body ?? {}) as Record<string, unknown>;
+    const {id, status, jobs, captures = [], error} = (body ?? {}) as Record<string, unknown>;
     if (typeof id !== 'number' || !Number.isInteger(id) || id <= 0) return 'id must be a positive integer.';
     if (status === 'processing') return {id, result: {status}};
     const parsedCaptures = parseCaptures(captures);
     if (!parsedCaptures) return `captures must be an array of up to ${MAX_CAPTURES} PNG file names.`;
     if (status === 'succeeded') {
-        const parsedJob = parseJob(job);
-        if (typeof parsedJob === 'string') return parsedJob;
-        if (typeof playedAt !== 'string' || playedAt.trim() === '' || playedAt.length > MAX_PLAYED_AT_LENGTH) {
-            return `playedAt must be a non-empty string up to ${MAX_PLAYED_AT_LENGTH} characters.`;
+        if (!Array.isArray(jobs) || jobs.length === 0 || jobs.length > MAX_IMPORT_JOBS) {
+            return `jobs must be an array of 1-${MAX_IMPORT_JOBS} jobs (oldest first).`;
         }
-        return {id, result: {status, job: parsedJob, playedAt: playedAt.trim(), captures: parsedCaptures}};
+        const parsedJobs: ImportedJob[] = [];
+        for (const value of jobs) {
+            const parsed = parseImportedJob(value);
+            if (typeof parsed === 'string') return parsed;
+            parsedJobs.push(parsed);
+        }
+        return {id, result: {status, jobs: parsedJobs, captures: parsedCaptures}};
     }
     if (status === 'failed') {
         if (typeof error !== 'string' || error.trim() === '') return 'error must be a non-empty string.';
