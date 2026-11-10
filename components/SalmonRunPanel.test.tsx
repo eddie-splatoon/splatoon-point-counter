@@ -276,7 +276,7 @@ describe('SalmonRunPanel', () => {
 
 describe('SalmonRunPanel result import', () => {
   const importRequest = (overrides = {}) => ({
-    id: 3, status: 'pending', requestedAt: 0, startedAt: null, completedAt: null, jobId: null, playedAt: null, captures: [], error: null, ...overrides,
+    id: 3, status: 'pending', requestedAt: 0, startedAt: null, completedAt: null, jobId: null, playedAt: null, recordedCount: 0, captures: [], error: null, ...overrides,
   });
 
   const mockImportStatus = (...statuses: object[]) => {
@@ -294,7 +294,7 @@ describe('SalmonRunPanel result import', () => {
     mockedAxios.post.mockResolvedValue({ data: { import: importRequest() }, status: 200 });
     // 記録されたら読み直すので、以降の読み込みでは記録が 1 件ある
     mockGet(summaryOf([job()]));
-    mockImportStatus(importRequest({ status: 'processing' }), importRequest({ status: 'succeeded', playedAt: '2026/11/10 21:05', jobId: 1 }));
+    mockImportStatus(importRequest({ status: 'processing' }), importRequest({ status: 'succeeded', playedAt: '2026/11/10 21:05', jobId: 1, recordedCount: 1 }));
 
     fireEvent.click(button);
     expect(await screen.findByText('取り込みスクリプトを待っています...')).toBeInTheDocument();
@@ -304,6 +304,16 @@ describe('SalmonRunPanel result import', () => {
     expect(await screen.findByText('記録しました（2026/11/10 21:05 のバイト）', {}, { timeout: 3000 })).toBeInTheDocument();
     await waitFor(() => expect(within(screen.getByTestId('salmon-history')).getByText(/金イクラ 30/)).toBeInTheDocument());
     expect(button).toBeEnabled();
+  });
+
+  it('shows how many jobs were recorded including the missed ones', async () => {
+    render(<SalmonRunPanel />);
+    const button = await screen.findByRole('button', { name: /最新のリザルトを取り込む/ });
+    mockedAxios.post.mockResolvedValue({ data: { import: importRequest({ status: 'processing' }) }, status: 200 });
+    mockImportStatus(importRequest({ status: 'succeeded', playedAt: '2026/11/10 21:05', jobId: 4, recordedCount: 3 }));
+
+    fireEvent.click(button);
+    expect(await screen.findByText('取りこぼしを含めて 3 件記録しました（最新は 2026/11/10 21:05 のバイト）', {}, { timeout: 3000 })).toBeInTheDocument();
   });
 
   it('shows why the import failed', async () => {

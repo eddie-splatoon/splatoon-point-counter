@@ -78,9 +78,11 @@ const importStatusText = (request: SalmonImportRequest): string => {
         case 'pending':
             return '取り込みスクリプトを待っています...';
         case 'processing':
-            return 'イカリング3から読み取り中...（新しいリザルトが反映されるまで待つことがあります）';
+            return 'イカリング3から読み取り中...（新しいリザルトの反映を待ったり、取りこぼしを遡ったりすることがあります）';
         case 'succeeded':
-            return `記録しました${request.playedAt ? `（${request.playedAt} のバイト）` : ''}`;
+            return request.recordedCount > 1
+                ? `取りこぼしを含めて ${request.recordedCount} 件記録しました（最新は ${request.playedAt} のバイト）`
+                : `記録しました（${request.playedAt} のバイト）`;
         case 'failed':
             return `取り込めませんでした: ${request.error ?? '不明なエラー'}`;
     }

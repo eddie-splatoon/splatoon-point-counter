@@ -1,10 +1,11 @@
 """iPhone ミラーリングの NSO アプリ（イカリング3）から、サーモンランの最新のリザルトを読み取って記録するスクリプト。
 
 コントロールパネルの「リザルトを取り込む」で /api/salmon/import に依頼が入ると、
-1. ホーム → サーモンランのタブでバイトヒストリーを読み込み直し、いちばん上（最新）のバイトを開く
+1. バイトの詳細画面の「最新のバイトへ」で最新のバイトを表示する（ヒストリーはタブを移っても読み込み直されない）
 2. 詳細画面を撮影して data/salmon-results/ に保存し、Vision の OCR で自分の金イクラ・オオモノ・デス・
    クリア / 失敗した WAVE・ステージ・日時を読み、支給ブキはアイコンを参照画像と照合する
-3. PATCH /api/salmon/import で結果を送る（サーバーが記録する）。同じバイトを取り込み済み（409）なら、
+3. 「前のバイト」で、記録済みのバイト（または今のセッションの開始）まで遡って、取りこぼしも読む
+4. PATCH /api/salmon/import で古い順に送る（サーバーが記録する）。最新のバイトが記録済みなら、
    イカリング3にまだ反映されていないので、待って読み直す
 
 イカリング3の API は直接呼ばない（公式アプリの画面を操作するだけ）。
@@ -37,6 +38,10 @@ POLL_INTERVAL_SECONDS = 1.0
 # イカリング3に新しいバイトが反映されるまで待つ時間。サーバーの SALMON_IMPORT_PROCESSING_TTL_MS（6 分）より短くする
 MAX_WAIT_FOR_NEW_JOB_SECONDS = 4 * 60
 RETRY_INTERVAL_SECONDS = 15
+# 取りこぼしを遡る上限（サーバーの MAX_IMPORT_JOBS と合わせる）
+MAX_BACKFILL_JOBS = 20
+# 「最新のバイトへ」「前のバイト」を押してから、画面が切り替わり始めるまで待つ時間
+PAGE_LOAD_SECONDS = 2
 SCREEN_TIMEOUT_SECONDS = 15
 RECONNECT_TIMEOUT_SECONDS = 20
 # 文字が小さいので、拡大してから OCR する（ミラーリングの画面は 1 倍で 400px 程度の幅しかない）
@@ -238,6 +243,54 @@ def _post_mouse(event_type, point) -> None:
     Quartz.CGEventPost(Quartz.kCGHIDEventTap, event)
 
 
+# ミラーリングが前面になるまで待つ時間
+ACTIVATE_TIMEOUT_SECONDS = 1.5
+
+
+def _ax_app(pid: int):
+    import ApplicationServices
+
+    return ApplicationServices.AXUIElementCreateApplication(pid)
+
+
+def _is_frontmost(pid: int) -> bool:
+    import ApplicationServices
+
+    error, value = ApplicationServices.AXUIElementCopyAttributeValue(_ax_app(pid), ApplicationServices.kAXFrontmostAttribute, None)
+    return error == 0 and bool(value)
+
+
+def _set_frontmost(pid: int) -> None:
+    """アクセシビリティの API で前面にする。NSRunningApplication.activate はほかのアプリ（コントロールパネルを開いた
+    ブラウザなど）が前面のときに拒否されることがあり、前面にならないままのクリックはウインドウを前面にするだけで押されない"""
+    import ApplicationServices
+
+    ApplicationServices.AXUIElementSetAttributeValue(_ax_app(pid), ApplicationServices.kAXFrontmostAttribute, True)
+
+
+def _frontmost_pid() -> int | None:
+    """いま前面のアプリ。NSWorkspace.frontmostApplication はこのスクリプト（イベントループが無い）では更新されないので、
+    アクセシビリティの API で各アプリに前面かを聞く"""
+    import AppKit
+
+    for app in AppKit.NSWorkspace.sharedWorkspace().runningApplications():
+        if app.activationPolicy() == AppKit.NSApplicationActivationPolicyRegular and _is_frontmost(app.processIdentifier()):
+            return app.processIdentifier()
+    return None
+
+
+ACCESSIBILITY_ERROR = (
+    "このスクリプトを起動したアプリ（ターミナル）に、クリックするための権限がありません。権限が無いとクリックが黙って無視されます"
+    "（システム設定 → プライバシーとセキュリティ → 「デバイスの制御とデータへのアクセス」。macOS 26 までは「アクセシビリティ」）"
+)
+
+
+def has_accessibility_permission() -> bool:
+    import ApplicationServices
+
+    return bool(ApplicationServices.AXIsProcessTrusted())
+
+
 class _FocusRestorer:
     """ミラーリングを前面にして操作し、終わったらカーソルの位置と前面のアプリを元に戻す"""
 
@@ -245,20 +298,30 @@ class _FocusRestorer:
         import AppKit
         import Quartz
 
-        self.front = AppKit.NSWorkspace.sharedWorkspace().frontmostApplication()
+        if not has_accessibility_permission():
+            raise ImportError_(ACCESSIBILITY_ERROR)
+        self.front_pid = _frontmost_pid()
         self.cursor = Quartz.CGEventGetLocation(Quartz.CGEventCreate(None))
         mirroring = AppKit.NSRunningApplication.runningApplicationsWithBundleIdentifier_(MIRRORING_BUNDLE_ID)
-        if mirroring:
-            mirroring[0].activateWithOptions_(0)
-        time.sleep(0.15)
+        if not mirroring:
+            raise ImportError_("iPhone ミラーリングが起動していません")
+        pid = mirroring[0].processIdentifier()
+        _set_frontmost(pid)
+        deadline = time.monotonic() + ACTIVATE_TIMEOUT_SECONDS
+        while not _is_frontmost(pid):
+            if time.monotonic() > deadline:
+                self.__exit__()
+                raise ImportError_("iPhone ミラーリングを前面にできませんでした")
+            time.sleep(0.05)
+        time.sleep(0.1)  # 前面になった直後のクリックが取りこぼされないように
         return self
 
     def __exit__(self, *exc):
         import Quartz
 
         Quartz.CGWarpMouseCursorPosition(self.cursor)
-        if self.front is not None:
-            self.front.activateWithOptions_(0)
+        if self.front_pid is not None:
+            _set_frontmost(self.front_pid)
         return False
 
 
@@ -489,16 +552,16 @@ def weapon_icons(image, row: Box, cells: "SelfRowCells") -> list:
 # ---- 詳細画面の読み取り ----
 
 # 数字のセルは読み方によって読めたり読めなかったりするので、いくつかの方法で読んで多数決にする
-CELL_OCR_SCALES = (4, 3, 5)
+CELL_OCR_SCALES = (4, 3, 5, 8)  # 1 桁（x9 など）は短くて 8 倍でないと読めないことがある
 CELL_BINARIZE_THRESHOLD = 180
 
 
-def binarize_white_text(image, scale: int):
+def binarize_white_text(image, scale: int, threshold: int = CELL_BINARIZE_THRESHOLD):
     """暗い背景の白い文字だけを、白地に黒い文字にする（文字の周りのアイコン・枠の色で読み間違えないように）"""
     from PIL import Image, ImageOps
 
     gray = image.convert("L").resize((image.width * scale, image.height * scale), Image.LANCZOS)
-    binary = gray.point(lambda v: 0 if v > CELL_BINARIZE_THRESHOLD else 255)
+    binary = gray.point(lambda v: 0 if v > threshold else 255)
     return ImageOps.expand(binary, border=20, fill=255).convert("RGB")
 
 
@@ -518,16 +581,38 @@ def vote_count(cell, ocr_fn=None) -> int | None:
 
 
 
+# 詳細画面の左上の日時の位置。ステージの画像の上に白い文字で出るので、明るいステージでは全体の OCR で読めない
+PLAYED_AT_REGION = (0.02, 0.155, 0.36, 0.185)
+PLAYED_AT_BINARIZE_THRESHOLDS = (210, 180)
+
+
+def read_played_at(image, boxes: list[Box], ocr_fn=None) -> str | None:
+    """バイトの日時。全体の OCR と、日時の部分を切り出していくつかの方法で読んだ結果の多数決"""
+    ocr_fn = ocr_fn or ocr
+    region = crop_relative(image, PLAYED_AT_REGION)
+    candidates = [parse_played_at(boxes)]
+    candidates += [parse_played_at(ocr_fn(binarize_white_text(region, CELL_OCR_SCALE, t), 1)) for t in PLAYED_AT_BINARIZE_THRESHOLDS]
+    candidates.append(parse_played_at(ocr_fn(region, CELL_OCR_SCALE)))
+    values = [c for c in candidates if c is not None]
+    if not values:
+        return None
+    return max(values, key=lambda v: (values.count(v), -values.index(v)))
+
+
 def read_job(image, refs: dict, cells: SelfRowCells = SelfRowCells(), ocr_fn=ocr) -> tuple[dict, str]:
     """詳細画面の画像から、記録するバイト（NewSalmonJob）と日時を読む。読めない項目があれば ImportError_"""
     boxes = ocr_fn(image, FULL_OCR_SCALE)
-    played_at = parse_played_at(boxes)
+    played_at = read_played_at(image, boxes, ocr_fn)
     if played_at is None:
         raise ImportError_("バイトの日時を読み取れませんでした（詳細画面が開いていない可能性があります）")
     row = find_self_row(boxes)
     if row is None:
         raise ImportError_("自分の行（オオモノシャケ）が見つかりませんでした")
-    played_at_box = next(b for b in boxes if PLAYED_AT_PATTERN.search(unicodedata.normalize("NFKC", b.text)))
+    left, top, right, bottom = PLAYED_AT_REGION
+    played_at_box = next(
+        (b for b in boxes if PLAYED_AT_PATTERN.search(unicodedata.normalize("NFKC", b.text))),
+        Box("", left, top, right - left, bottom - top),
+    )
     # 見出しは全体の OCR では読めないことがあるので、日時の下を切り出して拡大して読み直す。
     # プレイヤー名（Clare など）で判定しないよう、プレイヤーの一覧より上の文字だけを使う
     header = crop_relative(image, (0.3, played_at_box.y, 0.7, min(1.0, played_at_box.y + 0.06)))
@@ -607,32 +692,104 @@ def ensure_connected(window: Window, log=print) -> None:
         raise ImportError_("iPhone ミラーリングに接続できませんでした")
 
 
+def is_job_detail(boxes: list[Box]) -> bool:
+    """バイトの詳細画面か（下に「最新のバイトへ」「前のバイト」のボタンがある）"""
+    return find_box(boxes, "前のバイト", "最新のバイト", "最新のパイト", "前のパイト") is not None
+
+
 def tab_position(boxes: list[Box], label: str) -> tuple[float, float] | None:
     tab = find_box(boxes, label, min_y=0.88)
     return (tab.cx, tab.cy) if tab else None
 
 
-def open_latest_job(window: Window) -> None:
-    """ホーム → サーモンランのタブでヒストリーを読み込み直し、いちばん上のバイトの詳細を開く"""
-    _, boxes = wait_for_screen(window, "サーモンラン", timeout=3)
-    home = tab_position(boxes, "ホーム")
+def open_any_job(window: Window, boxes: list[Box]) -> list[Box]:
+    """バイトの詳細画面でなければ、サーモンランのヒストリーからいちばん上のバイトを開く"""
+    if is_job_detail(boxes):
+        return boxes
     salmon = tab_position(boxes, "サーモンラン")
-    if home is None or salmon is None:
+    if salmon is None:
         raise ImportError_("イカリング3が開かれていません（NSO アプリでイカリング3を開いてください）")
-    tap(window, *home)
-    time.sleep(2.5)
     tap(window, *salmon)
-    wait_for_screen(window, "ヒストリー")
-    # 読み込み直すとページの先頭に戻り、最新のバイトがタブの下に隠れるので少しスクロールする
-    scroll(window, -300)
     _, boxes = wait_for_screen(window, "ヒストリー")
     row = find_first_history_row(boxes)
     if row is None:
+        # ページの先頭では、最新のバイトがタブの下に隠れているので少しスクロールする
+        scroll(window, -300)
+        _, boxes = wait_for_screen(window, "ヒストリー")
+        row = find_first_history_row(boxes)
+    if row is None:
         raise ImportError_("バイトヒストリーが見つかりませんでした")
     tap(window, 0.5, row.cy)
-    _, boxes = wait_for_screen(window, "オオモノ")
-    if find_self_row(boxes) is None:
+    _, boxes = wait_for_screen(window, "前のバイト", "最新のバイト", "最新のパイト")
+    if not is_job_detail(boxes):
         raise ImportError_("バイトの詳細画面を開けませんでした")
+    return boxes
+
+
+# 「次のバイト」のボタンの位置（OCR で見つからないとき用）。最新のバイトでは押せなくなり、文字が灰色になる
+NEXT_JOB_BUTTON_REGION = (0.574, 0.869, 0.718, 0.882)
+# 「次のバイト」の文字の明るさ（最大値）。押せるときは白（255）、押せないときは灰色（117 程度）
+NEXT_JOB_ENABLED_BRIGHTNESS = 180
+
+
+def is_latest_job(image, boxes: list[Box]) -> bool:
+    """最新のバイトの詳細画面か（「次のバイト」が押せない＝文字が灰色）"""
+    import numpy as np
+
+    button = find_box(boxes, "次のバイト", "次のパイト", min_y=0.8)
+    region = (button.x, button.y, button.x + button.w, button.y + button.h) if button else NEXT_JOB_BUTTON_REGION
+    brightness = float(np.asarray(crop_relative(image, region).convert("L")).max())
+    return brightness < NEXT_JOB_ENABLED_BRIGHTNESS
+
+
+def open_latest_job(window: Window) -> None:
+    """詳細画面の「最新のバイトへ」で、最新のバイトを読み込み直して表示する
+    （ヒストリーはタブを移っても読み込み直されず、新しいバイトが出てこない）。
+    押した直後は前の画面のままなので、「次のバイト」が押せなくなる（最新のバイトになる）まで待つ"""
+    _, boxes = wait_for_screen(window, "サーモンラン", timeout=3)
+    boxes = open_any_job(window, boxes)
+    latest = find_box(boxes, "最新のバイト", "最新のパイト")
+    if latest is None:
+        raise ImportError_("「最新のバイトへ」のボタンが見つかりませんでした")
+    tap(window, latest.cx, latest.cy)
+    deadline = time.monotonic() + SCREEN_TIMEOUT_SECONDS
+    while time.monotonic() < deadline:
+        time.sleep(1)
+        image, boxes = wait_for_screen(window, "オオモノ", timeout=3)
+        if is_job_detail(boxes) and find_self_row(boxes) is not None and is_latest_job(image, boxes):
+            return
+    raise ImportError_("最新のバイトを表示できませんでした")
+
+
+def open_previous_job(window: Window, played_at: str) -> bool:
+    """「前のバイト」で 1 つ前のバイトを表示する。日時が変わらなければ（いちばん古いバイトなど）False"""
+    _, boxes = wait_for_screen(window, "前のバイト", "前のパイト", timeout=3)
+    previous = find_box(boxes, "前のバイト", "前のパイト")
+    if previous is None:
+        return False
+    tap(window, previous.cx, previous.cy)
+    time.sleep(PAGE_LOAD_SECONDS)
+    deadline = time.monotonic() + SCREEN_TIMEOUT_SECONDS
+    while time.monotonic() < deadline:
+        image, boxes = wait_for_screen(window, "オオモノ", timeout=3)
+        current = read_played_at(image, boxes)
+        if current is not None and current != played_at and find_self_row(boxes) is not None:
+            return True
+        time.sleep(1)
+    return False
+
+
+def played_at_timestamp(played_at: str) -> float:
+    """「2026/11/10 21:05」（このスクリプトを動かしている Mac の時刻）を UNIX 時間（ミリ秒）にする"""
+    return datetime.strptime(played_at, "%Y/%m/%d %H:%M").timestamp() * 1000
+
+
+def should_stop_backfill(played_at: str, recorded: set[str], session_started_at: float | None) -> bool:
+    """取りこぼしを遡るのをやめるか。記録済みのバイト、今のセッションより前のバイトまで来たらやめる
+    （セッションが無ければ遡らない。前の配信のバイトまで記録しないように）"""
+    if played_at in recorded or session_started_at is None:
+        return True
+    return played_at_timestamp(played_at) < session_started_at
 
 
 # ---- API との通信 ----
@@ -650,6 +807,13 @@ class Api:
         response = self.session.get(self.import_url, params={"status": "pending"}, timeout=5)
         response.raise_for_status()
         return response.json()["imports"]
+
+    def recorded(self) -> tuple[set[str], float | None]:
+        """記録済みのバイトの日時と、今のセッションの開始時刻（ミリ秒）"""
+        response = self.session.get(self.import_url, params={"view": "recorded"}, timeout=5)
+        response.raise_for_status()
+        body = response.json()
+        return set(body["playedAt"]), body["sessionStartedAt"]
 
     def update(self, body: dict) -> int:
         return self.session.patch(self.import_url, json=body, timeout=10).status_code
@@ -671,39 +835,79 @@ def process_request(request_id: int, api: Api, refs: dict, capture_dir: Path, lo
         return
     log(f"依頼 {request_id}: 最新のリザルトを取り込みます")
     captures: list[str] = []
+    window: Window | None = None
     deadline = time.monotonic() + MAX_WAIT_FOR_NEW_JOB_SECONDS
     try:
         window = find_mirroring_window()
         ensure_connected(window, log)
         while True:
+            recorded, session_started_at = api.recorded()
             open_latest_job(window)
-            name = capture_name(datetime.now(), "detail")
-            image = capture(window, capture_dir / name)
-            captures = [*captures, name][-10:]
-            job, played_at = read_job(image, refs)
+
+            def read_current(label: str) -> tuple[dict, str]:
+                nonlocal captures
+                name = capture_name(datetime.now(), label)
+                image = capture(window, capture_dir / name)
+                captures = [*captures, name][-10:]
+                return read_job(image, refs)
+
+            job, played_at = read_current("detail")
             log(f"読み取り: {played_at} {job}")
-            status = api.update({"id": request_id, "status": "succeeded", "job": job, "playedAt": played_at, "captures": captures})
+            if played_at in recorded:
+                if time.monotonic() + RETRY_INTERVAL_SECONDS > deadline:
+                    raise ImportError_("新しいバイトがイカリング3に反映されませんでした（最新のバイトは記録済みです）")
+                log(f"{played_at} のバイトは記録済みです。イカリング3への反映を待って読み直します")
+                time.sleep(RETRY_INTERVAL_SECONDS)
+                continue
+
+            jobs = [{"job": job, "playedAt": played_at}]
+            # 取りこぼしを遡る。読めないバイトがあればそこでやめ、読めた分だけ記録する
+            while len(jobs) < MAX_BACKFILL_JOBS and open_previous_job(window, played_at):
+                try:
+                    previous_job, previous_played_at = read_current("detail")
+                except ImportError_ as error:
+                    log(f"警告: 前のバイトを読み取れなかったので、遡るのをやめます: {error}")
+                    break
+                if previous_played_at in {j["playedAt"] for j in jobs} or should_stop_backfill(
+                    previous_played_at, recorded, session_started_at
+                ):
+                    break
+                log(f"取りこぼし: {previous_played_at} {previous_job}")
+                jobs.append({"job": previous_job, "playedAt": previous_played_at})
+                played_at = previous_played_at
+
+            status = api.update({"id": request_id, "status": "succeeded", "jobs": jobs[::-1], "captures": captures})
             if status == 200:
-                log(f"依頼 {request_id}: 記録しました")
+                log(f"依頼 {request_id}: {len(jobs)} 件記録しました")
                 api.telop(TELOP_SUCCEEDED)
                 return
             if status != 409:
                 raise ImportError_(f"結果を記録できませんでした（HTTP {status}）")
-            if time.monotonic() + RETRY_INTERVAL_SECONDS > deadline:
-                raise ImportError_("新しいバイトがイカリング3に反映されませんでした（最新のバイトは記録済みです）")
-            log(f"{played_at} のバイトは記録済みです。イカリング3への反映を待って読み直します")
-            time.sleep(RETRY_INTERVAL_SECONDS)
+            # 読んでいる間に、別の取り込みで記録された
+            if time.monotonic() > deadline:
+                raise ImportError_("読み取ったバイトはすべて記録済みでした")
+            log("読み取ったバイトはすべて記録済みでした。読み直します")
     except ImportError_ as error:
         reason = str(error)
     except Exception as error:  # 想定外の失敗でも依頼を取り込み中のまま残さない
         reason = f"想定外のエラー: {error}"
     log(f"依頼 {request_id}: 取り込めませんでした: {reason}")
+    if window is not None:
+        # どの画面で失敗したかを後から確認できるように残す
+        try:
+            name = capture_name(datetime.now(), "error")
+            capture(window, capture_dir / name)
+            captures = [*captures, name][-10:]
+        except Exception:
+            pass
     api.update({"id": request_id, "status": "failed", "error": reason, "captures": captures})
     api.telop(TELOP_FAILED)
 
 
 def run(api_base: str, capture_dir: Path, refs_dir: Path) -> None:
     api = Api(api_base)
+    if not has_accessibility_permission():
+        print(f"[salmon-result] 警告: {ACCESSIBILITY_ERROR}", file=sys.stderr, flush=True)
     refs = ensure_weapon_refs(refs_dir)
     print(f"[salmon-result] ブキの参照画像: {len(refs)} 種。{api.import_url} の依頼を待っています", flush=True)
     attempted: set[int] = set()

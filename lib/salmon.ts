@@ -99,13 +99,16 @@ export function listSessions(): SalmonSessionWithTotals[] {
     return rows.map((row) => ({...toSession(row), totals: toTotals(row)}));
 }
 
-/** バイトを現在のセッションに記録する。セッションが無ければ自動で作る */
-export function addJob(job: NewSalmonJob, now = Date.now()): SalmonJob {
+/**
+ * バイトを現在のセッションに記録する。セッションが無ければ自動で作る。
+ * playedAt はイカリング3から取り込んだときのバイトの日時（二重に記録しないため。手入力では null）
+ */
+export function addJob(job: NewSalmonJob, now = Date.now(), playedAt: string | null = null): SalmonJob {
     const session = getCurrentSession() ?? startSession('', now);
     const result = getDb().prepare(`
-        INSERT INTO salmon_jobs (session_id, created_at, golden_eggs, boss_kills, deaths, cleared, wave_reached, stage, weapons)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`).run(
-        session.id, now, job.goldenEggs, job.bossKills, job.deaths, job.cleared ? 1 : 0, job.waveReached, job.stage, JSON.stringify(job.weapons),
+        INSERT INTO salmon_jobs (session_id, created_at, golden_eggs, boss_kills, deaths, cleared, wave_reached, stage, weapons, played_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`).run(
+        session.id, now, job.goldenEggs, job.bossKills, job.deaths, job.cleared ? 1 : 0, job.waveReached, job.stage, JSON.stringify(job.weapons), playedAt,
     );
     return {...job, id: Number(result.lastInsertRowid), sessionId: session.id, createdAt: now};
 }

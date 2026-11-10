@@ -13,6 +13,10 @@ export const SALMON_IMPORT_TIMED_OUT_ERROR = '時間切れ（取り込みスク�
 export const MAX_SALMON_IMPORT_ERROR_LENGTH = 200;
 export const MAX_PLAYED_AT_LENGTH = 50;
 export const MAX_CAPTURES = 10;
+// 1 回の取り込みで記録するバイトの上限（取りこぼしを遡る数。スクリプトの MAX_BACKFILL_JOBS と合わせる）
+export const MAX_IMPORT_JOBS = 20;
+// スクリプトが「記録済みか」を判定するために返す、記録済みのバイトの日時の数
+export const RECORDED_PLAYED_AT_LIMIT = 200;
 // キャプチャはスクリプトが data/salmon-results/ に保存したファイル名だけを受け付ける（パスを含めさせない）
 export const CAPTURE_FILE_PATTERN = /^[A-Za-z0-9_-]{1,80}\.png$/;
 
@@ -22,8 +26,15 @@ export interface SalmonImportRequest {
     requestedAt: number;
     startedAt: number | null;
     completedAt: number | null;
-    jobId: number | null;
-    playedAt: string | null; // イカリング3に表示されたバイトの日時（同じバイトを二重に記録しないため）
+    jobId: number | null; // 記録したうちの最新のバイト
+    playedAt: string | null; // 記録したうちの最新のバイトの、イカリング3に表示された日時
+    recordedCount: number; // 取りこぼしも含めて記録したバイトの数
     captures: string[];
     error: string | null;
+}
+
+/** 取り込みスクリプトが遡るときに使う、記録済みのバイトの日時と今のセッションの開始時刻 */
+export interface SalmonRecordedJobs {
+    playedAt: string[];
+    sessionStartedAt: number | null;
 }

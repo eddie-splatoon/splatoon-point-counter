@@ -43,7 +43,7 @@ describe('app_state', () => {
 });
 
 describe('migration', () => {
-  it('adds the weapons column to a database created before it existed', async () => {
+  it('adds the weapons and played_at columns to a database created before they existed', async () => {
     const dir = await mkdtemp(join(tmpdir(), 'overlay-db-'));
     try {
       const path = join(dir, 'overlay.db');
@@ -60,9 +60,31 @@ describe('migration', () => {
       old.close();
 
       const db = openDb(path);
-      expect(db.prepare('SELECT weapons FROM salmon_jobs').get()).toEqual({ weapons: '[]' });
+      expect(db.prepare('SELECT weapons, played_at FROM salmon_jobs').get()).toEqual({ weapons: '[]', played_at: null });
       db.close();
       // 2回目以降に開いても列を足し直さない
+      openDb(path).close();
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  it('adds the recorded_count column to salmon_imports created before it existed', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'overlay-db-'));
+    try {
+      const path = join(dir, 'overlay.db');
+      const old = new DatabaseSync(path);
+      old.exec(`
+        CREATE TABLE salmon_imports (
+          id INTEGER PRIMARY KEY AUTOINCREMENT, status TEXT NOT NULL, requested_at INTEGER NOT NULL, started_at INTEGER,
+          completed_at INTEGER, job_id INTEGER, played_at TEXT, captures TEXT NOT NULL DEFAULT '[]', error TEXT);
+        INSERT INTO salmon_imports (status, requested_at) VALUES ('failed', 1);
+      `);
+      old.close();
+
+      const db = openDb(path);
+      expect(db.prepare('SELECT recorded_count FROM salmon_imports').get()).toEqual({ recorded_count: 0 });
+      db.close();
       openDb(path).close();
     } finally {
       await rm(dir, { recursive: true, force: true });
