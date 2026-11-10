@@ -243,6 +243,54 @@ def _post_mouse(event_type, point) -> None:
     Quartz.CGEventPost(Quartz.kCGHIDEventTap, event)
 
 
+# ミラーリングが前面になるまで待つ時間
+ACTIVATE_TIMEOUT_SECONDS = 1.5
+
+
+def _ax_app(pid: int):
+    import ApplicationServices
+
+    return ApplicationServices.AXUIElementCreateApplication(pid)
+
+
+def _is_frontmost(pid: int) -> bool:
+    import ApplicationServices
+
+    error, value = ApplicationServices.AXUIElementCopyAttributeValue(_ax_app(pid), ApplicationServices.kAXFrontmostAttribute, None)
+    return error == 0 and bool(value)
+
+
+def _set_frontmost(pid: int) -> None:
+    """アクセシビリティの API で前面にする。NSRunningApplication.activate はほかのアプリ（コントロールパネルを開いた
+    ブラウザなど）が前面のときに拒否されることがあり、前面にならないままのクリックはウインドウを前面にするだけで押されない"""
+    import ApplicationServices
+
+    ApplicationServices.AXUIElementSetAttributeValue(_ax_app(pid), ApplicationServices.kAXFrontmostAttribute, True)
+
+
+def _frontmost_pid() -> int | None:
+    """いま前面のアプリ。NSWorkspace.frontmostApplication はこのスクリプト（イベントループが無い）では更新されないので、
+    アクセシビリティの API で各アプリに前面かを聞く"""
+    import AppKit
+
+    for app in AppKit.NSWorkspace.sharedWorkspace().runningApplications():
+        if app.activationPolicy() == AppKit.NSApplicationActivationPolicyRegular and _is_frontmost(app.processIdentifier()):
+            return app.processIdentifier()
+    return None
+
+
+ACCESSIBILITY_ERROR = (
+    "このスクリプトを起動したアプリ（ターミナル）に「アクセシビリティ」の権限がありません。"
+    "権限が無いとクリックが黙って無視されます（システム設定 → プライバシーとセキュリティ → アクセシビリティ）"
+)
+
+
+def has_accessibility_permission() -> bool:
+    import ApplicationServices
+
+    return bool(ApplicationServices.AXIsProcessTrusted())
+
+
 class _FocusRestorer:
     """ミラーリングを前面にして操作し、終わったらカーソルの位置と前面のアプリを元に戻す"""
 
@@ -250,20 +298,30 @@ class _FocusRestorer:
         import AppKit
         import Quartz
 
-        self.front = AppKit.NSWorkspace.sharedWorkspace().frontmostApplication()
+        if not has_accessibility_permission():
+            raise ImportError_(ACCESSIBILITY_ERROR)
+        self.front_pid = _frontmost_pid()
         self.cursor = Quartz.CGEventGetLocation(Quartz.CGEventCreate(None))
         mirroring = AppKit.NSRunningApplication.runningApplicationsWithBundleIdentifier_(MIRRORING_BUNDLE_ID)
-        if mirroring:
-            mirroring[0].activateWithOptions_(0)
-        time.sleep(0.15)
+        if not mirroring:
+            raise ImportError_("iPhone ミラーリングが起動していません")
+        pid = mirroring[0].processIdentifier()
+        _set_frontmost(pid)
+        deadline = time.monotonic() + ACTIVATE_TIMEOUT_SECONDS
+        while not _is_frontmost(pid):
+            if time.monotonic() > deadline:
+                self.__exit__()
+                raise ImportError_("iPhone ミラーリングを前面にできませんでした")
+            time.sleep(0.05)
+        time.sleep(0.1)  # 前面になった直後のクリックが取りこぼされないように
         return self
 
     def __exit__(self, *exc):
         import Quartz
 
         Quartz.CGWarpMouseCursorPosition(self.cursor)
-        if self.front is not None:
-            self.front.activateWithOptions_(0)
+        if self.front_pid is not None:
+            _set_frontmost(self.front_pid)
         return False
 
 
@@ -848,6 +906,8 @@ def process_request(request_id: int, api: Api, refs: dict, capture_dir: Path, lo
 
 def run(api_base: str, capture_dir: Path, refs_dir: Path) -> None:
     api = Api(api_base)
+    if not has_accessibility_permission():
+        print(f"[salmon-result] 警告: {ACCESSIBILITY_ERROR}", file=sys.stderr, flush=True)
     refs = ensure_weapon_refs(refs_dir)
     print(f"[salmon-result] ブキの参照画像: {len(refs)} 種。{api.import_url} の依頼を待っています", flush=True)
     attempted: set[int] = set()
