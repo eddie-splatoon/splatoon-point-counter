@@ -19,6 +19,7 @@ import {
 import axios from 'axios';
 import React, {useCallback, useEffect, useRef, useState} from 'react';
 
+import {SalmonImportRequest} from '../lib/salmonImportTypes';
 import {SalmonScheduleData, pickCurrentSchedule} from '../lib/salmonSchedule';
 import {MAX_COUNT, MAX_WAVE, SalmonJob, SalmonSessionWithTotals, SalmonSummary} from '../lib/salmonTypes';
 import {MAX_JOB_WEAPONS, findSalmonWeapon} from '../lib/salmonWeapons';
@@ -67,6 +68,74 @@ const JobRow: React.FC<{job: SalmonJob; index: number; onDelete?: (id: number) =
         )}
     </Box>
 );
+
+const IMPORT_POLL_INTERVAL_MS = 1000;
+
+const isActiveImport = (request: SalmonImportRequest | null) => request?.status === 'pending' || request?.status === 'processing';
+
+const importStatusText = (request: SalmonImportRequest): string => {
+    switch (request.status) {
+        case 'pending':
+            return '取り込みスクリプトを待っています...';
+        case 'processing':
+            return 'イカリング3から読み取り中...（新しいリザルトが反映されるまで待つことがあります）';
+        case 'succeeded':
+            return `記録しました${request.playedAt ? `（${request.playedAt} のバイト）` : ''}`;
+        case 'failed':
+            return `取り込めませんでした: ${request.error ?? '不明なエラー'}`;
+    }
+};
+
+/**
+ * iPhone ミラーリングのイカリング3から最新のリザルトを取り込むボタン。読み取りと記録は取り込みスクリプト
+ * （tools/salmon-result）が行うので、ここでは依頼して終わるまで状態を表示し、記録されたら onImported で読み直す
+ */
+const SalmonImportButton: React.FC<{onImported: () => void}> = ({onImported}) => {
+    const [request, setRequest] = useState<SalmonImportRequest | null>(null);
+    const [requestError, setRequestError] = useState('');
+    const active = isActiveImport(request);
+    const requestId = request?.id;
+
+    useEffect(() => {
+        if (!active) return;
+        const timer = setInterval(async () => {
+            try {
+                const res = await axios.get<{imports: SalmonImportRequest[]}>('/api/salmon/import');
+                const latest = res.data.imports.find((i) => i.id === requestId);
+                if (!latest) return;
+                setRequest(latest);
+                if (latest.status === 'succeeded') onImported();
+            } catch (e) {
+                // 一時的な失敗は次のポーリングでやり直す
+                console.error('Failed to load the salmon import status', e);
+            }
+        }, IMPORT_POLL_INTERVAL_MS);
+        return () => clearInterval(timer);
+    }, [active, requestId, onImported]);
+
+    const handleImport = async () => {
+        setRequestError('');
+        try {
+            setRequest((await axios.post<{import: SalmonImportRequest}>('/api/salmon/import', {})).data.import);
+        } catch {
+            setRequestError('取り込みを依頼できませんでした。サーバーを確認してください。');
+        }
+    };
+
+    return (
+        <Box sx={{mb: 2}}>
+            <Button variant="outlined" color="secondary" onClick={handleImport} disabled={active} fullWidth>
+                📸 イカリング3から最新のリザルトを取り込む
+            </Button>
+            {requestError && <Alert severity="error" sx={{mt: 1}}>{requestError}</Alert>}
+            {request && (
+                <Alert severity={request.status === 'failed' ? 'error' : request.status === 'succeeded' ? 'success' : 'info'} sx={{mt: 1}}>
+                    {importStatusText(request)}
+                </Alert>
+            )}
+        </Box>
+    );
+};
 
 /** コントロールパネルの「サーモンラン」タブ。記録はボタンを押した時点で保存される（「OBSに反映」は不要） */
 const SalmonRunPanel: React.FC = () => {
@@ -200,6 +269,7 @@ const SalmonRunPanel: React.FC = () => {
 
             <Paper elevation={12} sx={paperSx}>
                 <Typography variant="h6" gutterBottom>🐟 バイトの記録</Typography>
+                <SalmonImportButton onImported={load}/>
                 <Box sx={{display: 'flex', gap: 1}}>
                     {NUMBER_FIELDS.map(({key, label}) => (
                         <TextField
