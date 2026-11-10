@@ -165,7 +165,7 @@ export interface SalmonSessionReview {
     bestJobId: number | null; // 金イクラがいちばん多いバイト
     teamHighScores: SalmonTeamHighScore[]; // チームの金イクラ納品数の多い順（取り込んだバイトだけ。REVIEW_HIGH_SCORE_LIMIT 件まで）
     weapons: {key: string; count: number}[]; // 支給された回数の多い順
-    newWeapons: string[]; // このセッション中にブキ埋めカードで埋まったブキ（埋まった順）
+    newWeapons: string[]; // このセッション中にブキ埋めカードで埋まったブキ（埋まった順）。今のカードの分だけ（新しいカードを始めると、それより前の分は出ない）
     challenges: {done: number; total: number} | null; // 本日のお題（今のセッションのときだけ）
     clips: number; // このセッション中に作ったクリップ
 }

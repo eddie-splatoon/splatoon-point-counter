@@ -18,6 +18,9 @@ const FAILED = '#d95926';
 const BOSS_BAR = '#199e70'; // オオモノの討伐数（1 系列なので凡例は付けない）
 const SURFACE = 'rgba(26, 26, 25, 0.92)';
 
+// ブキ埋めカードで新しく埋まったブキのアイコンは 1 行分まで（数は「+n」で全部出す）
+const NEW_WEAPON_ICON_LIMIT = 8;
+
 export const REVIEW_WIDTH = 1920;
 export const REVIEW_HEIGHT = 1080;
 
@@ -62,7 +65,8 @@ export function niceTicks(max: number, count = 4): number[] {
     if (max <= 0) return [0];
     const rough = max / count;
     const magnitude = 10 ** Math.floor(Math.log10(rough));
-    const step = [1, 2, 5, 10].map((m) => m * magnitude).find((s) => s >= rough) ?? 10 * magnitude;
+    // 金イクラなどは整数なので、目盛りの間隔は 1 以上（0.5 などにしない）
+    const step = Math.max(1, [1, 2, 5, 10].map((m) => m * magnitude).find((s) => s >= rough) ?? 10 * magnitude);
     const ticks = [];
     for (let v = 0; v <= max + step / 2 && ticks.length <= count + 1; v += step) ticks.push(v);
     if (ticks[ticks.length - 1] < max) ticks.push(ticks[ticks.length - 1] + step);
@@ -175,7 +179,7 @@ const BossBars: React.FC<{bosses: SalmonSessionReview['bosses']}> = ({bosses}) =
                         )}
                         <span className="font-bold" style={{fontSize: 20, color: INK.primary}}>{count.selfKills}</span>
                     </span>
-                    <span className="shrink-0 text-right" style={{width: 140, fontSize: 15, color: INK.muted, fontVariantNumeric: 'tabular-nums'}}>
+                    <span className="shrink-0 text-right whitespace-nowrap" style={{width: 150, fontSize: 14, color: INK.muted, fontVariantNumeric: 'tabular-nums'}}>
                         チーム {count.teamKills} / 出現 {count.appearances}
                     </span>
                 </li>
@@ -286,7 +290,7 @@ const SalmonReview: React.FC<SalmonReviewProps> = ({review}) => {
                         </ol>
                     ) : <p style={{color: INK.muted, fontSize: 18}}>イカリング3から取り込んだバイトがありません</p>}
                 </Card>
-                <Card title="ブキ" order={6} className="w-[400px]">
+                <Card title="ブキ" order={6} className="w-[400px] overflow-hidden">
                     {weapons.length > 0 && (
                         <ul className="flex gap-3" data-testid="review-weapons">
                             {weapons.map(({weapon, count}) => (
@@ -301,7 +305,7 @@ const SalmonReview: React.FC<SalmonReviewProps> = ({review}) => {
                         <div className="mt-4" data-testid="review-new-weapons">
                             <p style={{fontSize: 18, color: INK.secondary}}>ブキ埋めカード +{newWeapons.length}</p>
                             <div className="flex flex-wrap gap-1 mt-1">
-                                {newWeapons.slice(0, 16).map((weapon) => <WeaponIcon key={weapon.key} weapon={weapon} size={40}/>)}
+                                {newWeapons.slice(0, NEW_WEAPON_ICON_LIMIT).map((weapon) => <WeaponIcon key={weapon.key} weapon={weapon} size={40}/>)}
                             </div>
                         </div>
                     )}

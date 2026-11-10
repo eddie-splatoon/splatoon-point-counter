@@ -113,6 +113,20 @@ describe('SalmonReview', () => {
     expect(screen.getAllByText('取り込んだ 2 件の合計')).toHaveLength(2);
   });
 
+  it('draws every job even on a long session', () => {
+    const jobs = Array.from({ length: 100 }, (_, i) => job(i + 1, (i % 40) + 1, i % 3 !== 0));
+    render(<SalmonReview review={review({ jobs, bestJobId: 40 })} />);
+    expect(screen.getAllByTestId('review-job-bar')).toHaveLength(100);
+  });
+
+  it('shows at most one row of newly filled weapons with the full count', () => {
+    const keys = ['sshooter', 'pablo', 'hokusai', 'bold', 'wakaba', 'sharp', 'promodeler_mg', 'nzap85', '52gal'];
+    render(<SalmonReview review={review({ newWeapons: keys })} />);
+    const filled = screen.getByTestId('review-new-weapons');
+    expect(filled).toHaveTextContent('ブキ埋めカード +9');
+    expect(within(filled).getAllByRole('img')).toHaveLength(8);
+  });
+
   it('shows a message before any job is recorded', () => {
     render(<SalmonReview review={review({ jobs: [], totals: { jobs: 0, goldenEggs: 0, bossKills: 0, deaths: 0, clears: 0, failures: 0 }, bestJobId: null })} />);
     expect(screen.getByText('まだバイトの記録がありません')).toBeInTheDocument();
@@ -125,5 +139,8 @@ describe('niceTicks', () => {
     expect(niceTicks(35)).toEqual([0, 10, 20, 30, 40]);
     expect(niceTicks(8)).toEqual([0, 2, 4, 6, 8]);
     expect(niceTicks(0)).toEqual([0]);
+    // 金イクラは整数なので、小さいときも 0.5 刻みにしない
+    expect(niceTicks(2)).toEqual([0, 1, 2]);
+    expect(niceTicks(1)).toEqual([0, 1]);
   });
 });
