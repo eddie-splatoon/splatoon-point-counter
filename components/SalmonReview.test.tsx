@@ -127,6 +127,27 @@ describe('SalmonReview', () => {
     expect(within(filled).getAllByRole('img')).toHaveLength(8);
   });
 
+  it('lays out every card in 1920x1080 for the stream by default', () => {
+    render(<SalmonReview review={review()} />);
+    const root = screen.getByTestId('salmon-review');
+    expect(root).toHaveAttribute('data-layout', 'landscape');
+    expect(root).toHaveStyle({ width: '1920px', height: '1080px' });
+    expect(screen.getByTestId('review-golden-eggs-chart')).toHaveAttribute('width', '1080');
+  });
+
+  it('lays out every card in 1080x1920 for the vertical stream', () => {
+    render(<SalmonReview review={review()} layout="portrait" animate={false} />);
+    const root = screen.getByTestId('salmon-review');
+    expect(root).toHaveAttribute('data-layout', 'portrait');
+    expect(root).toHaveStyle({ width: '1080px', height: '1920px' });
+    expect(screen.getByTestId('review-golden-eggs-chart')).toHaveAttribute('width', '940');
+    expect(screen.getAllByTestId('review-job-bar')).toHaveLength(4);
+    expect(screen.getByTestId('review-bosses')).toBeInTheDocument();
+    expect(screen.getByTestId('review-team-high-scores')).toBeInTheDocument();
+    expect(screen.getByTestId('review-weapons')).toBeInTheDocument();
+    expect(screen.getByTestId('review-clips')).toHaveTextContent('クリップ 2 本');
+  });
+
   it('shows a message before any job is recorded', () => {
     render(<SalmonReview review={review({ jobs: [], totals: { jobs: 0, goldenEggs: 0, bossKills: 0, deaths: 0, clears: 0, failures: 0 }, bestJobId: null })} />);
     expect(screen.getByText('まだバイトの記録がありません')).toBeInTheDocument();

@@ -24,6 +24,7 @@ import {SalmonScheduleData, pickCurrentSchedule} from '../lib/salmonSchedule';
 import {MAX_COUNT, MAX_WAVE, SalmonJob, SalmonSessionWithTotals, SalmonSummary} from '../lib/salmonTypes';
 import {MAX_JOB_WEAPONS, findSalmonWeapon} from '../lib/salmonWeapons';
 
+import SalmonReviewDownload from './SalmonReviewDownload';
 import SalmonStats from './SalmonStats';
 import WeaponIcon from './WeaponIcon';
 import WeaponPicker from './WeaponPicker';
@@ -395,6 +396,14 @@ const SalmonRunPanel: React.FC = () => {
                         </Box>
                     </Box>
                 )}
+            </Paper>
+
+            <Paper elevation={12} sx={paperSx}>
+                <Typography variant="h6" gutterBottom>📸 振り返りの画像</Typography>
+                <Typography variant="body2" sx={{mb: 2}}>
+                    {pastSessionId !== '' ? '上で選んだセッション' : '現在のセッション'}の振り返り（/salmon-review-overlay と同じ画面）を、X・Bluesky などに投稿できる PNG 画像でダウンロードします。
+                </Typography>
+                <SalmonReviewDownload sessionId={pastSessionId !== '' ? pastSessionId : currentSessionId}/>
             </Paper>
         </>
     );

@@ -21,21 +21,35 @@ const SURFACE = 'rgba(26, 26, 25, 0.92)';
 // ブキ埋めカードで新しく埋まったブキのアイコンは 1 行分まで（数は「+n」で全部出す）
 const NEW_WEAPON_ICON_LIMIT = 8;
 
-export const REVIEW_WIDTH = 1920;
-export const REVIEW_HEIGHT = 1080;
+/** landscape は配信画面（1920×1080）、portrait は縦型配信（1080×1920） */
+export type SalmonReviewLayout = 'landscape' | 'portrait';
+
+export const REVIEW_SIZES: Record<SalmonReviewLayout, {width: number; height: number}> = {
+    landscape: {width: 1920, height: 1080},
+    portrait: {width: 1080, height: 1920},
+};
+
+// バイトごとの金イクラのグラフの大きさ（portrait はカードの中身の幅いっぱい）
+const CHART_SIZES: Record<SalmonReviewLayout, {width: number; height: number}> = {
+    landscape: {width: 1080, height: 175},
+    portrait: {width: 940, height: 220},
+};
 
 interface SalmonReviewProps {
     review: SalmonSessionReview;
+    layout?: SalmonReviewLayout;
+    /** false なら最初から出しておく（画像にするとき、出てくる途中を撮らないように） */
+    animate?: boolean;
 }
 
 /** 開いたときに上から順にカードを出す（ポーリングで再生し直さないよう、初回の表示だけ） */
-const Card: React.FC<{title: string; order: number; className?: string; children: React.ReactNode; testId?: string}> = (
-    {title, order, className, children, testId},
+const Card: React.FC<{title: string; order: number; animate: boolean; className?: string; children: React.ReactNode; testId?: string}> = (
+    {title, order, animate, className, children, testId},
 ) => (
     <motion.section
         className={`rounded-2xl p-5 flex flex-col min-h-0 ${className ?? ''}`}
         style={{backgroundColor: SURFACE, border: '1px solid rgba(255,255,255,0.10)'}}
-        initial={{opacity: 0, y: 24}}
+        initial={animate ? {opacity: 0, y: 24} : false}
         animate={{opacity: 1, y: 0}}
         transition={{duration: 0.5, delay: 0.15 * order}}
         data-testid={testId}
@@ -74,9 +88,9 @@ export function niceTicks(max: number, count = 4): number[] {
 }
 
 /** バイトごとの金イクラ（縦棒。クリア / 失敗で色分けし、最多のバイトにだけ値を出す） */
-const GoldenEggsChart: React.FC<{jobs: SalmonReviewJob[]; bestJobId: number | null}> = ({jobs, bestJobId}) => {
-    const width = 1080;
-    const height = 175;
+const GoldenEggsChart: React.FC<{jobs: SalmonReviewJob[]; bestJobId: number | null; width: number; height: number}> = (
+    {jobs, bestJobId, width, height},
+) => {
     const left = 44;
     const bottom = 28;
     const top = 26;
@@ -195,9 +209,11 @@ const formatDate = (timestamp: number) => {
     return `${d.getFullYear()}/${d.getMonth() + 1}/${d.getDate()}`;
 };
 
-/** 配信の最後に出す、その日のサーモンランの振り返り（1920×1080） */
-const SalmonReview: React.FC<SalmonReviewProps> = ({review}) => {
+
+/** 配信の最後に出す、その日のサーモンランの振り返り（landscape 1920×1080 / portrait 1080×1920） */
+const SalmonReview: React.FC<SalmonReviewProps> = ({review, layout = 'landscape', animate = true}) => {
     const {totals, jobs} = review;
+    const portrait = layout === 'portrait';
     const clearRate = totals.jobs > 0 ? Math.round((totals.clears / totals.jobs) * 100) : 0;
     const best = jobs.find((j) => j.id === review.bestJobId) ?? null;
     const weapons = review.weapons.flatMap((w) => {
@@ -209,114 +225,159 @@ const SalmonReview: React.FC<SalmonReviewProps> = ({review}) => {
         return weapon ? [weapon] : [];
     });
     const detailNote = review.detailedJobs < totals.jobs ? `取り込んだ ${review.detailedJobs} 件の合計` : undefined;
+    const chartSize = CHART_SIZES[layout];
 
+    const header = (
+        <motion.header className="flex flex-wrap items-end justify-between gap-y-2" initial={animate ? {opacity: 0} : false} animate={{opacity: 1}}
+                       transition={{duration: 0.5}}>
+            <div>
+                <p style={{fontSize: 22, color: INK.muted}}>
+                    {review.session ? [formatDate(review.session.startedAt), review.session.title].filter(Boolean).join('　') : ''}
+                </p>
+                <h1 className="font-bold" style={{fontSize: 56, color: '#FF6F00'}}>本日のサーモンラン</h1>
+            </div>
+            <div className="flex items-baseline gap-3">
+                <span style={{fontSize: 24, color: INK.muted}}>クリア率</span>
+                <span className="font-bold" style={{fontSize: 72}} data-testid="review-clear-rate">{clearRate}%</span>
+                <span style={{fontSize: 24, color: INK.muted}}>{totals.clears} / {totals.jobs} バイト</span>
+            </div>
+        </motion.header>
+    );
+
+    const totalsCard = (
+        <Card title="合計" order={1} animate={animate}>
+            <div className={`grid gap-4 ${portrait ? 'grid-cols-4' : 'grid-cols-7'}`}>
+                <StatTile label="金イクラ" value={formatNumber(totals.goldenEggs)}/>
+                <StatTile label="オオモノ" value={formatNumber(totals.bossKills)}/>
+                <StatTile label="デス" value={formatNumber(totals.deaths)}/>
+                <StatTile label="赤イクラ" value={review.detailedJobs > 0 ? formatNumber(review.powerEggs) : '-'} note={detailNote}/>
+                <StatTile label="救助" value={review.detailedJobs > 0 ? formatNumber(review.rescues) : '-'} note={detailNote}/>
+                <StatTile label="獲得ポイント" value={review.detailedJobs > 0 ? `${formatNumber(review.jobPoints)}p` : '-'}/>
+                <StatTile label="最高キケン度" value={review.maxHazardLevel !== null ? `${review.maxHazardLevel}%` : '-'}/>
+            </div>
+        </Card>
+    );
+
+    const goldenEggsCard = (
+        <Card title="バイトごとの金イクラ" order={2} animate={animate} className={portrait ? '' : 'flex-1'} testId="review-golden-eggs">
+            <div className="flex gap-4 mb-1">
+                <LegendKey color={CLEARED} label="クリア"/>
+                <LegendKey color={FAILED} label="失敗"/>
+            </div>
+            {jobs.length > 0
+                ? <GoldenEggsChart jobs={jobs} bestJobId={review.bestJobId} width={chartSize.width} height={chartSize.height}/>
+                : <p style={{color: INK.muted}}>まだバイトの記録がありません</p>}
+        </Card>
+    );
+
+    const resultCard = (
+        <Card title="結果" order={3} animate={animate} className={portrait ? '' : 'w-[620px]'}>
+            <OutcomeBar clears={totals.clears} waveFailures={review.waveFailures}/>
+            {review.kings.appeared > 0 && (
+                <p className="mt-4" style={{fontSize: 20, color: INK.primary}} data-testid="review-kings">
+                    オカシラ {review.kings.defeated} / {review.kings.appeared} 撃破
+                </p>
+            )}
+            {review.firstGrade && review.lastGrade && (
+                <p className="mt-2" style={{fontSize: 20, color: INK.primary}} data-testid="review-grade">
+                    評価 {review.firstGrade.name} {review.firstGrade.point} → {review.lastGrade.name} {review.lastGrade.point}
+                </p>
+            )}
+            {best && (
+                <p className="mt-2" style={{fontSize: 20, color: INK.primary}} data-testid="review-best-job">
+                    ベスト 金イクラ {best.goldenEggs}（{jobs.indexOf(best) + 1} バイト目{best.stage ? `・${best.stage}` : ''}）
+                </p>
+            )}
+        </Card>
+    );
+
+    const bossesCard = (
+        <Card title="オオモノ討伐（自分）" order={4} animate={animate} className={`overflow-hidden ${portrait ? '' : 'flex-1'}`}>
+            {review.bosses.length > 0
+                ? <BossBars bosses={review.bosses}/>
+                : <p style={{color: INK.muted, fontSize: 18}}>イカリング3から取り込んだバイトがありません</p>}
+        </Card>
+    );
+
+    const highScoresCard = (
+        <Card title="チーム納品ハイスコア" order={5} animate={animate} className="w-[300px]" testId="review-team-high-scores">
+            {review.teamHighScores.length > 0 ? (
+                <ol className="flex flex-col gap-1">
+                    {review.teamHighScores.map((score, i) => (
+                        <li key={score.jobId} className="flex items-baseline gap-3">
+                            <span className="w-5 text-right font-bold" style={{fontSize: 18, color: INK.muted}}>{i + 1}</span>
+                            <span className="w-16 text-right font-bold" style={{fontSize: 30, color: INK.primary, fontVariantNumeric: 'tabular-nums'}}>
+                                {score.teamGoldenEggs}
+                            </span>
+                            <span style={{fontSize: 15, color: INK.secondary}}>
+                                {score.jobNumber} バイト目{score.hazardLevel !== null ? `・${score.hazardLevel}%` : ''}
+                            </span>
+                        </li>
+                    ))}
+                </ol>
+            ) : <p style={{color: INK.muted, fontSize: 18}}>イカリング3から取り込んだバイトがありません</p>}
+        </Card>
+    );
+
+    const weaponsCard = (
+        <Card title="ブキ" order={6} animate={animate} className={`overflow-hidden ${portrait ? 'flex-1' : 'w-[400px]'}`}>
+            {weapons.length > 0 && (
+                <ul className="flex gap-3" data-testid="review-weapons">
+                    {weapons.map(({weapon, count}) => (
+                        <li key={weapon.key} className="flex flex-col items-center">
+                            <WeaponIcon weapon={weapon} size={56}/>
+                            <span style={{fontSize: 16, color: INK.secondary}}>{count} 回</span>
+                        </li>
+                    ))}
+                </ul>
+            )}
+            {newWeapons.length > 0 && (
+                <div className="mt-4" data-testid="review-new-weapons">
+                    <p style={{fontSize: 18, color: INK.secondary}}>ブキ埋めカード +{newWeapons.length}</p>
+                    <div className="flex flex-wrap gap-1 mt-1">
+                        {newWeapons.slice(0, NEW_WEAPON_ICON_LIMIT).map((weapon) => <WeaponIcon key={weapon.key} weapon={weapon} size={40}/>)}
+                    </div>
+                </div>
+            )}
+            <div className="mt-auto flex gap-8 pt-4" style={{fontSize: 20}}>
+                {review.challenges && (
+                    <span data-testid="review-challenges">お題 {review.challenges.done} / {review.challenges.total} 達成</span>
+                )}
+                {review.clips > 0 && <span data-testid="review-clips">クリップ {review.clips} 本</span>}
+            </div>
+        </Card>
+    );
+
+    const {width, height} = REVIEW_SIZES[layout];
     return (
-        <div className="flex flex-col gap-5 p-12" style={{width: REVIEW_WIDTH, height: REVIEW_HEIGHT, backgroundColor: 'rgba(8, 8, 8, 0.78)', color: INK.primary}}
-             data-testid="salmon-review">
-            <motion.header className="flex items-end justify-between" initial={{opacity: 0}} animate={{opacity: 1}} transition={{duration: 0.5}}>
-                <div>
-                    <p style={{fontSize: 22, color: INK.muted}}>
-                        {review.session ? [formatDate(review.session.startedAt), review.session.title].filter(Boolean).join('　') : ''}
-                    </p>
-                    <h1 className="font-bold" style={{fontSize: 56, color: '#FF6F00'}}>本日のサーモンラン</h1>
-                </div>
-                <div className="flex items-baseline gap-3">
-                    <span style={{fontSize: 24, color: INK.muted}}>クリア率</span>
-                    <span className="font-bold" style={{fontSize: 72}} data-testid="review-clear-rate">{clearRate}%</span>
-                    <span style={{fontSize: 24, color: INK.muted}}>{totals.clears} / {totals.jobs} バイト</span>
-                </div>
-            </motion.header>
-
-            <Card title="合計" order={1}>
-                <div className="grid grid-cols-7 gap-4">
-                    <StatTile label="金イクラ" value={formatNumber(totals.goldenEggs)}/>
-                    <StatTile label="オオモノ" value={formatNumber(totals.bossKills)}/>
-                    <StatTile label="デス" value={formatNumber(totals.deaths)}/>
-                    <StatTile label="赤イクラ" value={review.detailedJobs > 0 ? formatNumber(review.powerEggs) : '-'} note={detailNote}/>
-                    <StatTile label="救助" value={review.detailedJobs > 0 ? formatNumber(review.rescues) : '-'} note={detailNote}/>
-                    <StatTile label="獲得ポイント" value={review.detailedJobs > 0 ? `${formatNumber(review.jobPoints)}p` : '-'}/>
-                    <StatTile label="最高キケン度" value={review.maxHazardLevel !== null ? `${review.maxHazardLevel}%` : '-'}/>
-                </div>
-            </Card>
-
-            <div className="flex gap-5 min-h-0">
-                <Card title="バイトごとの金イクラ" order={2} className="flex-1" testId="review-golden-eggs">
-                    <div className="flex gap-4 mb-1">
-                        <LegendKey color={CLEARED} label="クリア"/>
-                        <LegendKey color={FAILED} label="失敗"/>
+        <div className="flex flex-col gap-5 p-12" style={{width, height, backgroundColor: 'rgba(8, 8, 8, 0.78)', color: INK.primary}}
+             data-testid="salmon-review" data-layout={layout}>
+            {header}
+            {totalsCard}
+            {portrait ? (
+                // 縦型配信: カードを縦に積み、残りの高さにハイスコアとブキを横に並べる
+                <>
+                    {goldenEggsCard}
+                    {resultCard}
+                    {bossesCard}
+                    <div className="flex gap-5 flex-1 min-h-0">
+                        {highScoresCard}
+                        {weaponsCard}
                     </div>
-                    {jobs.length > 0 ? <GoldenEggsChart jobs={jobs} bestJobId={review.bestJobId}/> : <p style={{color: INK.muted}}>まだバイトの記録がありません</p>}
-                </Card>
-                <Card title="結果" order={3} className="w-[620px]">
-                    <OutcomeBar clears={totals.clears} waveFailures={review.waveFailures}/>
-                    {review.kings.appeared > 0 && (
-                        <p className="mt-4" style={{fontSize: 20, color: INK.primary}} data-testid="review-kings">
-                            オカシラ {review.kings.defeated} / {review.kings.appeared} 撃破
-                        </p>
-                    )}
-                    {review.firstGrade && review.lastGrade && (
-                        <p className="mt-2" style={{fontSize: 20, color: INK.primary}} data-testid="review-grade">
-                            評価 {review.firstGrade.name} {review.firstGrade.point} → {review.lastGrade.name} {review.lastGrade.point}
-                        </p>
-                    )}
-                    {best && (
-                        <p className="mt-2" style={{fontSize: 20, color: INK.primary}} data-testid="review-best-job">
-                            ベスト 金イクラ {best.goldenEggs}（{jobs.indexOf(best) + 1} バイト目{best.stage ? `・${best.stage}` : ''}）
-                        </p>
-                    )}
-                </Card>
-            </div>
-
-            <div className="flex gap-5 flex-1 min-h-0">
-                <Card title="オオモノ討伐（自分）" order={4} className="flex-1 overflow-hidden">
-                    {review.bosses.length > 0
-                        ? <BossBars bosses={review.bosses}/>
-                        : <p style={{color: INK.muted, fontSize: 18}}>イカリング3から取り込んだバイトがありません</p>}
-                </Card>
-                <Card title="チーム納品ハイスコア" order={5} className="w-[300px]" testId="review-team-high-scores">
-                    {review.teamHighScores.length > 0 ? (
-                        <ol className="flex flex-col gap-1">
-                            {review.teamHighScores.map((score, i) => (
-                                <li key={score.jobId} className="flex items-baseline gap-3">
-                                    <span className="w-5 text-right font-bold" style={{fontSize: 18, color: INK.muted}}>{i + 1}</span>
-                                    <span className="w-16 text-right font-bold" style={{fontSize: 30, color: INK.primary, fontVariantNumeric: 'tabular-nums'}}>
-                                        {score.teamGoldenEggs}
-                                    </span>
-                                    <span style={{fontSize: 15, color: INK.secondary}}>
-                                        {score.jobNumber} バイト目{score.hazardLevel !== null ? `・${score.hazardLevel}%` : ''}
-                                    </span>
-                                </li>
-                            ))}
-                        </ol>
-                    ) : <p style={{color: INK.muted, fontSize: 18}}>イカリング3から取り込んだバイトがありません</p>}
-                </Card>
-                <Card title="ブキ" order={6} className="w-[400px] overflow-hidden">
-                    {weapons.length > 0 && (
-                        <ul className="flex gap-3" data-testid="review-weapons">
-                            {weapons.map(({weapon, count}) => (
-                                <li key={weapon.key} className="flex flex-col items-center">
-                                    <WeaponIcon weapon={weapon} size={56}/>
-                                    <span style={{fontSize: 16, color: INK.secondary}}>{count} 回</span>
-                                </li>
-                            ))}
-                        </ul>
-                    )}
-                    {newWeapons.length > 0 && (
-                        <div className="mt-4" data-testid="review-new-weapons">
-                            <p style={{fontSize: 18, color: INK.secondary}}>ブキ埋めカード +{newWeapons.length}</p>
-                            <div className="flex flex-wrap gap-1 mt-1">
-                                {newWeapons.slice(0, NEW_WEAPON_ICON_LIMIT).map((weapon) => <WeaponIcon key={weapon.key} weapon={weapon} size={40}/>)}
-                            </div>
-                        </div>
-                    )}
-                    <div className="mt-auto flex gap-8 pt-4" style={{fontSize: 20}}>
-                        {review.challenges && (
-                            <span data-testid="review-challenges">お題 {review.challenges.done} / {review.challenges.total} 達成</span>
-                        )}
-                        {review.clips > 0 && <span data-testid="review-clips">クリップ {review.clips} 本</span>}
+                </>
+            ) : (
+                <>
+                    <div className="flex gap-5 min-h-0">
+                        {goldenEggsCard}
+                        {resultCard}
                     </div>
-                </Card>
-            </div>
+                    <div className="flex gap-5 flex-1 min-h-0">
+                        {bossesCard}
+                        {highScoresCard}
+                        {weaponsCard}
+                    </div>
+                </>
+            )}
         </div>
     );
 };

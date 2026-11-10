@@ -17,7 +17,7 @@
 7. **実況テロップオーバーレイ** (`/telop-overlay`) - コントロールパネルのボタン・キーボードで出す定型文を数秒だけ大きく表示
 8. **読み上げ（音声専用）オーバーレイ** (`/voice-overlay`) - 読み上げキューの文を VOICEVOX で音声にして順に再生（画面には何も出さない）
 9. **ブキ埋めカードオーバーレイ** (`/weapon-card-overlay`) - サーモンランのオールランダムで支給された全ブキ種（71 種）を埋めていくカード
-10. **サーモンランの振り返りオーバーレイ** (`/salmon-review-overlay`) - 配信の最後に、その日（セッション）のサーモンランの記録をグラフで大きく出す（1920x1080）
+10. **サーモンランの振り返りオーバーレイ** (`/salmon-review-overlay`) - 配信の最後に、その日（セッション）のサーモンランの記録をグラフで大きく出す（1920x1080）。縦型配信用（1080x1920）は `/salmon-review-overlay/vertical`。コントロールパネルから SNS 用の PNG でダウンロードできる
 11. **バックエンドAPI** (`/api/stream-data`, `/api/caption`, `/api/twitch`, `/api/salmon`, `/api/side-panel`, `/api/salmon-schedule`, `/api/telop`, `/api/speech`, `/api/voice`, `/api/weapon-card`, `/api/clip`, `/api/salmon/import`, `/api/salmon/review`) - データ管理とクライアント間の同期
 12. **文字起こしスクリプト** (`tools/caption-stt/`) - マイク音声を文字起こしして `/api/caption` へ送信。「クリップ撮って」などで `/api/clip` にクリップを依頼（Python, Mac ネイティブ実行）
 13. **リザルト取り込みスクリプト** (`tools/salmon-result/`) - iPhone ミラーリングのイカリング3を操作し、サーモンランの最新のリザルトを OCR で読み取って `/api/salmon/import` へ送信（Python, Mac ネイティブ実行）
@@ -69,7 +69,9 @@
 │   ├── weapon-card-overlay/
 │   │   └── page.tsx              # ブキ埋めカードオーバーレイ
 │   ├── salmon-review-overlay/
-│   │   └── page.tsx              # サーモンランの振り返りオーバーレイ
+│   │   ├── page.tsx              # サーモンランの振り返りオーバーレイ
+│   │   └── vertical/
+│   │       └── page.tsx          # 振り返り（縦型配信用 1080x1920）
 │   └── api/
 │       ├── stream-data/
 │       │   └── route.ts          # データ管理API
@@ -128,7 +130,9 @@
 │   ├── WeaponPicker.tsx          # カテゴリごとのブキのパレット（記録・ブキ埋めタブで使う）
 │   ├── WeaponCard.tsx            # ブキ埋めカード（オーバーレイ）
 │   ├── WeaponCardPanel.tsx       # コントロールパネルのブキ埋めタブ
-│   ├── SalmonReview.tsx          # サーモンランの振り返り（オーバーレイの本体）
+│   ├── SalmonReview.tsx          # サーモンランの振り返り（横長 / 縦長のレイアウト）
+│   ├── SalmonReviewOverlay.tsx   # 振り返りのオーバーレイ（ポーリング。2 つのページで共通）
+│   ├── SalmonReviewDownload.tsx  # 振り返りを SNS 用の PNG にしてダウンロード（サーモンランタブ）
 │   └── ClipPanel.tsx             # コントロールパネルのクリップタブ
 ├── lib/
 │   ├── localStorage.ts           # ローカルストレージのラッパー
@@ -342,7 +346,9 @@ Twitch のフォロワー数とフォロワー目標を受け取る機能と、�
 - `GET /api/salmon/review`（`?sessionId=` で過去のセッション）。集計は `lib/salmonReview.ts` の `getSessionReview`（型は `lib/salmonTypes.ts` の `SalmonSessionReview`）。合計・バイトごとの金イクラ（古い順）・WAVE ごとの失敗数のほか、取り込んだバイトの詳細（赤イクラ・救助・獲得ポイント・最高キケン度・評価の最初と最後・オカシラ・オオモノごとの数・チームの金イクラ納品数の上位 5 件（`teamHighScores`。同数なら先のバイト））、支給ブキの回数、セッション中にブキ埋めカードで埋まったブキ・作ったクリップ（次のセッションの開始まで）、本日のお題の達成数（今のセッションのときだけ。サイドパネルの設定にしか無いため）を返す。**味方の名前は返さない**
 - 詳細の集計は、詳細を取り込んだバイト（`detailedJobs`）だけ。手入力のバイトがあると、画面に「取り込んだ n 件の合計」と添える
 - 本体は `components/SalmonReview.tsx`。グラフは依存を増やさず SVG・div で描く（dataviz スキルの作法: ダークの配色だけ、クリア / 失敗はどのグラフでも青 / オレンジ（色覚の違いでも見分けられることを検証済み）、棒は細く根元は四角・先は丸く、値は最多のバイトにだけ出す、目盛りはきりのいい数（`niceTicks`）、2 つの値を 1 つのグラフの左右の軸に出さない）。OBS ではマウスを使わないので、ツールチップは付けない
-- 開いたときにカードを上から順に出す motion の演出（初回だけ）。5 秒ごとにポーリングし、フォントは `/api/stream-data` の `fontFamily`
+- 開いたときにカードを上から順に出す motion の演出（初回だけ。`animate={false}` で無し）。5 秒ごとにポーリングし、フォントは `/api/stream-data` の `fontFamily`。ポーリングは `components/SalmonReviewOverlay.tsx`（`layout` を受ける）で、2 つのページはこれを置くだけ
+- レイアウトは `layout: 'landscape' | 'portrait'`（`REVIEW_SIZES`）。portrait（`/salmon-review-overlay/vertical`、1080x1920）はカードを縦に積み、最後にハイスコアとブキを横に並べる。カードの中身は共通で、外側の並びだけを分けている。カードを足すときは両方の並びに入れる
+- SNS 用の画像: コントロールパネルの「サーモンラン」タブ（`components/SalmonReviewDownload.tsx`）で、選んだ過去のセッション（選ばなければ今のセッション）の振り返りを横長 / 縦長の PNG でダウンロードする。オーバーレイと見た目を一致させるため、ブキ埋めカードと違い Canvas で描き直さず、画面外に実寸で描いた DOM を `html-to-image` の `toBlob` で画像にする（演出なし・不透明な背景）。ブキ・オオモノの画像は raw.githubusercontent.com（CORS 許可）なので埋め込める
 
 ### `/app/side-panel-overlay/page.tsx` と `/app/api/side-panel/route.ts`
 

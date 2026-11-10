@@ -134,6 +134,7 @@ const OVERLAY_PAGES: OverlayPage[] = [
     {href: '/telop-overlay', label: '実況テロップ', size: {width: 1920, height: 1080}},
     {href: '/weapon-card-overlay', label: 'ブキ埋めカード', size: {width: 620, height: 620}},
     {href: '/salmon-review-overlay', label: 'サーモンランの振り返り', size: {width: 1920, height: 1080}},
+    {href: '/salmon-review-overlay/vertical', label: 'サーモンランの振り返り 縦型配信用', size: {width: 1080, height: 1920}},
     // 埋め込むとランチャーを開いているだけで読み上げが鳴る（OBS と二重に鳴る）のでプレビューしない
     {href: '/voice-overlay', label: '読み上げ（音声専用）'},
 ];
