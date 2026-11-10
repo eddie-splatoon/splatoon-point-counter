@@ -1,7 +1,7 @@
 // サイドパネル（配信画面右側）の型と定数。クライアントからも使うため DB に依存させない
 
 // 下段スロットに表示できるもの（並び順は、縦に並べるときの上からの順と、自動ローテーションの順）
-export const SIDE_PANEL_SLOTS = ['schedule', 'salmon', 'weaponCard', 'challenges', 'burndown'] as const;
+export const SIDE_PANEL_SLOTS = ['schedule', 'salmon', 'bossRanking', 'weaponCard', 'challenges', 'burndown'] as const;
 
 export type SidePanelSlot = typeof SIDE_PANEL_SLOTS[number];
 
@@ -11,6 +11,7 @@ export const FULL_HEIGHT_SLOTS: readonly SidePanelSlot[] = ['burndown'];
 export const SIDE_PANEL_SLOT_LABELS: Record<SidePanelSlot, string> = {
     schedule: 'スケジュール',
     salmon: '本日の戦績',
+    bossRanking: 'オオモノ討伐TOP3',
     weaponCard: 'ブキ埋め',
     challenges: '本日のお題',
     burndown: 'バーンダウン',
@@ -154,6 +155,8 @@ export function estimateSlotHeight(slot: SidePanelSlot, challengeCount: number):
             return 222; // 見出しが 2 行になるバイトチームコンテストの高さ
         case 'salmon':
             return 200;
+        case 'bossRanking':
+            return 170; // 前回・本日とも 3 体ずつ出たときの高さ
         case 'weaponCard':
             return 180;
         case 'challenges':

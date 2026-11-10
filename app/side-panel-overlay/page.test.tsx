@@ -38,6 +38,9 @@ vi.mock('../../components/WeaponCard', () => ({
     <div data-testid="WeaponCard" data-compact={compact}>{card.obtained.length} / {card.total}</div>
   ),
 }));
+vi.mock('../../components/BossRanking', () => ({
+  default: ({ ranking }: { ranking: { session: { boss: string }[] } }) => <div data-testid="BossRanking">{ranking.session.map((c) => c.boss).join(',')}</div>,
+}));
 vi.mock('../../components/BurndownChart', () => ({
   default: ({ data }: { data: { label: string } }) => <div data-testid="BurndownChart">{data.label}</div>,
 }));
@@ -50,7 +53,10 @@ const salmonSummary = {
   lastJob: null,
   totals: { jobs: 1, goldenEggs: 123, bossKills: 0, deaths: 0, clears: 1, failures: 0 },
   jobs: [],
+  bossRanking: { lastJob: [], session: [{ boss: 'tower', selfKills: 8, teamKills: 11, appearances: 12 }] },
 };
+// オオモノの数はイカリング3から取り込んだバイトにしか無い（手入力だけの日は空）
+const salmonWithoutBosses = { ...salmonSummary, bossRanking: { lastJob: [], session: [] } };
 
 const noTwitch = { followerTotal: null, goal: null, lastFollowAt: null, updatedAt: null, revision: 0 };
 
@@ -59,11 +65,13 @@ const scheduleData = (stage: string) => ({
   fetchedAt: Date.now(),
 });
 
-const mockApis = (settings: SidePanelSettings, failing: string[] = [], twitch: object = noTwitch, schedule: object = scheduleData('アラマキ砦')) => {
+const mockApis = (
+  settings: SidePanelSettings, failing: string[] = [], twitch: object = noTwitch, schedule: object = scheduleData('アラマキ砦'), salmon: object = salmonSummary,
+) => {
   mockedAxios.get.mockImplementation(async (url: string) => {
     if (failing.includes(url)) throw new Error('500');
     if (url === '/api/side-panel') return { data: settings, status: 200 };
-    if (url === '/api/salmon') return { data: salmonSummary, status: 200 };
+    if (url === '/api/salmon') return { data: salmon, status: 200 };
     if (url === '/api/stream-data') return { data: getInitialStreamData(), status: 200 };
     if (url === '/api/twitch') return { data: twitch, status: 200 };
     if (url === '/api/salmon-schedule') return { data: schedule, status: 200 };
@@ -129,6 +137,26 @@ describe('SidePanelOverlayPage', () => {
     const card = await screen.findByTestId('WeaponCard');
     expect(card).toHaveTextContent('1 / 71');
     expect(card).toHaveAttribute('data-compact', 'true');
+  });
+
+  it('shows the boss ranking when it is selected', async () => {
+    mockApis({ ...getDefaultSidePanelSettings(), fixedSlots: ['bossRanking'] });
+    render(<SidePanelOverlayPage />);
+
+    expect(await screen.findByTestId('BossRanking')).toHaveTextContent('tower');
+  });
+
+  it('skips the boss ranking until a boss is recorded today', async () => {
+    mockApis({ ...rotating, rotationSlots: ['salmon', 'bossRanking', 'weaponCard'] }, [], noTwitch, scheduleData('アラマキ砦'), salmonWithoutBosses);
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    render(<SidePanelOverlayPage />);
+    await waitFor(() => expect(rotationSlot()).toBe('salmon'));
+
+    for (const expected of ['weaponCard', 'salmon']) {
+      await advance(10_000);
+      await waitFor(() => expect(rotationSlot()).toBe(expected));
+    }
+    expect(screen.queryByTestId('BossRanking')).not.toBeInTheDocument();
   });
 
   it('shows several slots together from top to bottom', async () => {

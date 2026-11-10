@@ -109,6 +109,7 @@
 │   ├── SparkleEffect.tsx         # スパークルエフェクト
 │   ├── FireworksEffect.tsx       # 花火エフェクト
 │   ├── SalmonStats.tsx           # サーモンランの前回・本日合計（タイトルは「本日の戦績」）
+│   ├── BossRanking.tsx           # オオモノ討伐TOP3（サイドパネルのスロット）
 │   ├── SalmonRunPanel.tsx        # コントロールパネルのサーモンランタブ
 │   ├── SidePanelOverlay.tsx      # サイドパネルの本体（2 つのレイアウトで共通）
 │   ├── SidePanelSettingsPanel.tsx # コントロールパネルのサイドパネルタブ
@@ -310,7 +311,7 @@ Twitch のフォロワー数とフォロワー目標を受け取る機能と、�
 - 詳細の保存: `salmon_jobs` の詳細の列（後から追加したので `migrate` で足す。手入力・以前の記録は NULL）と、子テーブル `salmon_job_waves` / `salmon_job_players` / `salmon_job_bosses`（`ON DELETE CASCADE`）。検証は `lib/salmon.ts` の `parseJobDetails`。オオモノの定義は `lib/salmonBosses.ts`（key は stat.ink、`image` は Leanny/splat3 の `coopEnemy`）、スペシャルは `lib/salmonWeapons.ts` の `SALMON_SPECIALS`
 - オオモノの欄: 詳細画面を読んだ後、`BOSS_SCROLL_PIXELS` ずつ下にスクロールして撮影し（`*-bosses.png`）、「※カッコ内の数字は…」が見えるまで読む（`read_bosses`。オカシラが出たバイトは一覧が 1 画面に収まらない）。行はオオモノの名前（`lib/salmonBosses.ts` の `name`。短い「ヘビ」は名前だけ切り出して読み直す）で見つけ、同じオオモノを何度か読んだら多数決。数（「4(3) / 出現数x4」）は等倍の小さな文字で Vision では 7・1 を読み間違えるので、`digit_glyphs.py` の数字・カッコの形（fixtures から切り出したもの）と照合し、カッコの位置はすべての並び方から形がいちばん合うものにする（`read_kills`）。自分の討伐数の合計が自分の行の「オオモノシャケ xN」と合わなければ記録しない。読み終えたら先頭に戻す（最新のバイトで「最新のバイトへ」を押してもスクロールの位置は戻らない。「前のバイト」で移ると先頭に戻る。下のボタンはスクロールしても出ている）
 - **味方の名前**（`salmon_job_players.name`）は DB に残すだけで、API・配信画面・ログ・`--read` の出力には出さない
-- オオモノ討伐: `getSummary` の `bossRanking` で、前回のバイトとセッション合計の、オオモノごとの自分の討伐数（多い順・同数は `SALMON_BOSSES` の順・0 体は除く）を返す
+- オオモノ討伐: `getSummary` の `bossRanking` で、前回のバイトとセッション合計の、オオモノごとの自分の討伐数（多い順・同数は `SALMON_BOSSES` の順・0 体は除く）を返す。サイドパネルの `bossRanking` スロット（`components/BossRanking.tsx`）は、前回と本日の TOP3 を左右に並べ、オオモノは画像（Leanny/splat3 の `coopEnemy`。読み込めなければ名前）で表す（スケジュールと並べても下段に収まる高さにするため）。本日のセッションにオオモノの数が 1 体も無い（手入力だけ・取り込み前）うちは表示しない
 - Python 側のテストは `tools/salmon-result/` で `pytest`（CI 対象外。Vision を使うので Mac で実行）。`fixtures/` に実際の詳細画面（クリア・失敗・オカシラあり）と、オオモノの欄までスクロールした画面（`bosses-*.png`）を置いている。**プレイヤー名は塗りつぶしてから置く**
 
 ### `/app/weapon-card-overlay/page.tsx` と `/app/api/weapon-card/route.ts`
@@ -333,7 +334,7 @@ Twitch のフォロワー数とフォロワー目標を受け取る機能と、�
 
 - 本体は `components/SidePanelOverlay.tsx`（`layout: 'side' | 'vertical'`）。2 つのページはこれを置くだけ（page.tsx は default 以外を export できないため）
 - 縦型配信（1080x1920）用の `/side-panel-overlay/vertical` は、画面上部の横長の枠（990x440、x=45 y=115 付近）に置く。設定は共通で、左にフォロワーゲージ、右に固定枠を左から横に並べ、最後の列でローテーション枠を切り替える。背景は透過（OBS 側の画像の上に重ねる）。カードは 250px 幅のままなので、`verticalSlotScale`（列数と `estimateSlotHeight` から、枠に収まる最大の倍率。上限 1.5。ローテーション枠は一番高いスロットに合わせる）で拡大率を決め、拡大前の大きさの領域を `transform: scale()` で拡大する。表示するものが無いスロットは列を作らず、拡大率の計算にも数えない（`canShow` を渡す）
-- スロットの定義は `lib/sidePanelTypes.ts` の `SIDE_PANEL_SLOTS`（現在は `schedule` / `salmon` / `weaponCard` / `challenges` / `burndown`。並び順が、固定枠で上から並べる順とローテーションの順）。スロットを追加するときは、ここと `SIDE_PANEL_SLOT_LABELS`、`components/SidePanelOverlay.tsx` の `renderSlot`・`canShow` に足す（2 つのレイアウトで共通）。縦型レイアウトで使う高さの目安 `estimateSlotHeight` にも足す
+- スロットの定義は `lib/sidePanelTypes.ts` の `SIDE_PANEL_SLOTS`（現在は `schedule` / `salmon` / `bossRanking` / `weaponCard` / `challenges` / `burndown`。並び順が、固定枠で上から並べる順とローテーションの順）。スロットを追加するときは、ここと `SIDE_PANEL_SLOT_LABELS`、`components/SidePanelOverlay.tsx` の `renderSlot`・`canShow` に足す（2 つのレイアウトで共通）。縦型レイアウトで使う高さの目安 `estimateSlotHeight` にも足す
 - 設定 `{fixedSlots, rotationSlots, rotateSeconds, followerGoal, challenges}` は SQLite のキーバリュー `app_state`（`getAppState` / `setAppState`、キー `sidePanel`）に保存。保存値が不正（スロット削除後など）なら既定値を返す
 - オーバーレイは2秒ごとに `/api/side-panel`・`/api/salmon`・`/api/stream-data`・`/api/salmon-schedule`・`/api/weapon-card` をポーリングし（1つが失敗しても他は表示を続ける）、下段は「固定枠」と「ローテーション枠」に分かれる。固定枠（`fixedSlots`）は上から順に常に表示し、その下の残りのスペースでローテーション枠（`rotationSlots`）を `rotateSeconds` ごとに1つずつ motion のクロスフェードで切り替える（`pickRotationSlot`。ローテーション枠が空なら切り替えない。お題が0個・データ未取得など表示するものが無いスロットは飛ばす）
 - 同じスロットを両方の枠に入れることはできず、両方の枠が空になることもできない。残りの高さいっぱいを使うスロット（`FULL_HEIGHT_SLOTS`、現在は `burndown`）は、固定枠に入れるときはそれ1つだけ（ローテーション枠も空）、ローテーション枠なら固定枠の下に表示できる。コントロールパネルでは、固定枠で選んだスロットはローテーション枠のボタンを無効にし、固定枠に移したスロットはローテーション枠から外す

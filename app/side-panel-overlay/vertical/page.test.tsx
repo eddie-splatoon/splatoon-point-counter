@@ -50,6 +50,7 @@ const salmonSummary = {
   lastJob: null,
   totals: { jobs: 1, goldenEggs: 123, bossKills: 0, deaths: 0, clears: 1, failures: 0 },
   jobs: [],
+  bossRanking: { lastJob: [], session: [] },
 };
 
 const noTwitch = { followerTotal: null, goal: null, lastFollowAt: null, updatedAt: null, revision: 0 };
@@ -138,7 +139,7 @@ describe('VerticalSidePanelOverlayPage', () => {
   });
 
   it('does not leave an empty column for a slot with nothing to show', async () => {
-    mockApis({ ...getDefaultSidePanelSettings(), fixedSlots: ['schedule', 'salmon', 'challenges'], challenges: [] }, ['/api/salmon-schedule']);
+    mockApis({ ...getDefaultSidePanelSettings(), fixedSlots: ['schedule', 'salmon', 'bossRanking', 'challenges'], challenges: [] }, ['/api/salmon-schedule']);
     render(<VerticalSidePanelOverlayPage />);
 
     await screen.findByTestId('SalmonStats');
