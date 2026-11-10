@@ -93,9 +93,9 @@ def find_box(boxes: list[Box], *keywords: str, min_y: float = 0.0, max_y: float 
 
 
 # x を「メ」と読むことがある（オオモノジャケ メ17）
-COUNT_PATTERN = re.compile(r"[xX×メ]\s*([0-9Il|]{1,4})(?![0-9A-Za-z])|[xX×メ]\s*(\d{1,4})")
+COUNT_PATTERN = re.compile(r"[xX×メ]\s*([0-9Iil|]{1,4})(?![0-9A-Za-z])|[xX×メ]\s*(\d{1,4})")
 # 1 を英字に読み間違えることがある（Xl、XI など）
-DIGIT_LOOKALIKES = str.maketrans({"I": "1", "l": "1", "|": "1"})
+DIGIT_LOOKALIKES = str.maketrans({"I": "1", "i": "1", "l": "1", "|": "1"})  # x17 を「メi7」と読むことがある（parse_count）
 
 
 def parse_count(text: str) -> int | None:
@@ -103,7 +103,11 @@ def parse_count(text: str) -> int | None:
     match = COUNT_PATTERN.search(normalize(text).replace("×", "x"))
     if not match:
         return None
-    return int((match.group(1) or match.group(2)).translate(DIGIT_LOOKALIKES))
+    digits = match.group(1) or match.group(2)
+    # 「i」は x17 を「メi7」と読んだときの 1 だが、「xil」（x17）のように数字が 1 つも無いと何の数か分からないので読まない
+    if "i" in digits and not any(c.isdigit() for c in digits):
+        return None
+    return int(digits.translate(DIGIT_LOOKALIKES))
 
 
 PLAYED_AT_PATTERN = re.compile(r"(\d{4})/(\d{1,2})/(\d{1,2})\s+(\d{1,2}):(\d{2})")
@@ -816,13 +820,24 @@ def boxes_in(boxes: list[Box], left: float, top: float, right: float, bottom: fl
     return sorted((b for b in boxes if left <= b.cx <= right and top <= b.cy <= bottom), key=lambda b: b.x)
 
 
+# 「290%」の右端から左へ切り出す幅（「キケン度」の文字は入っても入らなくてもよい）
+HAZARD_CELL_WIDTH = 0.15
+
+
+def read_hazard_level(image, boxes: list[Box], ocr_fn=ocr) -> int | None:
+    """キケン度（%）。全体の OCR では「キケン度」を「約」と読んで見つからなかったり、「285%」の 2 が抜けたりするので、
+    「%」の付いた文字の右端から数字の部分を切り出し、何度か読んだ多数決にする"""
+    hazard = next((b for b in boxes if b.cy < 0.3 and HAZARD_PATTERN.search(normalize(b.text))), None) or find_box(boxes, "キケン", "ケン度", max_y=0.3)
+    if hazard is None:
+        return None
+    right = hazard.x + hazard.w
+    cell = crop_relative(image, (max(0.0, right - HAZARD_CELL_WIDTH), hazard.y - 0.006, min(1.0, right + 0.02), hazard.y + hazard.h + 0.006))
+    return majority([parse_hazard_level(t) for t in read_cell_texts(cell, ocr_fn)])
+
+
 def read_header(image, boxes: list[Box], ocr_fn=ocr) -> dict:
     """詳細画面の上部（キケン度・評価・ポイント・チームのイクラ・ウロコ）"""
-    hazard = find_box(boxes, "キケン", "ケン度", max_y=0.3)
-    hazard_level = parse_hazard_level(hazard.text) if hazard else None
-    if hazard is not None and hazard_level is None:
-        hazard_level = majority([parse_hazard_level(t) for t in read_cell_texts(
-            crop_relative(image, (hazard.x, hazard.y - 0.005, min(1.0, hazard.x + hazard.w + 0.05), hazard.y + hazard.h + 0.005)), ocr_fn)])
+    hazard_level = read_hazard_level(image, boxes, ocr_fn)
 
     point_label = find_box(boxes, "獲得", "ポイント", "ホイント", max_y=0.35)
     grade_name = grade_point = job_point = job_score = job_rate = clear_bonus = None
@@ -1047,6 +1062,7 @@ def read_result(image, refs: dict, special_refs: dict, log=print) -> tuple[dict,
 # 少しずつスクロールして撮り、オオモノの名前で突き合わせる
 BOSS_NAME_X = (0.15, 0.3)  # オオモノの名前の左端（見出し・オカシラの名前は中央寄せなので外れる）
 BOSS_VISIBLE_Y = (0.16, 0.84)  # 上のタイトル・下のボタンに隠れていない範囲（名前の中心）
+MAX_PLAYERS = 4
 BOSS_NAME_MAX_WIDTH = 0.2  # 下の「※カッコ内の数字は…」を名前として読み直さない
 BOSS_NAME_HALF_HEIGHT = 0.018
 BOSS_ROW_HALF_HEIGHT = 0.016
@@ -1259,11 +1275,22 @@ def merge_boss_rows(readings: list[dict[str, tuple[int, int, int]]], self_kills:
     return bosses
 
 
-def read_bosses(window: Window, capture_screen, self_kills: int, log=print) -> list[dict]:
-    """詳細画面を少しずつ下にスクロールしてオオモノの欄を読み、先頭に戻す。
-    読めなければ空（記録は止めない）。capture_screen(label) は撮影して画像を返す"""
+def read_self_kills_on_scroll(boxes: list[Box]) -> int | None:
+    """スクロールした画面に 4 人の行がすべて見えていれば、いちばん上（自分）の「オオモノシャケ xN」の数"""
+    rows = sorted((b for b in boxes if b.x < BOSS_NAME_X[0] and "オオモノ" in normalize(b.text)), key=lambda b: b.y)
+    return parse_count(rows[0].text) if len(rows) == MAX_PLAYERS else None
+
+
+def read_bosses(window: Window, capture_screen, self_kills: int, played_at: str, log=print) -> tuple[list[dict], int]:
+    """詳細画面を少しずつ下にスクロールしてオオモノの欄を読み、先頭に戻す。capture_screen(label) は撮影して画像を返す。
+    (オオモノごとの数, 記録する自分のオオモノの数) を返す。読めなければオオモノごとの数は空（記録は止めない）。
+
+    - 自分の討伐数の合計が、詳細画面で読んだ「オオモノシャケ xN」と合わなければ、スクロールした画面に写る自分の行で読み直す。
+      そちらと合えば、詳細画面の読み間違い（x33 を 35 など）とみなして、その数で記録する
+    - 先頭に戻したら日時を読み直す。イカリング3の読み込みが遅れて、スクロールしている間に別のバイトに切り替わっていたら捨てる"""
     names = load_boss_names()
     readings = []
+    rereads = []
     try:
         for _ in range(MAX_BOSS_SCROLLS):
             scroll(window, BOSS_SCROLL_PIXELS)
@@ -1271,6 +1298,7 @@ def read_bosses(window: Window, capture_screen, self_kills: int, log=print) -> l
             image = capture_screen("bosses")
             boxes = ocr(image, FULL_OCR_SCALE)
             readings.append(read_boss_rows(image, boxes, names))
+            rereads.append(read_self_kills_on_scroll(boxes))
             if is_boss_list_end(boxes):
                 break
         else:
@@ -1278,12 +1306,24 @@ def read_bosses(window: Window, capture_screen, self_kills: int, log=print) -> l
             log("警告: オオモノの欄の終わりが見つかりませんでした")
     finally:
         scroll(window, SCROLL_TO_TOP_PIXELS)
+
+    time.sleep(BOSS_SCROLL_SETTLE_SECONDS)
+    top = capture_screen("recheck")
+    if read_played_at(top, ocr(top, FULL_OCR_SCALE)) != played_at:
+        log("警告: オオモノの欄を読んでいる間に別のバイトに切り替わったので、オオモノごとの数は記録しません")
+        return [], self_kills
+
     bosses = merge_boss_rows(readings, self_kills)
     if bosses is None:
-        log(f"警告: オオモノの欄の自分の討伐数の合計が x{self_kills} と合わないので、オオモノごとの数は記録しません")
-        return []
+        reread = majority(rereads)
+        corrected = merge_boss_rows(readings, reread) if reread is not None and reread != self_kills else None
+        if corrected is None:
+            log(f"警告: オオモノの欄の自分の討伐数の合計が x{self_kills} と合わないので、オオモノごとの数は記録しません")
+            return [], self_kills
+        log(f"オオモノシャケ x{self_kills} を x{reread} に読み直しました（オオモノの欄の合計と、スクロールした画面の自分の行が一致）")
+        bosses, self_kills = corrected, reread
     log(f"オオモノ: {len(bosses)} 種・自分の討伐 {self_kills}")
-    return bosses
+    return bosses, self_kills
 
 
 def wait_for_screen(window: Window, *keywords: str, timeout: float = SCREEN_TIMEOUT_SECONDS) -> tuple[object, list[Box]]:
@@ -1475,14 +1515,20 @@ def process_request(request_id: int, api: Api, refs: dict, capture_dir: Path, lo
             def read_current(label: str) -> tuple[dict, str, dict | None]:
                 return read_result(capture_screen(label), refs, special_refs or {}, log)
 
-            def add_bosses(job: dict, details: dict | None) -> None:
-                """詳細が読めたバイトだけ、オオモノの欄も読む（詳細と同じく「おまけ」なので、失敗しても記録は続ける）"""
+            def add_bosses(job: dict, played_at: str, details: dict | None) -> None:
+                """詳細が読めたバイトだけ、オオモノの欄も読む（詳細と同じく「おまけ」なので、失敗しても記録は続ける）。
+                自分の「オオモノシャケ xN」を読み直したら、バイトと自分の行の数も直す"""
                 if details is None:
                     return
                 try:
-                    details["bosses"] = read_bosses(window, capture_screen, job["bossKills"], log)
+                    details["bosses"], boss_kills = read_bosses(window, capture_screen, job["bossKills"], played_at, log)
                 except Exception as error:
                     log(f"警告: オオモノの欄を読み取れませんでした: {error}")
+                    return
+                job["bossKills"] = boss_kills
+                for player in details.get("players", []):
+                    if player.get("position") == 0:
+                        player["bossKills"] = boss_kills
 
             job, played_at, details = read_current("detail")
             log(f"読み取り: {played_at} {job}")
@@ -1493,7 +1539,7 @@ def process_request(request_id: int, api: Api, refs: dict, capture_dir: Path, lo
                 time.sleep(RETRY_INTERVAL_SECONDS)
                 continue
 
-            add_bosses(job, details)
+            add_bosses(job, played_at, details)
             jobs = [{"job": job, "playedAt": played_at, "details": details}]
             # 取りこぼしを遡る。読めないバイトがあればそこでやめ、読めた分だけ記録する
             while len(jobs) < MAX_BACKFILL_JOBS and open_previous_job(window, played_at):
@@ -1507,7 +1553,7 @@ def process_request(request_id: int, api: Api, refs: dict, capture_dir: Path, lo
                 ):
                     break
                 log(f"取りこぼし: {previous_played_at} {previous_job}")
-                add_bosses(previous_job, previous_details)
+                add_bosses(previous_job, previous_played_at, previous_details)
                 jobs.append({"job": previous_job, "playedAt": previous_played_at, "details": previous_details})
                 played_at = previous_played_at
 

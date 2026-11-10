@@ -42,7 +42,7 @@ HISTORY_BOXES = [
     ("text", "expected"),
     [
         ("x12<8>", 12), ("X60", 60), ("x25cl>", 25), ("×710", 710), ("オオモノシャケx24", 24), ("オオモノジャケ ×17", 17),
-        ("Xl", 1), ("XI", 1), ("x", None), ("普通", None),
+        ("Xl", 1), ("XI", 1), ("オオモノジャケ メi7", 17), ("オオモノシャケ xil", None), ("x", None), ("普通", None),
     ],
 )
 def test_parse_count(text, expected):
@@ -404,61 +404,105 @@ class FakeWindow:
         self.scrolls = []
 
 
-def test_read_bosses_scrolls_until_the_end_of_the_list_and_back_to_the_top(monkeypatch):
+END_OF_LIST = Box("※カッコ内の数字は自分で倒した数です", 0.25, 0.8, 0.5, 0.02)
+PLAYED_AT = "2026/11/10 18:24"
+
+
+def self_rows(kills: int) -> list[Box]:
+    """スクロールした画面に見える 4 人の行（いちばん上が自分）"""
+    return [Box(f"オオモノシャケ x{kills if i == 0 else 9}", 0.06, 0.05 + 0.07 * i, 0.18, 0.015) for i in range(4)]
+
+
+def fake_boss_screens(monkeypatch, screens, played_at_after=PLAYED_AT):
+    """read_bosses の画面の操作と読み取りを差し替える。screens はスクロールごとの (OCR の文字, オオモノの行)"""
     window = FakeWindow()
     monkeypatch.setattr(s, "scroll", lambda w, pixels: w.scrolls.append(pixels))
     monkeypatch.setattr(s, "time", type("T", (), {"sleep": staticmethod(lambda seconds: None)}))
-    screens = iter([
-        ([], {"bakudan": (8, 7, 3)}),
-        ([Box("※カッコ内の数字は自分で倒した数です", 0.25, 0.8, 0.5, 0.02)], {"hebi": (4, 3, 2)}),
-    ])
-    current = {}
+    screens = iter(screens)
+    current = {"boxes": [], "rows": {}}
+    labels = []
 
     def capture_screen(label):
-        current["boxes"], current["rows"] = next(screens)
+        labels.append(label)
+        if label == "bosses":
+            current["boxes"], current["rows"] = next(screens)
         return blank_detail_image()
 
     monkeypatch.setattr(s, "ocr", lambda image, scale=1: current["boxes"])
     monkeypatch.setattr(s, "read_boss_rows", lambda image, boxes, names: current["rows"])
-    logs = []
-    assert [b["boss"] for b in s.read_bosses(window, capture_screen, 5, logs.append)] == ["bakudan", "hebi"]
+    # 先頭に戻したあとの日時
+    monkeypatch.setattr(s, "read_played_at", lambda image, boxes, ocr_fn=None: played_at_after)
+    return window, capture_screen, labels
+
+
+def test_read_bosses_scrolls_until_the_end_of_the_list_and_back_to_the_top(monkeypatch):
+    window, capture_screen, labels = fake_boss_screens(monkeypatch, [
+        ([], {"bakudan": (8, 7, 3)}),
+        ([END_OF_LIST], {"hebi": (4, 3, 2)}),
+    ])
+    bosses, kills = s.read_bosses(window, capture_screen, 5, PLAYED_AT, print)
+    assert [b["boss"] for b in bosses] == ["bakudan", "hebi"]
+    assert kills == 5
     assert window.scrolls == [s.BOSS_SCROLL_PIXELS, s.BOSS_SCROLL_PIXELS, s.SCROLL_TO_TOP_PIXELS]
+    # 先頭に戻してから、バイトが切り替わっていないか撮り直す
+    assert labels == ["bosses", "bosses", "recheck"]
 
 
 def test_read_bosses_returns_nothing_when_the_counts_do_not_add_up(monkeypatch):
-    window = FakeWindow()
-    monkeypatch.setattr(s, "scroll", lambda w, pixels: w.scrolls.append(pixels))
-    monkeypatch.setattr(s, "time", type("T", (), {"sleep": staticmethod(lambda seconds: None)}))
-    monkeypatch.setattr(s, "ocr", lambda image, scale=1: [Box("※カッコ内の数字は自分で倒した数です", 0.25, 0.8, 0.5, 0.02)])
-    monkeypatch.setattr(s, "read_boss_rows", lambda image, boxes, names: {"bakudan": (8, 7, 3)})
+    window, capture_screen, _ = fake_boss_screens(monkeypatch, [([END_OF_LIST], {"bakudan": (8, 7, 3)})])
     logs = []
-    assert s.read_bosses(window, lambda label: blank_detail_image(), 4, logs.append) == []
+    assert s.read_bosses(window, capture_screen, 4, PLAYED_AT, logs.append) == ([], 4)
     assert "合わない" in logs[0]
     assert window.scrolls[-1] == s.SCROLL_TO_TOP_PIXELS
 
 
+def test_read_bosses_corrects_the_self_kills_misread_on_the_detail_screen(monkeypatch):
+    """詳細画面で x33 を 35 と読んでも、スクロールした画面の自分の行（x33）とオオモノの欄の合計が合えば 33 にする"""
+    window, capture_screen, _ = fake_boss_screens(monkeypatch, [
+        (self_rows(33), {"bakudan": (10, 10, 20)}),
+        ([END_OF_LIST], {"hebi": (20, 20, 13)}),
+    ])
+    logs = []
+    bosses, kills = s.read_bosses(window, capture_screen, 35, PLAYED_AT, logs.append)
+    assert kills == 33
+    assert [b["selfKills"] for b in bosses] == [20, 13]
+    assert "読み直しました" in logs[0]
+
+
+def test_read_bosses_does_not_correct_without_all_the_player_rows(monkeypatch):
+    """4 人の行が見えていなければ、いちばん上が自分とは限らないので読み直さない"""
+    window, capture_screen, _ = fake_boss_screens(monkeypatch, [
+        (self_rows(33)[1:], {"bakudan": (10, 10, 20)}),
+        ([END_OF_LIST], {"hebi": (20, 20, 13)}),
+    ])
+    assert s.read_bosses(window, capture_screen, 35, PLAYED_AT, lambda m: None) == ([], 35)
+
+
+def test_read_bosses_drops_the_bosses_of_another_job(monkeypatch):
+    """イカリング3の読み込みが遅れて、スクロールしている間に別のバイトに切り替わっていたら捨てる"""
+    window, capture_screen, _ = fake_boss_screens(monkeypatch, [([END_OF_LIST], {"bakudan": (8, 7, 3)})], played_at_after="2026/11/10 18:31")
+    logs = []
+    assert s.read_bosses(window, capture_screen, 3, PLAYED_AT, logs.append) == ([], 3)
+    assert "別のバイト" in logs[0]
+
+
 def test_read_bosses_scrolls_back_to_the_top_when_reading_fails(monkeypatch):
-    window = FakeWindow()
-    monkeypatch.setattr(s, "scroll", lambda w, pixels: w.scrolls.append(pixels))
-    monkeypatch.setattr(s, "time", type("T", (), {"sleep": staticmethod(lambda seconds: None)}))
+    window, _, _ = fake_boss_screens(monkeypatch, [])
 
     def broken(label):
         raise s.ImportError_("撮影できません")
 
     with pytest.raises(s.ImportError_):
-        s.read_bosses(window, broken, 4, print)
+        s.read_bosses(window, broken, 4, PLAYED_AT, print)
     assert window.scrolls == [s.BOSS_SCROLL_PIXELS, s.SCROLL_TO_TOP_PIXELS]
 
 
 def test_read_bosses_without_the_end_of_the_list_relies_on_the_total(monkeypatch):
-    window = FakeWindow()
-    monkeypatch.setattr(s, "scroll", lambda w, pixels: w.scrolls.append(pixels))
-    monkeypatch.setattr(s, "time", type("T", (), {"sleep": staticmethod(lambda seconds: None)}))
-    monkeypatch.setattr(s, "ocr", lambda image, scale=1: [])
-    monkeypatch.setattr(s, "read_boss_rows", lambda image, boxes, names: {"bakudan": (8, 7, 3)})
+    window, capture_screen, _ = fake_boss_screens(monkeypatch, [([], {"bakudan": (8, 7, 3)})] * s.MAX_BOSS_SCROLLS)
     logs = []
     # 下の注記を読み間違えただけかもしれないので、読めた行の合計が合えば記録する
-    assert [b["boss"] for b in s.read_bosses(window, lambda label: blank_detail_image(), 3, logs.append)] == ["bakudan"]
+    bosses, _ = s.read_bosses(window, capture_screen, 3, PLAYED_AT, logs.append)
+    assert [b["boss"] for b in bosses] == ["bakudan"]
     assert window.scrolls.count(s.BOSS_SCROLL_PIXELS) == s.MAX_BOSS_SCROLLS
     assert window.scrolls[-1] == s.SCROLL_TO_TOP_PIXELS
     assert "終わり" in logs[0]
@@ -504,7 +548,7 @@ class FakeApi:
 def test_process_request_reads_the_bosses_of_new_jobs_only(monkeypatch, tmp_path):
     """記録済みのバイトに着いたら遡るのをやめ、記録するバイトだけオオモノの欄を読む（詳細が読めないバイトは読まない）"""
     screens = iter([
-        ({"bossKills": 26}, "2026/11/10 10:51", {"waves": []}),
+        ({"bossKills": 26}, "2026/11/10 10:51", {"waves": [], "players": [{"position": 0, "bossKills": 26}]}),
         ({"bossKills": 25}, "2026/11/10 10:42", None),
         ({"bossKills": 33}, "2026/11/10 10:33", {"waves": []}),
     ])
@@ -516,21 +560,26 @@ def test_process_request_reads_the_bosses_of_new_jobs_only(monkeypatch, tmp_path
     monkeypatch.setattr(s, "read_result", lambda image, refs, special_refs, log: next(screens))
     read_for = []
 
-    def fake_read_bosses(window, capture_screen, self_kills, log):
-        read_for.append(self_kills)
+    def fake_read_bosses(window, capture_screen, self_kills, played_at, log):
+        read_for.append((self_kills, played_at))
         capture_screen("bosses")
-        return [{"boss": "bakudan", "appearances": 1, "teamKills": 1, "selfKills": self_kills}]
+        # 詳細画面の x26 を、オオモノの欄と合う x25 に読み直した
+        return [{"boss": "bakudan", "appearances": 25, "teamKills": 25, "selfKills": 25}], 25
 
     monkeypatch.setattr(s, "read_bosses", fake_read_bosses)
     api = FakeApi({"2026/11/10 10:33"})
     s.process_request(1, api, {}, tmp_path, log=lambda m: None)
 
-    assert read_for == [26]
+    assert read_for == [(26, "2026/11/10 10:51")]
     succeeded = api.updates[-1]
     assert succeeded["status"] == "succeeded"
     assert [j["playedAt"] for j in succeeded["jobs"]] == ["2026/11/10 10:42", "2026/11/10 10:51"]
     assert succeeded["jobs"][0]["details"] is None
-    assert succeeded["jobs"][1]["details"]["bosses"][0]["selfKills"] == 26
+    latest = succeeded["jobs"][1]
+    assert latest["details"]["bosses"][0]["selfKills"] == 25
+    # 読み直したオオモノの数で、バイトと自分の行の数も直す
+    assert latest["job"]["bossKills"] == 25
+    assert latest["details"]["players"][0]["bossKills"] == 25
     assert [name.rsplit("-", 1)[-1] for name in succeeded["captures"]] == ["detail.png", "bosses.png", "detail.png", "detail.png"]
 
 
@@ -552,3 +601,22 @@ def test_process_request_keeps_the_details_when_reading_the_bosses_fails(monkeyp
     assert api.updates[-1]["status"] == "succeeded"
     assert api.updates[-1]["jobs"][0]["details"] == {"waves": []}
     assert any("オオモノの欄を読み取れませんでした" in m for m in logs)
+
+
+def test_read_hazard_level_from_the_number_even_when_the_label_is_misread():
+    """「キケン度」を「約」と読んでも、「%」の付いた文字の右端から数字を切り出して読む"""
+    readings = []
+
+    def fake_ocr(image, scale=1):
+        readings.append(image.width)
+        return [Box("鹿290%", 0, 0, 1, 1)]
+
+    assert s.read_hazard_level(blank_detail_image(), [Box("約290%", 0.6, 0.24, 0.15, 0.02)], fake_ocr) == 290
+    assert readings  # 全体の OCR の文字ではなく、切り出して読み直した結果を使う
+
+    def misread(image, scale=1):
+        return [Box("准285%", 0, 0, 1, 1)]
+
+    # 全体の OCR が「キケン度85%」（2 が抜けた）でも、切り出した読みの多数決で 285
+    assert s.read_hazard_level(blank_detail_image(), [Box("キケン度85%", 0.55, 0.24, 0.2, 0.02)], misread) == 285
+    assert s.read_hazard_level(blank_detail_image(), [Box("Clear!!", 0.4, 0.2, 0.2, 0.03)], misread) is None
