@@ -61,6 +61,9 @@ describe('migration', () => {
 
       const db = openDb(path);
       expect(db.prepare('SELECT weapons, played_at FROM salmon_jobs').get()).toEqual({ weapons: '[]', played_at: null });
+      // 詳細の列も足す（既存の記録は NULL）
+      expect(db.prepare('SELECT hazard_level, job_rate_x100, king_name, king_defeated FROM salmon_jobs').get())
+        .toEqual({ hazard_level: null, job_rate_x100: null, king_name: null, king_defeated: null });
       db.close();
       // 2回目以降に開いても列を足し直さない
       openDb(path).close();

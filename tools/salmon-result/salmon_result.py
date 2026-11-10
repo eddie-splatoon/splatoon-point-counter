@@ -23,6 +23,7 @@ import tempfile
 import time
 import unicodedata
 from dataclasses import dataclass
+from functools import cache
 from difflib import SequenceMatcher, get_close_matches
 from datetime import datetime
 from pathlib import Path
@@ -40,6 +41,8 @@ MAX_WAIT_FOR_NEW_JOB_SECONDS = 4 * 60
 RETRY_INTERVAL_SECONDS = 15
 # 取りこぼしを遡る上限（サーバーの MAX_IMPORT_JOBS と合わせる）
 MAX_BACKFILL_JOBS = 20
+# 依頼に残すキャプチャのファイル名の数（オオモノの欄の分も入るので、取りこぼしが多いと古いものから外れる）
+MAX_CAPTURES = 10
 # 「最新のバイトへ」「前のバイト」を押してから、画面が切り替わり始めるまで待つ時間
 PAGE_LOAD_SECONDS = 2
 SCREEN_TIMEOUT_SECONDS = 15
@@ -47,7 +50,7 @@ RECONNECT_TIMEOUT_SECONDS = 20
 # 文字が小さいので、拡大してから OCR する（ミラーリングの画面は 1 倍で 400px 程度の幅しかない）
 FULL_OCR_SCALE = 2
 CELL_OCR_SCALE = 4
-HEADER_OCR_SCALE = 3
+HEADER_OCR_SCALES = (3, 4)  # 見出しの「Clear!!」は倍率によって読めたり読めなかったりする
 TELOP_SUCCEEDED = "リザルトを記録しました"
 TELOP_FAILED = "リザルトを取り込めませんでした"
 
@@ -89,7 +92,8 @@ def find_box(boxes: list[Box], *keywords: str, min_y: float = 0.0, max_y: float 
     return min(found, key=lambda b: b.y, default=None)
 
 
-COUNT_PATTERN = re.compile(r"[xX×]\s*([0-9Il|]{1,4})(?![0-9A-Za-z])|[xX×]\s*(\d{1,4})")
+# x を「メ」と読むことがある（オオモノジャケ メ17）
+COUNT_PATTERN = re.compile(r"[xX×メ]\s*([0-9Il|]{1,4})(?![0-9A-Za-z])|[xX×メ]\s*(\d{1,4})")
 # 1 を英字に読み間違えることがある（Xl、XI など）
 DIGIT_LOOKALIKES = str.maketrans({"I": "1", "l": "1", "|": "1"})
 
@@ -137,12 +141,13 @@ def parse_outcome(boxes: list[Box]) -> tuple[bool, int] | None:
     """クリアしたか、と到達した WAVE。クリアなら (True, 3)。
 
     見出しの「Clear!!」/「Failure」で判定する（「クリアボーナス」があるので日本語の「クリア」では判定しない）。
+    明るいステージでは倍率によって Failure に似た文字（FiLcaP）に読むことがあるので、読めたものの多数決にする。
     失敗した WAVE は、表示されている WAVE の番号の最大（失敗したバイトでは、失敗した WAVE までしか表示されない）
     """
-    outcomes = {result for b in boxes if (result := classify_outcome(b.text)) is not None}
-    if len(outcomes) != 1:  # 読めない・両方に読める（読み間違い）なら決めない
+    votes = [result for b in boxes if (result := classify_outcome(b.text)) is not None]
+    if votes.count(True) == votes.count(False):  # 読めない・どちらとも決められないなら決めない
         return None
-    cleared = outcomes.pop()
+    cleared = votes.count(True) > votes.count(False)
     if cleared:
         return True, MAX_WAVE
     texts = [normalize(b.text) for b in boxes]
@@ -411,40 +416,52 @@ WEAPON_REF_SCALE = 0.95
 WEAPON_REF_BLUR = 0.7
 
 
-def load_weapon_list() -> list[dict]:
-    """lib/salmonWeapons.ts のブキの key と画像の URL（Node 24 の型除去で読む）"""
+def load_weapon_list(kind: str = "weapons") -> list[dict]:
+    """lib/salmonWeapons.ts のブキ（kind="specials" ならスペシャル）の key と画像の URL（Node 24 の型除去で読む）"""
     script = (
         "const m = await import(process.argv[1]);"
-        "console.log(JSON.stringify(m.SALMON_WEAPONS.map((w) => ({key: w.key, url: m.weaponImageUrl(w)}))));"
+        "const list = process.argv[2] === 'specials'"
+        " ? m.SALMON_SPECIALS.map((w) => ({key: w.key, url: m.specialImageUrl(w)}))"
+        " : m.SALMON_WEAPONS.map((w) => ({key: w.key, url: m.weaponImageUrl(w)}));"
+        "console.log(JSON.stringify(list));"
     )
     result = subprocess.run(
-        ["node", "--no-warnings", "--input-type=module", "-e", script, str(REPO_ROOT / "lib" / "salmonWeapons.ts")],
+        ["node", "--no-warnings", "--input-type=module", "-e", script, str(REPO_ROOT / "lib" / "salmonWeapons.ts"), kind],
         capture_output=True, text=True, check=True,
     )
     return json.loads(result.stdout)
 
 
-def ensure_weapon_refs(refs_dir: Path, log=print) -> dict:
-    """参照画像を読み込む（無ければダウンロードしてキャッシュする）。取れなかったブキは照合しない"""
-    import numpy as np
+def _load_refs(items: list[dict], refs_dir: Path, to_vector, log=print) -> dict:
+    """参照画像を読み込む（無ければダウンロードしてキャッシュする）。取れなかったものは照合しない"""
     import requests
     from PIL import Image
 
     refs_dir.mkdir(parents=True, exist_ok=True)
     refs = {}
-    for weapon in load_weapon_list():
-        path = refs_dir / f"{weapon['key']}.png"
+    for item in items:
+        path = refs_dir / f"{item['key']}.png"
         if not path.exists():
             try:
-                response = requests.get(weapon["url"], timeout=10)
+                response = requests.get(item["url"], timeout=10)
                 response.raise_for_status()
                 path.write_bytes(response.content)
             except requests.RequestException as error:
-                log(f"警告: {weapon['key']} の画像を取得できませんでした: {error}")
+                log(f"警告: {item['key']} の画像を取得できませんでした: {error}")
                 continue
         with Image.open(path) as image:
-            refs[weapon["key"]] = ref_vector(image)
+            refs[item["key"]] = to_vector(image)
     return refs
+
+
+def ensure_weapon_refs(refs_dir: Path, log=print) -> dict:
+    """ブキの参照画像"""
+    return _load_refs(load_weapon_list(), refs_dir, ref_vector, log)
+
+
+def ensure_special_refs(refs_dir: Path, log=print) -> dict:
+    """スペシャルの参照画像（ブキの参照画像のディレクトリの specials/ にキャッシュする）"""
+    return _load_refs(load_weapon_list("specials"), refs_dir / "specials", special_ref_vector, log)
 
 
 def _masked_vector(image) -> "np.ndarray":
@@ -482,17 +499,60 @@ def icon_vector(icon) -> "np.ndarray":
     return _masked_vector(icon.convert("RGB").resize((size, size), Image.LANCZOS))
 
 
-def match_weapon(icon, refs: dict) -> str | None:
-    """いちばん似ている参照画像のブキ。似ていない・2 番目と差が無いなら None（推測で記録しない）"""
+# スペシャルのアイコンは黒い角丸の四角に、インクの色と白でシルエットが描かれている。参照画像（白黒・透過）とは色が違うので、
+# 形（参照画像は不透明度、アイコンは明るさ）で比べる。実際のアイコン 12 個で正解はすべて 1 位、類似度 0.38〜0.77・2 位との差 0.05 以上
+SPECIAL_REF_SCALE = 0.8
+SPECIAL_MATCH_MIN_SCORE = 0.3
+SPECIAL_MATCH_MIN_MARGIN = 0.04
+
+
+def _shape_vector(pixels) -> "np.ndarray":
+    import numpy as np
+
+    vector = np.asarray(pixels, dtype=np.float32).reshape(-1)
+    vector -= vector.mean()
+    norm = np.linalg.norm(vector)
+    return vector / norm if norm else vector
+
+
+def special_ref_vector(image) -> "np.ndarray":
+    from PIL import Image, ImageFilter
+
+    size = WEAPON_ICON_COMPARE_SIZE
+    alpha = image.convert("RGBA").split()[3]
+    side = round(size * SPECIAL_REF_SCALE)
+    canvas = Image.new("L", (size, size), 0)
+    canvas.paste(alpha.resize((side, side), Image.LANCZOS), ((size - side) // 2, (size - side) // 2))
+    return _shape_vector(canvas.filter(ImageFilter.GaussianBlur(WEAPON_REF_BLUR)))
+
+
+def special_icon_vector(icon) -> "np.ndarray":
+    import numpy as np
+    from PIL import Image
+
+    size = WEAPON_ICON_COMPARE_SIZE
+    return _shape_vector(np.asarray(icon.convert("RGB").resize((size, size), Image.LANCZOS)).max(axis=2))
+
+
+def _best_match(vector, refs: dict, min_score: float, min_margin: float) -> str | None:
     if not refs:
         return None
-    vector = icon_vector(icon)
     scores = sorted(((float(vector @ ref), key) for key, ref in refs.items()), reverse=True)
     best_score, best_key = scores[0]
     second_score = scores[1][0] if len(scores) > 1 else -1.0
-    if best_score < WEAPON_MATCH_MIN_SCORE or best_score - second_score < WEAPON_MATCH_MIN_MARGIN:
+    if best_score < min_score or best_score - second_score < min_margin:
         return None
     return best_key
+
+
+def match_special(icon, refs: dict) -> str | None:
+    """いちばん形が似ているスペシャル。似ていない・2 番目と差が無いなら None"""
+    return _best_match(special_icon_vector(icon), refs, SPECIAL_MATCH_MIN_SCORE, SPECIAL_MATCH_MIN_MARGIN) if refs else None
+
+
+def match_weapon(icon, refs: dict) -> str | None:
+    """いちばん似ている参照画像のブキ。似ていない・2 番目と差が無いなら None（推測で記録しない）"""
+    return _best_match(icon_vector(icon), refs, WEAPON_MATCH_MIN_SCORE, WEAPON_MATCH_MIN_MARGIN) if refs else None
 
 
 # アイコンとみなす大きさ（画像の幅に対する比）。イカリング3のアイコンは幅 407px で 17〜18px
@@ -565,19 +625,25 @@ def binarize_white_text(image, scale: int, threshold: int = CELL_BINARIZE_THRESH
     return ImageOps.expand(binary, border=20, fill=255).convert("RGB")
 
 
-def vote_count(cell, ocr_fn=None) -> int | None:
-    """セルの「x12」の数。読み方ごとの結果の多数決（同数なら先に読めたもの）。どの読み方でも読めなければ None"""
-    ocr_fn = ocr_fn or ocr
-    readings = [lambda scale=scale: ocr_fn(cell, scale) for scale in CELL_OCR_SCALES]
-    readings.append(lambda: ocr_fn(binarize_white_text(cell, CELL_OCR_SCALE), 1))
-    values = []
-    for read in readings:
-        value = parse_count(" ".join(b.text for b in read()))
-        if value is not None:
-            values.append(value)
+def majority(values: list):
+    """多数決（同数なら先に読めたもの）。None は数えない。何も無ければ None"""
+    values = [v for v in values if v is not None]
     if not values:
         return None
     return max(values, key=lambda v: (values.count(v), -values.index(v)))
+
+
+def read_cell_texts(cell, ocr_fn=None) -> list[str]:
+    """セルをいくつかの読み方（倍率・白黒化）で読んだ文字列"""
+    ocr_fn = ocr_fn or ocr
+    readings = [lambda scale=scale: ocr_fn(cell, scale) for scale in CELL_OCR_SCALES]
+    readings.append(lambda: ocr_fn(binarize_white_text(cell, CELL_OCR_SCALE), 1))
+    return [" ".join(b.text for b in read()) for read in readings]
+
+
+def vote_count(cell, ocr_fn=None) -> int | None:
+    """セルの「x12」の数。読み方ごとの結果の多数決。どの読み方でも読めなければ None"""
+    return majority([parse_count(text) for text in read_cell_texts(cell, ocr_fn)])
 
 
 
@@ -599,9 +665,10 @@ def read_played_at(image, boxes: list[Box], ocr_fn=None) -> str | None:
     return max(values, key=lambda v: (values.count(v), -values.index(v)))
 
 
-def read_job(image, refs: dict, cells: SelfRowCells = SelfRowCells(), ocr_fn=ocr) -> tuple[dict, str]:
+def read_job(image, refs: dict, cells: SelfRowCells = SelfRowCells(), ocr_fn=ocr, boxes: list[Box] | None = None) -> tuple[dict, str]:
     """詳細画面の画像から、記録するバイト（NewSalmonJob）と日時を読む。読めない項目があれば ImportError_"""
-    boxes = ocr_fn(image, FULL_OCR_SCALE)
+    if boxes is None:
+        boxes = ocr_fn(image, FULL_OCR_SCALE)
     played_at = read_played_at(image, boxes, ocr_fn)
     if played_at is None:
         raise ImportError_("バイトの日時を読み取れませんでした（詳細画面が開いていない可能性があります）")
@@ -616,7 +683,7 @@ def read_job(image, refs: dict, cells: SelfRowCells = SelfRowCells(), ocr_fn=ocr
     # 見出しは全体の OCR では読めないことがあるので、日時の下を切り出して拡大して読み直す。
     # プレイヤー名（Clare など）で判定しないよう、プレイヤーの一覧より上の文字だけを使う
     header = crop_relative(image, (0.3, played_at_box.y, 0.7, min(1.0, played_at_box.y + 0.06)))
-    header_boxes = [Box(b.text, 0, 0, 0, 0) for b in ocr_fn(header, HEADER_OCR_SCALE)]
+    header_boxes = [Box(b.text, 0, 0, 0, 0) for scale in HEADER_OCR_SCALES for b in ocr_fn(header, scale)]
     outcome = parse_outcome([b for b in boxes if b.y < row.y - 0.05] + header_boxes)
     if outcome is None:
         raise ImportError_("クリア / 失敗を読み取れませんでした")
@@ -662,7 +729,559 @@ def read_job(image, refs: dict, cells: SelfRowCells = SelfRowCells(), ocr_fn=ocr
     return job, played_at
 
 
-# ---- 画面の移動 ----
+# ---- バイトの詳細（上部・WAVE・プレイヤー）。読めない項目は推測せず None にする（詳細が読めなくても記録は続ける） ----
+
+# 評価の名前（OCR の読み間違い「さんせつ」などを直すのに使う）
+KNOWN_GRADES = ("かけだし", "はんにんまえ", "いちにんまえ", "じゅくれん", "たつじん", "たつじん+1", "たつじん+2", "たつじん+3", "でんせつ")
+KNOWN_KINGS = ("ヨコヅナ", "タツ", "ジョー", "オカシラ連合")
+WATER_LEVELS = ("干潮", "普通", "満潮")
+# OCR が簡体字で読むことがある（满潮 など）
+SIMPLIFIED_KANJI = str.maketrans({"满": "満", "现": "現"})
+TEXT_MATCH_CUTOFF = 0.5
+MAX_COUNT = 9999
+MAX_HAZARD_LEVEL = 999
+
+
+def closest(text: str, candidates: tuple[str, ...], cutoff: float = TEXT_MATCH_CUTOFF) -> str | None:
+    text = normalize(text).translate(SIMPLIFIED_KANJI)
+    if not text:
+        return None
+    match = get_close_matches(text, candidates, n=1, cutoff=cutoff)
+    return match[0] if match else None
+
+
+HAZARD_PATTERN = re.compile(r"(\d{1,3})\s*%")
+
+
+def parse_hazard_level(text: str) -> int | None:
+    """「キケン度333%」の 333"""
+    match = HAZARD_PATTERN.search(normalize(text))
+    return int(match.group(1)) if match and int(match.group(1)) <= MAX_HAZARD_LEVEL else None
+
+
+# 空白で分かれていればそこで分ける。分かれていなければ「たつじん+2」の + の直後の 1 桁は名前に含める
+GRADE_PATTERNS = (
+    re.compile(r"^(\S+)\s+(\d{1,3})$"),
+    re.compile(r"^(\D*\+\d)(\d{1,3})$"),
+    re.compile(r"^(\D+?)(\d{1,3})$"),
+)
+
+
+def parse_grade(text: str) -> tuple[str | None, int | None]:
+    """「でんせつ 999」→ ("でんせつ", 999)。名前は既知の評価に寄せる"""
+    text = unicodedata.normalize("NFKC", text).strip()
+    for pattern in GRADE_PATTERNS:
+        match = pattern.match(text)
+        if match:
+            return closest(match.group(1), KNOWN_GRADES), int(match.group(2))
+    return None, None
+
+
+SCORE_PATTERN = re.compile(r"(\d{1,4})\s*[xX×]\s*(\d{1,2}\.\d{1,2})")
+
+
+def parse_score_line(text: str) -> tuple[int | None, float | None]:
+    """「130 x 3.25+」→ (バイトスコア, 評価レート)"""
+    match = SCORE_PATTERN.search(normalize(text))
+    return (int(match.group(1)), float(match.group(2))) if match else (None, None)
+
+
+QUOTA_PATTERN = re.compile(r"(\d{1,3})\s*/\s*(\d{1,3})")
+
+
+def parse_quota(text: str) -> tuple[int, int] | None:
+    """「36/30」→ (納品数, ノルマ)"""
+    match = QUOTA_PATTERN.search(normalize(text))
+    return (int(match.group(1)), int(match.group(2))) if match else None
+
+
+# 「<」を「c」「く」と読むことがある（x25c1>）ので、金イクラの数のすぐ後ろの、閉じの「>」まであるものだけを読む
+ASSIST_PATTERN = re.compile(r"[xX×メ]\s*\d{1,4}\s*[<くcC〈(]\s*([0-9Il|]{1,3})\s*[>〉)]")
+
+
+def parse_assist(text: str) -> int | None:
+    """金イクラの「x12<8>」の <8>（アシスト）"""
+    match = ASSIST_PATTERN.search(normalize(text))
+    return int(match.group(1).translate(DIGIT_LOOKALIKES)) if match else None
+
+
+def parse_points(text: str) -> int | None:
+    """「472p」の 472"""
+    match = re.search(r"(\d{1,4})\s*[pP]", normalize(text))
+    return int(match.group(1)) if match else None
+
+
+def boxes_in(boxes: list[Box], left: float, top: float, right: float, bottom: float) -> list[Box]:
+    """中心が範囲内にある Box（左から）"""
+    return sorted((b for b in boxes if left <= b.cx <= right and top <= b.cy <= bottom), key=lambda b: b.x)
+
+
+def read_header(image, boxes: list[Box], ocr_fn=ocr) -> dict:
+    """詳細画面の上部（キケン度・評価・ポイント・チームのイクラ・ウロコ）"""
+    hazard = find_box(boxes, "キケン", "ケン度", max_y=0.3)
+    hazard_level = parse_hazard_level(hazard.text) if hazard else None
+    if hazard is not None and hazard_level is None:
+        hazard_level = majority([parse_hazard_level(t) for t in read_cell_texts(
+            crop_relative(image, (hazard.x, hazard.y - 0.005, min(1.0, hazard.x + hazard.w + 0.05), hazard.y + hazard.h + 0.005)), ocr_fn)])
+
+    point_label = find_box(boxes, "獲得", "ポイント", "ホイント", max_y=0.35)
+    grade_name = grade_point = job_point = job_score = job_rate = clear_bonus = None
+    team_golden = team_power = None
+    scales = [None, None, None]
+    if point_label is not None:
+        # 評価（左上）とポイント（右上）は「獲得ポイント」と同じ高さ
+        for b in boxes_in(boxes, 0.0, point_label.cy - 0.02, 0.45, point_label.cy + 0.02):
+            name, point = parse_grade(b.text)
+            if name is not None:
+                grade_name, grade_point = name, point
+                break
+        job_point = majority([parse_points(b.text) for b in boxes_in(boxes, 0.7, point_label.cy - 0.02, 1.0, point_label.cy + 0.02)])
+        # 「130 x 3.25 + 50」はラベルの 0.045 下
+        line = boxes_in(boxes, 0.5, point_label.cy + 0.03, 1.0, point_label.cy + 0.06)
+        job_score, job_rate = parse_score_line(" ".join(b.text for b in line))
+        after_plus = [b for b in line if b.x > 0.8 and re.fullmatch(r"\+?\s*\d{1,4}", normalize(b.text))]
+        if after_plus:
+            clear_bonus = int(re.sub(r"\D", "", normalize(after_plus[-1].text)))
+        else:
+            # 「+ 0」は「+」と同じ Box に入ることがある
+            plus = re.search(r"\+\s*(\d{1,4})\s*$", normalize(" ".join(b.text for b in line)))
+            clear_bonus = int(plus.group(1)) if plus else None
+        # チームの金イクラ・赤イクラは左側、ラベルの 0.045 下
+        eggs = [parse_count(b.text) for b in boxes_in(boxes, 0.0, point_label.cy + 0.03, 0.45, point_label.cy + 0.06)]
+        eggs = [e for e in eggs if e is not None]
+        if len(eggs) == 2:
+            team_golden, team_power = eggs
+        # ウロコ（銅・銀・金）はその下に 3 つ並ぶ。取れなかった「-」は None のまま
+        top = point_label.cy + 0.055
+        for i, (left, right) in enumerate(((0.04, 0.17), (0.16, 0.28), (0.26, 0.4))):
+            scales[i] = vote_count(crop_relative(image, (left, top, right, top + 0.022)), ocr_fn)
+    return {
+        "hazardLevel": hazard_level,
+        "gradeName": grade_name,
+        "gradePoint": grade_point,
+        "jobPoint": job_point,
+        "jobScore": job_score,
+        "jobRate": job_rate,
+        "clearBonus": clear_bonus,
+        "teamGoldenEggs": team_golden,
+        "teamPowerEggs": team_power,
+        "scaleBronze": scales[0],
+        "scaleSilver": scales[1],
+        "scaleGold": scales[2],
+    }
+
+
+WAVE_HEADER_PATTERN = re.compile(r"^(EX-?WAVE|WAVE(\d))$")
+EX_WAVE = 4
+# WAVE が 1 つだけ（WAVE 1 で失敗）のときの列の幅
+DEFAULT_WAVE_COLUMN_WIDTH = 0.24
+# 列の中の各段の位置（WAVE の見出しの中心からの、画像の高さに対する比）
+WAVE_QUOTA_ROW = (0.012, 0.045)
+WAVE_WATER_ROW = (0.045, 0.072)
+WAVE_EVENT_ROW = (0.068, 0.095)
+WAVE_GOLDEN_ROW = (0.092, 0.117)  # 下に広げると「出現数」の上半分を数字の続きとして読む
+WAVE_SPECIALS_ROW = (0.135, 0.19)
+WAVE_RESULT_ROW = (-0.03, -0.006)  # 見出しの右上の GJ! / NG
+# スペシャルのアイコンとみなす、外接矩形を埋める割合（角丸の四角）
+MIN_SPECIAL_ICON_FILL = 0.85
+
+
+def wave_headers(boxes: list[Box]) -> list[tuple[int, Box]]:
+    """WAVE の見出し（WAVE 1〜3、EX-WAVE は 4）。左から"""
+    headers = []
+    for b in boxes:
+        match = WAVE_HEADER_PATTERN.match(normalize(b.text).upper().replace("ー", "-"))
+        if match and 0.3 < b.cy < 0.55:
+            wave = EX_WAVE if match.group(2) is None else int(match.group(2))
+            if 1 <= wave <= EX_WAVE:
+                headers.append((wave, b))
+    return sorted(headers, key=lambda h: h[1].x)
+
+
+def read_wave_result(image, left: float, right: float, header: Box, ocr_fn=ocr) -> bool | None:
+    """見出しの右上の GJ!（True）/ NG（False）"""
+    region = crop_relative(image, ((left + right) / 2, header.cy + WAVE_RESULT_ROW[0], right, header.cy + WAVE_RESULT_ROW[1]))
+    texts = [re.sub(r"[^A-Z]", "", normalize(t).upper()) for t in read_cell_texts(region, ocr_fn)]
+    return majority([True if "GJ" in t else False if "NG" in t else None for t in texts])
+
+
+def count_special_icons(region) -> int:
+    """WAVE の下に並ぶ、使われたスペシャルのアイコン（角丸の四角）の数"""
+    return sum(1 for *_, fill in find_icon_blobs(region) if fill >= MIN_SPECIAL_ICON_FILL)
+
+
+def read_waves(image, boxes: list[Box], ocr_fn=ocr) -> tuple[list[dict], str | None, bool | None]:
+    """WAVE ごとの結果と、オカシラ（EX-WAVE）の名前・撃破したか"""
+    headers = wave_headers(boxes)
+    if not headers:
+        return [], None, None
+    centers = [h.cx for _, h in headers]
+    width = (centers[-1] - centers[0]) / (len(centers) - 1) if len(centers) > 1 else DEFAULT_WAVE_COLUMN_WIDTH
+    waves = []
+    king_name = king_defeated = None
+    for wave, header in headers:
+        left, right = header.cx - width / 2, header.cx + width / 2
+
+        def band(row: tuple[float, float]) -> tuple[float, float, float, float]:
+            return left, header.cy + row[0], right, header.cy + row[1]
+
+        def texts(row: tuple[float, float]) -> list[str]:
+            # 全体の OCR で読めた文字と、切り出して読み直した文字
+            l, t, r, b = band(row)
+            return [" ".join(x.text for x in boxes_in(boxes, l, t, r, b)), *read_cell_texts(crop_relative(image, (l + 0.01, t, r - 0.01, b)), ocr_fn)]
+
+        quota = majority([parse_quota(t) for t in texts(WAVE_QUOTA_ROW)])
+        water = majority([closest(t, WATER_LEVELS) for t in texts(WAVE_WATER_ROW)])
+        event_texts = [normalize(t).translate(SIMPLIFIED_KANJI) for t in texts(WAVE_EVENT_ROW)]
+        # イベントが無い WAVE は「-」で、OCR では何も読めないことが多い。日本語が読めたときだけイベントとする
+        event = majority([t for t in event_texts if JAPANESE_PATTERN.search(t)]) or ""
+        golden = majority([parse_count(t) for t in texts(WAVE_GOLDEN_ROW)])
+        specials_region = crop_relative(image, band(WAVE_SPECIALS_ROW))
+        specials_region.info["full_width"] = image.width
+        detail = {
+            "wave": wave,
+            "delivered": quota[0] if quota and wave != EX_WAVE else None,
+            "quota": quota[1] if quota and wave != EX_WAVE else None,
+            "waterLevel": water,
+            "event": event,
+            "goldenAppearances": golden,
+            "specialsUsed": count_special_icons(specials_region),
+        }
+        if wave == EX_WAVE:
+            # EX-WAVE は納品数の段にオカシラの名前が出る
+            king_name = majority([closest(t, KNOWN_KINGS) for t in texts(WAVE_QUOTA_ROW)])
+            king_defeated = read_wave_result(image, left, right, header, ocr_fn)
+        waves.append(detail)
+    return waves, king_name, king_defeated
+
+
+@dataclass(frozen=True)
+class PlayerRowCells(SelfRowCells):
+    """プレイヤーの行の数値の位置（SelfRowCells と同じく「オオモノシャケ」の Box が基準）"""
+
+    # 右端を広げると、隣の被救助数のアイコンを数字として読む（x492 6）
+    power_eggs: tuple[float, float, float, float] = (0.705, -0.01, 0.83, 0.032)
+    rescues: tuple[float, float, float, float] = (0.88, -0.06, 0.95, -0.018)
+    boss_kills: tuple[float, float, float, float] = (0.05, 0, 0.3, 0.035)
+    # 名前は「オオモノシャケ」の上の帯
+    name: tuple[float, float, float, float] = (0.04, -0.06, 0.48, -0.005)
+
+
+def find_player_rows(boxes: list[Box]) -> list[Box]:
+    """プレイヤーの行の「オオモノシャケ x24」（上から。いちばん上が自分）"""
+    rows = sorted((b for b in boxes if b.cy >= 0.4 and "オオモノ" in normalize(b.text)), key=lambda b: b.y)
+    return rows[:4]
+
+
+def read_player(image, row: Box, position: int, refs: dict, special_refs: dict, cells: PlayerRowCells = PlayerRowCells(), ocr_fn=ocr) -> dict:
+    ratio = image.width / image.height
+
+    def cell(box: tuple[float, float, float, float]):
+        left, top, right, bottom = box
+        return crop_relative(image, (left, row.y + top * ratio, right, row.y + bottom * ratio))
+
+    golden_texts = read_cell_texts(cell(cells.golden_eggs), ocr_fn)
+    golden = majority([parse_count(t) for t in golden_texts])
+    # アシストが 0 のときは <0> が表示されない
+    assist = majority([parse_assist(t) for t in golden_texts])
+    if assist is None and golden is not None:
+        assist = 0
+    boss_kills = parse_count(row.text)
+    if boss_kills is None:
+        boss_kills = vote_count(cell(cells.boss_kills), ocr_fn)
+    name_boxes = ocr_fn(cell(cells.name), CELL_OCR_SCALE)
+    name = normalize(" ".join(b.text for b in name_boxes)) or None
+
+    left, top, right, bottom = cells.icons
+    region = crop_relative(image, (left, row.y + top * ratio, right, row.y + bottom * ratio))
+    region.info["full_width"] = image.width
+    blobs = find_icon_blobs(region)
+    weapons = [key for x, y, w, h, fill in blobs if fill < MAX_WEAPON_ICON_FILL and (key := match_weapon(region.crop((x, y, x + w, y + h)), refs))]
+    specials = [match_special(region.crop((x, y, x + w, y + h)), special_refs) for x, y, w, h, fill in blobs if fill >= MAX_WEAPON_ICON_FILL]
+    return {
+        "position": position,
+        "name": name,
+        "bossKills": boss_kills,
+        "goldenEggs": golden,
+        "goldenAssists": assist,
+        "powerEggs": vote_count(cell(cells.power_eggs), ocr_fn),
+        "rescues": vote_count(cell(cells.rescues), ocr_fn),
+        "rescued": vote_count(cell(cells.deaths), ocr_fn),
+        "weapons": weapons,
+        "special": specials[0] if specials else None,
+    }
+
+
+def read_details(image, boxes: list[Box], refs: dict, special_refs: dict, ocr_fn=ocr) -> dict:
+    """詳細画面の上部・WAVE・プレイヤーの詳細（オオモノごとの数は別の画面なので read_bosses で読む）"""
+    waves, king_name, king_defeated = read_waves(image, boxes, ocr_fn)
+    players = [read_player(image, row, i, refs, special_refs, ocr_fn=ocr_fn) for i, row in enumerate(find_player_rows(boxes))]
+    return {**read_header(image, boxes, ocr_fn), "kingName": king_name, "kingDefeated": king_defeated, "waves": waves, "players": players}
+
+
+def describe_details(details: dict) -> str:
+    """ログ用の詳細の要約。**味方の名前は出さない**（数だけ）"""
+    waves = " ".join(f"W{w['wave']}:{w['delivered']}/{w['quota']}" for w in details["waves"])
+    return f"キケン度 {details['hazardLevel']}% {waves} プレイヤー {len(details['players'])} 人"
+
+
+def read_result(image, refs: dict, special_refs: dict, log=print) -> tuple[dict, str, dict | None]:
+    """詳細画面から、記録するバイト・日時・詳細を読む。詳細は読めなくても記録を止めない（None にして警告する）"""
+    boxes = ocr(image, FULL_OCR_SCALE)
+    job, played_at = read_job(image, refs, boxes=boxes)
+    try:
+        details = read_details(image, boxes, refs, special_refs)
+        log(f"詳細: {describe_details(details)}")
+    except Exception as error:  # 詳細は「おまけ」なので、想定外の画面でも金イクラなどの記録は続ける
+        log(f"警告: 詳細を読み取れませんでした: {error}")
+        details = None
+    return job, played_at, details
+
+
+# ---- オオモノシャケの欄（詳細画面を下にスクロールした先） ----
+
+# 「バクダン   4(3) / 出現数x4」（チームの討伐数・カッコ内が自分の討伐数（0 なら出ない）・出現数）。
+# 出たオオモノだけが SALMON_BOSSES の順に並ぶ。オカシラが出たバイトでは一覧が 1 画面に収まらないので、
+# 少しずつスクロールして撮り、オオモノの名前で突き合わせる
+BOSS_NAME_X = (0.15, 0.3)  # オオモノの名前の左端（見出し・オカシラの名前は中央寄せなので外れる）
+BOSS_VISIBLE_Y = (0.16, 0.84)  # 上のタイトル・下のボタンに隠れていない範囲（名前の中心）
+BOSS_NAME_MAX_WIDTH = 0.2  # 下の「※カッコ内の数字は…」を名前として読み直さない
+BOSS_NAME_HALF_HEIGHT = 0.018
+BOSS_ROW_HALF_HEIGHT = 0.016
+BOSS_KILLS_REGION = (0.6, 0.8)  # 「4(3) /」（スラッシュまで含める）
+BOSS_APPEARANCES_REGION = (0.79, 0.95)  # 「出現数x4」
+BOSS_LIST_END = "カッコ内"  # 一覧の下の「※カッコ内の数字は自分で倒した数です」
+BOSS_SCROLL_PIXELS = -400  # 1 画面に見えるオオモノの行（0.16〜0.84）より短くして、取りこぼさない
+BOSS_SCROLL_SETTLE_SECONDS = 0.5
+# 読み終えたら先頭に戻す（最新のバイトで「最新のバイトへ」を押してもスクロールの位置は戻らない）
+SCROLL_TO_TOP_PIXELS = 3000
+MAX_BOSS_SCROLLS = 5
+BOSS_NAME_MATCH_CUTOFF = 0.5
+# 文字（白・黄）と背景（暗い赤・灰）を分ける明るさ
+BOSS_TEXT_THRESHOLD = 150
+# 文字の高さ（出現数の数字に対する比）。これより低いものは「出現数x」の文字
+BOSS_SMALL_GLYPH_RATIO = 0.85
+GLYPH_COMPARE_SIZE = (16, 10)  # (高さ, 幅)
+# 数字・カッコの形との違い（0〜1。1 文字あたりの平均）。これより違うものは読めないとみなす
+MAX_GLYPH_DISTANCE = 0.2
+
+
+@cache
+def load_boss_names() -> dict[str, str]:
+    """lib/salmonBosses.ts のオオモノの画面の名前 → key（Node 24 の型除去で読む）"""
+    script = (
+        "const m = await import(process.argv[1]);"
+        "console.log(JSON.stringify(Object.fromEntries(m.SALMON_BOSSES.map((b) => [b.name, b.key]))));"
+    )
+    result = subprocess.run(
+        ["node", "--no-warnings", "--input-type=module", "-e", script, str(REPO_ROOT / "lib" / "salmonBosses.ts")],
+        capture_output=True, text=True, check=True,
+    )
+    return json.loads(result.stdout)
+
+
+def glyph_groups(cell) -> list:
+    """セルの文字を、左から 1 文字ずつ（縦に文字の無い列で区切った、上下を詰めた 2 値の配列）"""
+    import numpy as np
+
+    ink = np.asarray(cell.convert("L")) > BOSS_TEXT_THRESHOLD
+    columns = list(ink.any(axis=0)) + [False]
+    glyphs, start = [], None
+    for x, has_ink in enumerate(columns):
+        if has_ink and start is None:
+            start = x
+        elif not has_ink and start is not None:
+            rows = np.flatnonzero(ink[:, start:x].any(axis=1))
+            glyphs.append(ink[rows[0]:rows[-1] + 1, start:x])
+            start = None
+    return glyphs
+
+
+def is_slash(glyph) -> bool:
+    """「/」か（上の端が右・下の端が左にある細い斜め線。7 は上の横棒が太いので外れる）"""
+    import numpy as np
+
+    height, width = glyph.shape
+    top, bottom = np.flatnonzero(glyph[0]), np.flatnonzero(glyph[-1])
+    if width < 4 or len(top) == 0 or len(bottom) == 0:
+        return False
+    return len(top) <= width / 2 and top.mean() - bottom.mean() >= width * 0.4
+
+
+def _glyph_vector(glyph) -> "np.ndarray":
+    """縦横比を保って高さをそろえ、幅は中央に置く（細い 1 を太らせない）"""
+    import numpy as np
+    from PIL import Image
+
+    height, width = GLYPH_COMPARE_SIZE
+    scaled = max(1, min(width, round(glyph.shape[1] * height / glyph.shape[0])))
+    image = Image.fromarray(glyph.astype("uint8") * 255).resize((scaled, height), Image.BILINEAR)
+    vector = np.zeros((height, width))
+    left = (width - scaled) // 2
+    vector[:, left:left + scaled] = np.asarray(image) / 255.0
+    return vector
+
+
+def _parse_glyph(text: str) -> "np.ndarray":
+    import numpy as np
+
+    return np.array([[c == "#" for c in row] for row in text.split("/")])
+
+
+_GLYPH_TEMPLATES: list[tuple[str, "np.ndarray"]] = []
+
+
+def glyph_templates() -> list[tuple[str, "np.ndarray"]]:
+    """数字・カッコの形（digit_glyphs.py）"""
+    if not _GLYPH_TEMPLATES:
+        from digit_glyphs import GLYPHS
+
+        _GLYPH_TEMPLATES.extend((char, _glyph_vector(_parse_glyph(text))) for char, texts in GLYPHS.items() for text in texts)
+    return _GLYPH_TEMPLATES
+
+
+def glyph_distances(glyph) -> dict[str, float]:
+    """数字・カッコそれぞれの形との違い（0〜1。1 画素ずらしたものも比べて、いちばん近いもの）"""
+    import numpy as np
+
+    vector = _glyph_vector(glyph)
+    shifted = [np.roll(np.roll(vector, dy, axis=0), dx, axis=1) for dy in (-1, 0, 1) for dx in (-1, 0, 1)]
+    distances: dict[str, float] = {}
+    for char, template in glyph_templates():
+        distance = min(float(np.abs(s - template).mean()) for s in shifted)
+        distances[char] = min(distances.get(char, 1.0), distance)
+    return distances
+
+
+DIGITS = "0123456789"
+
+
+def read_digits(distances: list[dict[str, float]]) -> tuple[str, float]:
+    """それぞれいちばん近い数字と、違いの合計"""
+    best = [min(DIGITS, key=d.get) for d in distances]
+    return "".join(best), sum(d[c] for d, c in zip(distances, best))
+
+
+def read_kills(glyphs: list) -> tuple[int, int] | None:
+    """「4(3)」「11」から (チームの討伐数, 自分の討伐数)。カッコの位置はすべての並び方を試し、形がいちばん合うものにする
+    （1 文字ずつ決めると、細い「)」を「1」と読むことがある）"""
+    distances = [glyph_distances(glyph) for glyph in glyphs]
+    candidates = []
+    if distances:
+        candidates.append((read_digits(distances), None))
+    # 数字 n 文字・「(」・数字 1 文字以上・「)」
+    for n in range(1, len(distances) - 2):
+        team, team_distance = read_digits(distances[:n])
+        own, own_distance = read_digits(distances[n + 1:-1])
+        paren_distance = distances[n]["("] + distances[-1][")"]
+        candidates.append(((team, team_distance + own_distance + paren_distance), own))
+    if not candidates:
+        return None
+    (team, distance), own = min(candidates, key=lambda c: c[0][1])
+    if distance / len(glyphs) > MAX_GLYPH_DISTANCE:
+        return None
+    return int(team), int(own or 0)
+
+
+def read_number(glyphs: list) -> int | None:
+    if not glyphs:
+        return None
+    digits, distance = read_digits([glyph_distances(glyph) for glyph in glyphs])
+    return int(digits) if distance / len(glyphs) <= MAX_GLYPH_DISTANCE else None
+
+
+def parse_boss_counts(kills_cell, appearances_cell) -> tuple[int, int, int] | None:
+    """「4(3) /」「出現数x4」から (出現数, チームの討伐数, 自分の討伐数)。読めなければ None"""
+    glyphs = glyph_groups(kills_cell)
+    slash = next((i for i, glyph in enumerate(glyphs) if is_slash(glyph)), None)
+    if not slash:
+        return None
+    kills = read_kills(glyphs[:slash])
+
+    # 「出現数x」の後ろの、大きい数字（「出現数x」の文字は数字より低い）
+    appearance_glyphs = glyph_groups(appearances_cell)
+    if kills is None or not appearance_glyphs:
+        return None
+    tallest = max(glyph.shape[0] for glyph in appearance_glyphs)
+    digits = []
+    for glyph in reversed(appearance_glyphs):
+        if glyph.shape[0] <= tallest * BOSS_SMALL_GLYPH_RATIO:
+            break
+        digits.insert(0, glyph)
+    appearances = read_number(digits)
+    team, own = kills
+    if appearances is None or not own <= team <= appearances:
+        return None
+    return appearances, team, own
+
+
+def read_boss_rows(image, boxes: list[Box], names: dict[str, str], ocr_fn=ocr) -> dict[str, tuple[int, int, int]]:
+    """画面に見えているオオモノの行。key → (出現数, チームの討伐数, 自分の討伐数)。読めない行は含めない"""
+    rows = {}
+    for box in boxes:
+        if not (
+            BOSS_NAME_X[0] <= box.x <= BOSS_NAME_X[1] and box.w <= BOSS_NAME_MAX_WIDTH and BOSS_VISIBLE_Y[0] <= box.cy <= BOSS_VISIBLE_Y[1]
+        ):
+            continue
+        top, bottom = box.cy - BOSS_ROW_HALF_HEIGHT, box.cy + BOSS_ROW_HALF_HEIGHT
+        name = closest(normalize(box.text), tuple(names), BOSS_NAME_MATCH_CUTOFF)
+        if name is None:
+            # 「ヘビ」は短く、全体の OCR では「4E」などと読むので、名前だけ切り出して読み直す
+            cell = crop_relative(image, (BOSS_NAME_X[0], box.cy - BOSS_NAME_HALF_HEIGHT, BOSS_KILLS_REGION[0], box.cy + BOSS_NAME_HALF_HEIGHT))
+            name = majority([closest(normalize(text), tuple(names), BOSS_NAME_MATCH_CUTOFF) for text in read_cell_texts(cell, ocr_fn)])
+        if name is None:
+            continue
+        counts = parse_boss_counts(
+            crop_relative(image, (BOSS_KILLS_REGION[0], top, BOSS_KILLS_REGION[1], bottom)),
+            crop_relative(image, (BOSS_APPEARANCES_REGION[0], top, BOSS_APPEARANCES_REGION[1], bottom)),
+        )
+        if counts is not None:
+            rows[names[name]] = counts
+    return rows
+
+
+def is_boss_list_end(boxes: list[Box]) -> bool:
+    return any(BOSS_LIST_END in normalize(b.text) for b in boxes)
+
+
+def merge_boss_rows(readings: list[dict[str, tuple[int, int, int]]], self_kills: int) -> list[dict] | None:
+    """スクロールごとに読んだ行をまとめる（同じオオモノを何度か読んだら多数決）。
+    自分の討伐数の合計が「オオモノシャケ xN」と合わなければ、読み間違い・取りこぼしとみなして None"""
+    keys = list(dict.fromkeys(key for reading in readings for key in reading))
+    bosses = []
+    for key in keys:
+        appearances, team, own = majority([reading[key] for reading in readings if key in reading])
+        bosses.append({"boss": key, "appearances": appearances, "teamKills": team, "selfKills": own})
+    if sum(b["selfKills"] for b in bosses) != self_kills:
+        return None
+    return bosses
+
+
+def read_bosses(window: Window, capture_screen, self_kills: int, log=print) -> list[dict]:
+    """詳細画面を少しずつ下にスクロールしてオオモノの欄を読み、先頭に戻す。
+    読めなければ空（記録は止めない）。capture_screen(label) は撮影して画像を返す"""
+    names = load_boss_names()
+    readings = []
+    try:
+        for _ in range(MAX_BOSS_SCROLLS):
+            scroll(window, BOSS_SCROLL_PIXELS)
+            time.sleep(BOSS_SCROLL_SETTLE_SECONDS)
+            image = capture_screen("bosses")
+            boxes = ocr(image, FULL_OCR_SCALE)
+            readings.append(read_boss_rows(image, boxes, names))
+            if is_boss_list_end(boxes):
+                break
+        else:
+            log("警告: オオモノの欄の終わりが見つからないので、オオモノごとの数は記録しません")
+            return []
+    finally:
+        scroll(window, SCROLL_TO_TOP_PIXELS)
+    bosses = merge_boss_rows(readings, self_kills)
+    if bosses is None:
+        log(f"警告: オオモノの欄の自分の討伐数の合計が x{self_kills} と合わないので、オオモノごとの数は記録しません")
+        return []
+    log(f"オオモノ: {len(bosses)} 種・自分の討伐 {self_kills}")
+    return bosses
 
 
 def wait_for_screen(window: Window, *keywords: str, timeout: float = SCREEN_TIMEOUT_SECONDS) -> tuple[object, list[Box]]:
@@ -829,7 +1448,7 @@ def capture_name(now: datetime, label: str) -> str:
     return f"{now.strftime('%Y%m%d-%H%M%S')}-{label}.png"
 
 
-def process_request(request_id: int, api: Api, refs: dict, capture_dir: Path, log=print) -> None:
+def process_request(request_id: int, api: Api, refs: dict, capture_dir: Path, log=print, special_refs: dict | None = None) -> None:
     if api.update({"id": request_id, "status": "processing"}) != 200:
         log(f"依頼 {request_id} はもう処理できません（期限切れなど）")
         return
@@ -844,14 +1463,26 @@ def process_request(request_id: int, api: Api, refs: dict, capture_dir: Path, lo
             recorded, session_started_at = api.recorded()
             open_latest_job(window)
 
-            def read_current(label: str) -> tuple[dict, str]:
+            def capture_screen(label: str):
                 nonlocal captures
                 name = capture_name(datetime.now(), label)
                 image = capture(window, capture_dir / name)
-                captures = [*captures, name][-10:]
-                return read_job(image, refs)
+                captures = [*captures, name][-MAX_CAPTURES:]
+                return image
 
-            job, played_at = read_current("detail")
+            def read_current(label: str) -> tuple[dict, str, dict | None]:
+                return read_result(capture_screen(label), refs, special_refs or {}, log)
+
+            def add_bosses(job: dict, details: dict | None) -> None:
+                """詳細が読めたバイトだけ、オオモノの欄も読む（詳細と同じく「おまけ」なので、失敗しても記録は続ける）"""
+                if details is None:
+                    return
+                try:
+                    details["bosses"] = read_bosses(window, capture_screen, job["bossKills"], log)
+                except Exception as error:
+                    log(f"警告: オオモノの欄を読み取れませんでした: {error}")
+
+            job, played_at, details = read_current("detail")
             log(f"読み取り: {played_at} {job}")
             if played_at in recorded:
                 if time.monotonic() + RETRY_INTERVAL_SECONDS > deadline:
@@ -860,11 +1491,12 @@ def process_request(request_id: int, api: Api, refs: dict, capture_dir: Path, lo
                 time.sleep(RETRY_INTERVAL_SECONDS)
                 continue
 
-            jobs = [{"job": job, "playedAt": played_at}]
+            add_bosses(job, details)
+            jobs = [{"job": job, "playedAt": played_at, "details": details}]
             # 取りこぼしを遡る。読めないバイトがあればそこでやめ、読めた分だけ記録する
             while len(jobs) < MAX_BACKFILL_JOBS and open_previous_job(window, played_at):
                 try:
-                    previous_job, previous_played_at = read_current("detail")
+                    previous_job, previous_played_at, previous_details = read_current("detail")
                 except ImportError_ as error:
                     log(f"警告: 前のバイトを読み取れなかったので、遡るのをやめます: {error}")
                     break
@@ -873,7 +1505,8 @@ def process_request(request_id: int, api: Api, refs: dict, capture_dir: Path, lo
                 ):
                     break
                 log(f"取りこぼし: {previous_played_at} {previous_job}")
-                jobs.append({"job": previous_job, "playedAt": previous_played_at})
+                add_bosses(previous_job, previous_details)
+                jobs.append({"job": previous_job, "playedAt": previous_played_at, "details": previous_details})
                 played_at = previous_played_at
 
             status = api.update({"id": request_id, "status": "succeeded", "jobs": jobs[::-1], "captures": captures})
@@ -897,7 +1530,7 @@ def process_request(request_id: int, api: Api, refs: dict, capture_dir: Path, lo
         try:
             name = capture_name(datetime.now(), "error")
             capture(window, capture_dir / name)
-            captures = [*captures, name][-10:]
+            captures = [*captures, name][-MAX_CAPTURES:]
         except Exception:
             pass
     api.update({"id": request_id, "status": "failed", "error": reason, "captures": captures})
@@ -909,7 +1542,8 @@ def run(api_base: str, capture_dir: Path, refs_dir: Path) -> None:
     if not has_accessibility_permission():
         print(f"[salmon-result] 警告: {ACCESSIBILITY_ERROR}", file=sys.stderr, flush=True)
     refs = ensure_weapon_refs(refs_dir)
-    print(f"[salmon-result] ブキの参照画像: {len(refs)} 種。{api.import_url} の依頼を待っています", flush=True)
+    special_refs = ensure_special_refs(refs_dir)
+    print(f"[salmon-result] 参照画像: ブキ {len(refs)} 種・スペシャル {len(special_refs)} 種。{api.import_url} の依頼を待っています", flush=True)
     attempted: set[int] = set()
     warned = False
     while True:
@@ -918,7 +1552,9 @@ def run(api_base: str, capture_dir: Path, refs_dir: Path) -> None:
                 if request["id"] in attempted:
                     continue
                 attempted.add(request["id"])  # 結果を送れなくても、同じ依頼を何度も操作しない
-                process_request(request["id"], api, refs, capture_dir, log=lambda m: print(f"[salmon-result] {m}", flush=True))
+                process_request(
+                    request["id"], api, refs, capture_dir, log=lambda m: print(f"[salmon-result] {m}", flush=True), special_refs=special_refs,
+                )
             warned = False
         except Exception as error:
             # Next.js が止まっている間、1 秒ごとに同じ警告を出し続けない
@@ -932,9 +1568,24 @@ def read_file(path: Path, refs_dir: Path) -> None:
     """保存したキャプチャを読み取って結果を表示する（読み取り位置の調整用）"""
     from PIL import Image
 
+    if path.stem.endswith("-bosses") or path.stem.startswith("bosses-"):
+        # オオモノの欄のキャプチャは、見えている行だけを表示する（合計の突き合わせは取り込みのときにする）
+        with Image.open(path) as image:
+            image = image.convert("RGB")
+            boxes = ocr(image, FULL_OCR_SCALE)
+            rows = read_boss_rows(image, boxes, load_boss_names())
+        bosses = [{"boss": key, "appearances": a, "teamKills": t, "selfKills": o} for key, (a, t, o) in rows.items()]
+        print(json.dumps({"bosses": bosses, "endOfList": is_boss_list_end(boxes)}, ensure_ascii=False, indent=2))
+        return
     with Image.open(path) as image:
-        job, played_at = read_job(image.convert("RGB"), ensure_weapon_refs(refs_dir))
-    print(json.dumps({"playedAt": played_at, **job}, ensure_ascii=False, indent=2))
+        job, played_at, details = read_result(
+            image.convert("RGB"), ensure_weapon_refs(refs_dir), ensure_special_refs(refs_dir), log=lambda m: print(m, file=sys.stderr),
+        )
+    if details:
+        # 配信中のターミナルに映っても困らないよう、味方の名前は文字数だけにする
+        for player in details["players"]:
+            player["name"] = None if player["name"] is None else f"（{len(player['name'])} 文字）"
+    print(json.dumps({"playedAt": played_at, **job, "details": details}, ensure_ascii=False, indent=2))
 
 
 def main() -> None:

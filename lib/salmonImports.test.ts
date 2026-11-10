@@ -23,7 +23,7 @@ import {
 const job = (goldenEggs = 85) => ({ goldenEggs, bossKills: 12, deaths: 2, cleared: true, waveReached: 3, stage: 'シェケナダム', weapons: [] });
 const succeeded = (...playedAts: string[]): SalmonImportResult => ({
   status: 'succeeded',
-  jobs: playedAts.map((playedAt, i) => ({ job: job(80 + i), playedAt })),
+  jobs: playedAts.map((playedAt, i) => ({ job: job(80 + i), playedAt, details: null })),
   captures: ['20261110-210600-detail.png'],
 });
 
@@ -135,5 +135,27 @@ describe('parseImportResult', () => {
     expect(parseImportResult({ id: 1, status: 'succeeded', jobs: [valid], captures: ['../overlay.db'] })).toMatch(/captures/);
     expect(parseImportResult({ id: 1, status: 'succeeded', jobs: [valid], captures: ['x.jpg'] })).toMatch(/captures/);
     expect(parseImportResult({ id: 1, status: 'failed', error: ' ' })).toMatch(/error/);
+    expect(parseImportResult({ id: 1, status: 'succeeded', jobs: [{ ...valid, details: { hazardLevel: -1 } }] })).toMatch(/hazardLevel/);
+  });
+
+  it('accepts jobs with details', () => {
+    const parsed = parseImportResult({
+      id: 1, status: 'succeeded',
+      jobs: [{ job: job(), playedAt: '2026/11/10 21:05', details: { hazardLevel: 333, bosses: [{ boss: 'hebi', appearances: 5, teamKills: 5, selfKills: 2 }] } }],
+    });
+    expect(parsed).toMatchObject({ result: { jobs: [{ details: { hazardLevel: 333, bosses: [{ boss: 'hebi', selfKills: 2 }] } }] } });
+  });
+});
+
+describe('importing details', () => {
+  it('records the details with the job and ranks the bosses', () => {
+    const id = startImport();
+    const details = parseImportResult({
+      id, status: 'succeeded',
+      jobs: [{ job: job(), playedAt: '2026/11/10 21:05', details: { bosses: [{ boss: 'tower', appearances: 6, teamKills: 6, selfKills: 3 }] } }],
+    });
+    if (typeof details === 'string') throw new Error(details);
+    updateImport(id, details.result, 2000);
+    expect(getSummary().bossRanking.lastJob).toEqual([{ boss: 'tower', appearances: 6, teamKills: 6, selfKills: 3 }]);
   });
 });

@@ -1,5 +1,5 @@
 import {getDb} from './db';
-import {addJob, getCurrentSession, parseJob} from './salmon';
+import {addJob, getCurrentSession, parseJob, parseJobDetails} from './salmon';
 import {
     CAPTURE_FILE_PATTERN,
     MAX_CAPTURES,
@@ -15,7 +15,7 @@ import {
     SalmonImportStatus,
     SalmonRecordedJobs,
 } from './salmonImportTypes';
-import {NewSalmonJob} from './salmonTypes';
+import {NewSalmonJob, SalmonJobDetails} from './salmonTypes';
 
 interface ImportRow {
     id: number;
@@ -90,10 +90,11 @@ export function listImports(limit = 20, now = Date.now()): SalmonImportRequest[]
     return (getDb().prepare('SELECT * FROM salmon_imports ORDER BY id DESC LIMIT ?').all(limit) as unknown as ImportRow[]).map(toImport);
 }
 
-/** イカリング3から読み取ったバイトと、その日時 */
+/** イカリング3から読み取ったバイトと、その日時・詳細（詳細を読まなかったときは null） */
 export interface ImportedJob {
     job: NewSalmonJob;
     playedAt: string;
+    details: SalmonJobDetails | null;
 }
 
 export type SalmonImportResult =
@@ -138,7 +139,7 @@ export function updateImport(id: number, result: SalmonImportResult, now = Date.
     if (newJobs.length === 0) return 'duplicate';
     db.exec('BEGIN');
     try {
-        const recorded = newJobs.map(({job, playedAt}) => addJob(job, now, playedAt));
+        const recorded = newJobs.map(({job, playedAt, details}) => addJob(job, now, playedAt, details));
         const latest = newJobs[newJobs.length - 1];
         db.prepare(`
             UPDATE salmon_imports SET status = 'succeeded', completed_at = ?, job_id = ?, played_at = ?, recorded_count = ?, captures = ?, error = NULL
@@ -157,13 +158,16 @@ const parseCaptures = (value: unknown): string[] | null =>
         : null;
 
 const parseImportedJob = (value: unknown): ImportedJob | string => {
-    const {job, playedAt} = (value ?? {}) as Record<string, unknown>;
+    const {job, playedAt, details = null} = (value ?? {}) as Record<string, unknown>;
     const parsedJob = parseJob(job);
     if (typeof parsedJob === 'string') return parsedJob;
     if (typeof playedAt !== 'string' || playedAt.trim() === '' || playedAt.length > MAX_PLAYED_AT_LENGTH) {
         return `playedAt must be a non-empty string up to ${MAX_PLAYED_AT_LENGTH} characters.`;
     }
-    return {job: parsedJob, playedAt: playedAt.trim()};
+    // details は後から追加した項目なので省略可（以前のスクリプトから送られても記録できるように）
+    const parsedDetails = details === null ? null : parseJobDetails(details);
+    if (typeof parsedDetails === 'string') return parsedDetails;
+    return {job: parsedJob, playedAt: playedAt.trim(), details: parsedDetails};
 };
 
 /** PATCH /api/salmon/import の本文を検証する。不正ならエラーメッセージ */
