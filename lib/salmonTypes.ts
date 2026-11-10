@@ -117,3 +117,55 @@ export interface SalmonJobDetails {
     players: SalmonPlayerDetail[];
     bosses: BossCount[];
 }
+
+// ---- 配信の最後に出す振り返り（/api/salmon/review）。味方の名前は含めない ----
+
+/** 振り返りのグラフに出すバイト 1 件（古い順に並べる） */
+export interface SalmonReviewJob {
+    id: number;
+    goldenEggs: number;
+    bossKills: number;
+    deaths: number;
+    cleared: boolean;
+    waveReached: number;
+    stage: string;
+    hazardLevel: number | null; // 取り込んだバイトだけ
+}
+
+export interface SalmonGrade {
+    name: string;
+    point: number;
+}
+
+/** チームの金イクラ納品数のハイスコア 1 件 */
+export interface SalmonTeamHighScore {
+    jobId: number;
+    jobNumber: number; // セッションの何バイト目か（1 から）
+    teamGoldenEggs: number;
+    hazardLevel: number | null;
+    cleared: boolean;
+}
+
+export interface SalmonSessionReview {
+    session: SalmonSession | null;
+    totals: SalmonTotals;
+    jobs: SalmonReviewJob[]; // 古い順
+    detailedJobs: number; // 詳細を取り込んだバイトの数（下の詳細の集計はこのバイトだけ）
+    powerEggs: number; // 自分の赤イクラ
+    rescues: number; // 自分が助けた数
+    goldenAssists: number;
+    jobPoints: number; // 獲得ポイントの合計
+    maxHazardLevel: number | null;
+    scales: {bronze: number; silver: number; gold: number};
+    firstGrade: SalmonGrade | null; // セッションの最初と最後の評価
+    lastGrade: SalmonGrade | null;
+    waveFailures: number[]; // WAVE 1〜3 で失敗した数（[W1, W2, W3]）
+    kings: {appeared: number; defeated: number}; // オカシラ（EX-WAVE）
+    bosses: BossCount[]; // 出現したオオモノすべて（自分の討伐数の多い順）
+    bestJobId: number | null; // 金イクラがいちばん多いバイト
+    teamHighScores: SalmonTeamHighScore[]; // チームの金イクラ納品数の多い順（取り込んだバイトだけ。REVIEW_HIGH_SCORE_LIMIT 件まで）
+    weapons: {key: string; count: number}[]; // 支給された回数の多い順
+    newWeapons: string[]; // このセッション中にブキ埋めカードで埋まったブキ（埋まった順）。今のカードの分だけ（新しいカードを始めると、それより前の分は出ない）
+    challenges: {done: number; total: number} | null; // 本日のお題（今のセッションのときだけ）
+    clips: number; // このセッション中に作ったクリップ
+}
