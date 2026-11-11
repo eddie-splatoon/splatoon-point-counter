@@ -20,7 +20,7 @@ const INK_COLORS = ['#FF6F00', '#B05CFF', '#00C2FF', '#FF3EA5'];
 export type TelopLayout = 'landscape' | 'portrait';
 
 // 置き方。landscape は 1920x1080 の上部、portrait は縦型配信（1080x1920）の下から 1/4 くらい（上部のサイドパネルと重ならないように）。
-// portrait は横幅が狭いので、文字を少し大きくして 2 行まで折り返す
+// portrait は横幅が狭いので文字を少し大きくし、長い文は横幅に合わせて折り返す（テロップは 30 文字までなので 2 行ほどに収まる）
 const LAYOUT_STYLES: Record<TelopLayout, {containerClass: string; fontSize: number; maxWidth: string}> = {
     landscape: {containerClass: 'justify-start pt-16', fontSize: 56, maxWidth: '90%'},
     portrait: {containerClass: 'justify-end pb-[440px]', fontSize: 64, maxWidth: '90%'},
