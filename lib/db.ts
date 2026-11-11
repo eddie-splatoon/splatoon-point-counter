@@ -124,10 +124,18 @@ function migrate(db: DatabaseSync): void {
     if (!jobColumns.includes('weapons')) db.exec("ALTER TABLE salmon_jobs ADD COLUMN weapons TEXT NOT NULL DEFAULT '[]'");
     if (!jobColumns.includes('played_at')) db.exec('ALTER TABLE salmon_jobs ADD COLUMN played_at TEXT');
     if (!jobColumns.includes('job_kind')) {
-        db.exec('ALTER TABLE salmon_jobs ADD COLUMN job_kind TEXT');
         // job_kind を足す前は EX-WAVE を wave = 4 で保存していた（バイトチームコンテストの WAVE 4 と重なるので 6 に移す）。
-        // この時点ではバイトチームコンテストの記録は無いので、wave = 4 はすべて EX-WAVE
-        db.exec('UPDATE salmon_job_waves SET wave = 6 WHERE wave = 4');
+        // この時点ではバイトチームコンテストの記録は無いので、wave = 4 はすべて EX-WAVE。
+        // 移行済みかは列の有無で決めるので、列の追加と移行を 1 つのトランザクションにする（途中で失敗したら列も足さない）
+        db.exec('BEGIN');
+        try {
+            db.exec('ALTER TABLE salmon_jobs ADD COLUMN job_kind TEXT');
+            db.exec('UPDATE salmon_job_waves SET wave = 6 WHERE wave = 4');
+            db.exec('COMMIT');
+        } catch (error) {
+            db.exec('ROLLBACK');
+            throw error;
+        }
     }
     for (const [column, type] of JOB_DETAIL_COLUMNS) {
         if (!jobColumns.includes(column)) db.exec(`ALTER TABLE salmon_jobs ADD COLUMN ${column} ${type}`);
