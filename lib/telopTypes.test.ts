@@ -32,16 +32,16 @@ describe('parseTelopSettings', () => {
   });
 
   it('normalizes preset text', () => {
-    expect(parseTelopSettings({ presets: [{ id: 1, text: ' ナイス! ', speak: true, followFont: false, chat: true }] })).toEqual({ presets: [{ id: 1, text: 'ナイス!', speak: true, followFont: false, chat: true }] });
+    expect(parseTelopSettings({ presets: [{ id: 1, text: ' ナイス! ', speak: true, followFont: false, display: false, chat: true }] })).toEqual({ presets: [{ id: 1, text: 'ナイス!', speak: true, followFont: false, display: false, chat: true }] });
   });
 
-  it('follows the common font and does not post to chat for presets saved before followFont and chat existed', () => {
-    expect(parseTelopSettings({ presets: [{ id: 1, text: 'ナイス!', speak: true }] })).toEqual({ presets: [{ id: 1, text: 'ナイス!', speak: true, followFont: true, chat: false }] });
+  it('follows the common font, displays and does not post to chat for presets saved before followFont, display and chat existed', () => {
+    expect(parseTelopSettings({ presets: [{ id: 1, text: 'ナイス!', speak: true }] })).toEqual({ presets: [{ id: 1, text: 'ナイス!', speak: true, followFont: true, display: true, chat: false }] });
   });
 
   it('accepts up to 30 presets', () => {
     expect(MAX_TELOP_PRESETS).toBe(30);
-    const presets = Array.from({ length: MAX_TELOP_PRESETS }, (_, i) => ({ id: i + 1, text: `${i}`, speak: false, followFont: true, chat: false }));
+    const presets = Array.from({ length: MAX_TELOP_PRESETS }, (_, i) => ({ id: i + 1, text: `${i}`, speak: false, followFont: true, display: true, chat: false }));
     expect(parseTelopSettings({ presets })).toEqual({ presets });
   });
 
@@ -59,6 +59,8 @@ describe('parseTelopSettings', () => {
     ['a missing speak', { presets: [{ id: 1, text: 'a' }] }],
     ['a non-boolean followFont', { presets: [{ id: 1, text: 'a', speak: false, followFont: 'yes' }] }],
     ['a non-boolean chat', { presets: [{ id: 1, text: 'a', speak: false, chat: 'yes' }] }],
+    ['a non-boolean display', { presets: [{ id: 1, text: 'a', speak: false, display: 'yes' }] }],
+    ['neither display nor chat', { presets: [{ id: 1, text: 'a', speak: false, display: false, chat: false }] }],
   ])('rejects %s', (_, body) => {
     expect(typeof parseTelopSettings(body)).toBe('string');
   });

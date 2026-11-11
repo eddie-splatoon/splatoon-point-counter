@@ -10,6 +10,7 @@ const PREVIEWED_PAGES = [
   { label: 'サイドパネル', href: '/side-panel-overlay' },
   { label: 'サイドパネル 縦型配信用', href: '/side-panel-overlay/vertical' },
   { label: '実況テロップ', href: '/telop-overlay' },
+  { label: '実況テロップ 縦型配信用', href: '/telop-overlay/vertical' },
   { label: 'ブキ埋めカード', href: '/weapon-card-overlay' },
   { label: 'サーモンランの振り返り', href: '/salmon-review-overlay' },
   { label: 'サーモンランの振り返り 縦型配信用', href: '/salmon-review-overlay/vertical' },

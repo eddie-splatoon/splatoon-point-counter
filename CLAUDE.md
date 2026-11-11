@@ -14,7 +14,7 @@
 4. **バーンダウンチャートオーバーレイ** (`/burndown-overlay`) - 進捗状況を可視化
 5. **字幕オーバーレイ** (`/caption-overlay`) - 配信者の音声をリアルタイムに字幕表示
 6. **サイドパネルオーバーレイ** (`/side-panel-overlay`) - 配信画面右側（250x584）。上段にフォロワーゲージ、下段にコントロールパネルで選んだスロットを表示。縦型配信用の横長レイアウト（990x440）は `/side-panel-overlay/vertical`
-7. **実況テロップオーバーレイ** (`/telop-overlay`) - コントロールパネルのボタン・キーボードで出す定型文を数秒だけ大きく表示
+7. **実況テロップオーバーレイ** (`/telop-overlay`) - コントロールパネルのボタン・キーボードで出す定型文を数秒だけ大きく表示。縦型配信用（1080x1920、画面の下のほうに出す）は `/telop-overlay/vertical`
 8. **読み上げ（音声専用）オーバーレイ** (`/voice-overlay`) - 読み上げキューの文を VOICEVOX で音声にして順に再生（画面には何も出さない）
 9. **ブキ埋めカードオーバーレイ** (`/weapon-card-overlay`) - サーモンランのオールランダムで支給された全ブキ種（71 種）を埋めていくカード
 10. **サーモンランの振り返りオーバーレイ** (`/salmon-review-overlay`) - 配信の最後に、その日（セッション）のサーモンランの記録をグラフで大きく出す（1920x1080）。縦型配信用（1080x1920）は `/salmon-review-overlay/vertical`。コントロールパネルから SNS 用の PNG でダウンロードできる
@@ -63,7 +63,9 @@
 │   │   └── vertical/
 │   │       └── page.tsx          # サイドパネル（縦型配信用の横長レイアウト）
 │   ├── telop-overlay/
-│   │   └── page.tsx              # 実況テロップオーバーレイ
+│   │   ├── page.tsx              # 実況テロップオーバーレイ
+│   │   └── vertical/
+│   │       └── page.tsx          # 実況テロップ（縦型配信用 1080x1920）
 │   ├── voice-overlay/
 │   │   └── page.tsx              # 読み上げ（音声専用）オーバーレイ
 │   ├── weapon-card-overlay/
@@ -128,6 +130,7 @@
 │   ├── ScoreDisplayPanel.tsx     # コントロールパネルのスコア表示タブ
 │   ├── TelopBar.tsx              # コントロールパネル上部のテロップのボタン（どのタブでも表示）
 │   ├── TelopPanel.tsx            # コントロールパネルのテロップタブ
+│   ├── TelopOverlay.tsx          # 実況テロップのオーバーレイの本体（横長 / 縦型配信用で共通）
 │   ├── VoiceSettingsPanel.tsx    # 読み上げ（VOICEVOX）の設定（テロップタブ内）
 │   ├── WeaponIcon.tsx            # ブキの画像（読み込めなければブキ名）
 │   ├── WeaponPicker.tsx          # カテゴリごとのブキのパレット（記録・ブキ埋めタブで使う）
@@ -411,11 +414,12 @@ Twitch のフォロワー数とフォロワー目標を受け取る機能と、�
 
 - `POST /api/telop` に `{presetId, speak?}`（`speak: false` ならプリセットの設定によらず読み上げない。文字起こしから出すとき用）か `{text, followFont?}`（1 行・30 文字まで。`normalizeTelopText` で改行と連続する空白を空白 1 つにまとめる）を送るとテロップを出す。Stream Deck などからも同じ形で送れる（JSON 以外は 415、無いプリセットは 404）
 - `{event: 'follow'}` はフォローのお礼（Twitch 連携スクリプトがフォローのたびに送る）。文言は固定の `FOLLOW_TELOP_TEXT`（「フォローありがとうございます！🥳」。フォローした人の名前は入れない）で、絵文字を除いた `FOLLOW_SPEECH_TEXT` を読み上げる（読み上げが無効なら読まない）。チャットには書き込まない。前回から `FOLLOW_TELOP_COOLDOWN_MS`（15 秒）以内なら何もしない（レイドの後などに続けて出さない。間のフォローはサイドパネルのゲージの泡だけ）。`presetId` / `text` と一緒には送れない
-- いま出ているテロップ `{id, text, followFont, effect, timestamp}`（`effect` は通常 null、フォローのお礼は `'follow'`） はインメモリ（再起動で消えてよい）。プリセット `{id, text, speak, followFont, chat}`（最大 30 個。キーボードのショートカットは先頭の 10 個）は SQLite の `app_state`（キー `telop`）に保存し、`PUT /api/telop {presets}` で更新する。保存値が不正なら既定のプリセットを返す。`__TEST_ONLY_resetTelop()` はテスト用
+- いま出ているテロップ `{id, text, followFont, effect, timestamp}`（`effect` は通常 null、フォローのお礼は `'follow'`） はインメモリ（再起動で消えてよい）。プリセット `{id, text, speak, followFont, display, chat}`（最大 30 個。キーボードのショートカットは先頭の 10 個。`display` は配信画面のテロップに出すか。false ならオーバーレイの `current` / `revision` を変えず、コメントだけになる。後から追加した項目なので無ければ true。`display` と `chat` のどちらかは true でないと不正。テロップバーではコメントだけのボタンに 💬 を付ける）は SQLite の `app_state`（キー `telop`）に保存し、`PUT /api/telop {presets}` で更新する。保存値が不正なら既定のプリセットを返す。`__TEST_ONLY_resetTelop()` はテスト用
 - 型・定数・検証は `lib/telopTypes.ts`（クライアントからも使う）。`speak` は合成音声で読み上げるかの設定。`speak` が true のプリセット（自由入力は `speak: true` を付けたもの）は、出すと同時に `enqueueSpeech` で読み上げキューに入れる（読み上げが無効なら入れない）
 - `followFont` は共通設定のフォント（`/api/stream-data` の `fontFamily`）で表示するか。そのフォントに無い文字が化けるテロップは false にして `sans-serif` で出す。後から追加した項目なので、保存済みのプリセットに無ければ true とみなす（自由入力で省略したときも true）
 - `chat` は Twitch のチャットにも配信者のコメントとして書き込むか（後から追加した項目なので、無ければ false）。chat のプリセットを出すと（ボタン・キーボード・声のどれでも）、インメモリの書き込み待ち `{id, text, speak, picked, createdAt}` に入れ、テロップ側では読み上げない（書き込んだコメントは Twitch 連携スクリプトの配信者のコメントの読み上げで読まれるので、二重にしない。読み上げない設定（`speak` が false。声で出したときの既定も）なら、スクリプトが書き込む前に本文を `MutedOwnMessages` に登録し、戻ってきた自分のコメントを 1 回だけ読まない）。`speak` は本来読み上げる予定だったか（フォールバック用）。Twitch 連携スクリプトの `createChatPostProcessor` が 1 秒ごとに `GET /api/telop?view=chat` で拾い、`PATCH {chatId, status: 'picked'}` → Helix の `POST /chat/messages` → `PATCH {chatId, status: 'sent' | 'failed'}`（結果は picked のものだけ受け付け、それ以外は 409）。`failed`、または `CHAT_PICKUP_TTL_MS`（3 秒）以内に拾われなかった（スクリプト未起動）ものは、`speak` ならテロップ側で読み上げる。拾った後に結果が来ないものは `CHAT_RESULT_TTL_MS`（30 秒）で読み上げずに捨てる。期限切れは `GET`（オーバーレイが 0.5 秒ごとに呼ぶ）・`PATCH` のたびに判定する。自由入力はコメントにしない
-- オーバーレイは 0.5 秒ごとにポーリングし（フォントは 2 秒ごとに `/api/stream-data` から取得）、出してから表示時間（`telopDisplayDuration`。通常は `TELOP_DISPLAY_DURATION`（4 秒）、フォローのお礼は `FOLLOW_TELOP_DISPLAY_DURATION`（8 秒））以内のものだけ表示する（開き直したときに古いテロップを出さない）。位置は配信画面のゲーム画面の右下（右端揃え。右下の角に重なる立ち絵の左。`TELOP_RIGHT` / `TELOP_BOTTOM` の px で決め打ち。配信画面のレイアウトを変えたら見直す）。テロップごとにインクの色を変える。フォローのお礼は大きめの虹色の帯をバウンスさせて出し、`FireworksEffect`（`key` で作り直して再生。20 秒で自分で消えるので、テロップが消えても・別のテロップに置き換わっても続く）と `SparkleEffect` を重ねる。開いた時点で出ていたお礼では演出しない（OBS の再読み込みで演出が出ないように）
+- オーバーレイの本体は `components/TelopOverlay.tsx`（`layout: 'landscape' | 'portrait'`。`LAYOUT_STYLES` で置き方を分ける）。2 つのページはこれを置くだけ。portrait（`/telop-overlay/vertical`、1080x1920）は上部のサイドパネル（縦型配信用）と重ならないよう、画面の下から 440px の位置に中央揃えで、少し大きな文字で出して長い文は折り返す
+- オーバーレイは 0.5 秒ごとにポーリングし（フォントは 2 秒ごとに `/api/stream-data` から取得）、出してから表示時間（`telopDisplayDuration`。通常は `TELOP_DISPLAY_DURATION`（4 秒）、フォローのお礼は `FOLLOW_TELOP_DISPLAY_DURATION`（8 秒））以内のものだけ表示する（開き直したときに古いテロップを出さない）。landscape（`/telop-overlay`）の位置は配信画面のゲーム画面の右下（右端揃え。右下の角に重なる立ち絵の左。`TELOP_RIGHT` / `TELOP_BOTTOM` の px で決め打ち。配信画面のレイアウトを変えたら見直す）。テロップごとにインクの色を変える。フォローのお礼は大きめの虹色の帯をバウンスさせて出し、`FireworksEffect`（`key` で作り直して再生。20 秒で自分で消えるので、テロップが消えても・別のテロップに置き換わっても続く）と `SparkleEffect` を重ねる。開いた時点で出ていたお礼では演出しない（OBS の再読み込みで演出が出ないように）
 - プリセットのボタンは、コントロールパネルのタイトルとタブの間の `components/TelopBar.tsx`（テロップバー）に置き、どのタブでも表示する（サーモンランタブで戦績を入力しながら出せるように。スクロールしても見えるよう `position: sticky`。そのためコントロールパネルのルートは `overflow: hidden` ではなく `clip`）。テロップバーは `window` の keydown で 1〜9, 0 を受け、並び順のプリセットを出す（キーの無い 11 個目以降のボタンは outlined）（入力欄・プルダウン（MUI の Select の `role=combobox` / `option`）にフォーカスがあるとき・IME 変換中・修飾キー付き・キーリピートは無視）
 - 「テロップ」タブ（`components/TelopPanel.tsx`）は、自由入力とプリセットの編集（変更はその場で保存）。保存のたびに（失敗して読み込み直したときも）`onPresetsChange` を呼び、コントロールパネルがテロップバーの `reloadKey` を進めてプリセットを読み込み直させる
 

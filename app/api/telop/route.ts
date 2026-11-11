@@ -88,6 +88,7 @@ async function readJson(request: Request): Promise<{body: unknown} | NextRespons
  * テロップを出す。`{presetId, speak?}` でプリセットを、`{text, followFont?, speak?}` で自由入力の文を出す（Stream Deck などからも同じ形で送れる）。
  * 自由入力の followFont（共通設定のフォントで表示するか）は省略すると true、speak（読み上げるか）は省略すると false。
  * プリセットはその設定どおりに読み上げるが、`speak: false` なら読み上げない（文字起こしから出すときに、配信者の声と重ならないように）。
+ * プリセットの display が false なら画面のテロップには出さない（chat が true のものだけなので、コメントとして出る）。
  * 読み上げるものは読み上げキューにも入れる（読み上げが無効なら入れない）。
  * `{event: 'follow'}` はフォローのお礼（Twitch 連携スクリプトがフォローのたびに送る）。文言は固定で、演出付きで出して読み上げる。
  * 前回から FOLLOW_TELOP_COOLDOWN_MS 以内なら何もしない（レイドの後などに続けて出さない）
@@ -109,12 +110,14 @@ export async function POST(request: Request) {
     let telop: {text: string; followFont: boolean};
     let shouldSpeak: boolean;
     let postToChat = false;
+    let display = true;
     if (presetId !== undefined) {
         const preset = loadPresets().find((p) => p.id === presetId);
         if (!preset) return NextResponse.json({message: 'Preset not found.'}, {status: 404});
         telop = {text: preset.text, followFont: preset.followFont};
         shouldSpeak = preset.speak && speak !== false;
         postToChat = preset.chat;
+        display = preset.display;
     } else {
         const telopText = typeof text === 'string' ? normalizeTelopText(text) : null;
         if (telopText === null || typeof followFont !== 'boolean') {
@@ -124,9 +127,12 @@ export async function POST(request: Request) {
         shouldSpeak = speak === true;
     }
 
-    revision += 1;
     const now = Date.now();
-    current = {id: revision, ...telop, effect: null, timestamp: now};
+    // テロップに出さない（コメントだけの）プリセットは、オーバーレイの表示を変えない
+    if (display) {
+        revision += 1;
+        current = {id: revision, ...telop, effect: null, timestamp: now};
+    }
     if (postToChat) {
         // 書き込んだコメントは配信者のコメントとして読み上げられるので、ここでは読まない（二重にならないように）。
         // 書き込めなかったときだけ、読み上げる設定ならテロップ側で読む

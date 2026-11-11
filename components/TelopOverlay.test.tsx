@@ -2,9 +2,11 @@ import { act, render, screen, waitFor } from '@testing-library/react';
 import axios from 'axios';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { FOLLOW_TELOP_DISPLAY_DURATION, TELOP_DISPLAY_DURATION, TelopData, TelopEffect } from '../../lib/telopTypes';
+import { FOLLOW_TELOP_DISPLAY_DURATION, TELOP_DISPLAY_DURATION, TelopData, TelopEffect } from '../lib/telopTypes';
 
-import TelopOverlayPage from './page';
+import TelopOverlay from './TelopOverlay';
+
+const TelopOverlayPage = () => <TelopOverlay layout="landscape" />;
 
 vi.mock('axios');
 const mockedAxios = vi.mocked(axios);
@@ -25,7 +27,7 @@ const mockApis = (telop: TelopData, fontFamily = 'FOT-Kurokane Std') => {
     url === '/api/telop' ? { data: telop, status: 200 } : { data: { fontFamily }, status: 200 });
 };
 
-describe('TelopOverlayPage', () => {
+describe('TelopOverlay', () => {
   beforeEach(() => {
     mockedAxios.get.mockReset();
     vi.spyOn(global, 'setInterval').mockImplementation(vi.fn());
@@ -146,5 +148,14 @@ describe('TelopOverlayPage', () => {
     await screen.findByTestId('telop');
     expect(screen.getByTestId('telop-area')).toHaveClass('items-end', 'justify-end');
     expect(screen.getByTestId('telop-area')).toHaveStyle({ paddingRight: '520px', paddingBottom: '232px' });
+  });
+
+  it('places the telop near the bottom center with a larger font in the portrait layout', async () => {
+    mockApis(makeData({ text: 'ナイス!', ageMs: 500 }));
+    render(<TelopOverlay layout="portrait" />);
+
+    expect(await screen.findByTestId('telop')).toHaveStyle({ fontSize: '64px' });
+    expect(screen.getByTestId('telop-area')).toHaveClass('items-center', 'justify-end');
+    expect(screen.getByTestId('telop-area')).toHaveStyle({ paddingBottom: '440px' });
   });
 });

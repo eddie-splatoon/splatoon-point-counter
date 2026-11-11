@@ -132,6 +132,7 @@ const OVERLAY_PAGES: OverlayPage[] = [
     {href: '/side-panel-overlay', label: 'サイドパネル', size: {width: 250, height: 584}},
     {href: '/side-panel-overlay/vertical', label: 'サイドパネル 縦型配信用', size: {width: 990, height: 440}},
     {href: '/telop-overlay', label: '実況テロップ', size: {width: 1920, height: 1080}},
+    {href: '/telop-overlay/vertical', label: '実況テロップ 縦型配信用', size: {width: 1080, height: 1920}},
     {href: '/weapon-card-overlay', label: 'ブキ埋めカード', size: {width: 620, height: 620}},
     {href: '/salmon-review-overlay', label: 'サーモンランの振り返り', size: {width: 1920, height: 1080}},
     {href: '/salmon-review-overlay/vertical', label: 'サーモンランの振り返り 縦型配信用', size: {width: 1080, height: 1920}},
