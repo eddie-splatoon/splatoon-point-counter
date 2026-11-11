@@ -138,4 +138,13 @@ describe('TelopOverlayPage', () => {
     await screen.findByTestId('telop');
     expect(container.querySelector('.fireworks')).not.toBeInTheDocument();
   });
+
+  it('places the telop at the lower right of the game screen', async () => {
+    mockApis(makeData({ text: 'ナイス!', ageMs: 500 }));
+    render(<TelopOverlayPage />);
+
+    await screen.findByTestId('telop');
+    expect(screen.getByTestId('telop-area')).toHaveClass('items-end', 'justify-end');
+    expect(screen.getByTestId('telop-area')).toHaveStyle({ paddingRight: '520px', paddingBottom: '232px' });
+  });
 });

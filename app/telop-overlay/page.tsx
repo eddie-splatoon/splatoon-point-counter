@@ -21,6 +21,13 @@ const INK_COLORS = ['#FF6F00', '#B05CFF', '#00C2FF', '#FF3EA5'];
 // フォローのお礼のテロップの帯。インクの色を全部混ぜて、通常のテロップより目立たせる
 const FOLLOW_BACKGROUND = `linear-gradient(90deg, ${INK_COLORS.join(', ')})`;
 
+// テロップの位置（1920x1080 のオーバーレイでの px）。配信画面のゲーム画面（x 61〜1571 / y 40〜888 付近）の右下に、
+// 右端を揃えて出す。ゲーム画面の右下の角には立ち絵（x 1427〜 / y 618〜 付近）が重なるので、右端はその左に置く
+const TELOP_RIGHT = 520;
+const TELOP_BOTTOM = 232;
+// ゲーム画面の左端からはみ出さない幅
+const TELOP_MAX_WIDTH = 1300;
+
 const TelopOverlayPage: React.FC = () => {
     // 表示中のテロップと、ブラウザの時計で消す時刻
     const [shown, setShown] = useState<{telop: Telop; hideAt: number} | null>(null);
@@ -91,8 +98,9 @@ const TelopOverlayPage: React.FC = () => {
 
     return (
         <div
-            className="relative w-screen h-screen flex flex-col items-center justify-start pt-16 overflow-hidden"
-            style={{backgroundColor: 'transparent'}}
+            data-testid="telop-area"
+            className="relative w-screen h-screen flex flex-col items-end justify-end overflow-hidden"
+            style={{backgroundColor: 'transparent', paddingRight: TELOP_RIGHT, paddingBottom: TELOP_BOTTOM}}
         >
             {/* フォローのお礼には花火とキラキラを重ねる。お礼ごとに作り直して再生する（花火は 20 秒で自分で消える） */}
             {celebration !== null && <FireworksEffect key={celebration} trigger/>}
@@ -110,8 +118,8 @@ const TelopOverlayPage: React.FC = () => {
                         style={{
                             background: isFollow ? FOLLOW_BACKGROUND : INK_COLORS[telop.id % INK_COLORS.length],
                             fontFamily: telop.followFont ? fontFamily || FALLBACK_FONT : FALLBACK_FONT,
-                            fontSize: isFollow ? 80 : 56,
-                            maxWidth: '90%',
+                            fontSize: isFollow ? 64 : 56,
+                            maxWidth: TELOP_MAX_WIDTH,
                             textShadow: '3px 3px 0 rgba(0, 0, 0, 0.6)',
                         }}
                     >
