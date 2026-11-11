@@ -24,6 +24,7 @@ import time
 import unicodedata
 from dataclasses import dataclass
 from functools import cache
+from itertools import product
 from difflib import SequenceMatcher, get_close_matches
 from datetime import datetime
 from pathlib import Path
@@ -1283,42 +1284,47 @@ def glyph_distances(glyph) -> dict[str, float]:
 DIGITS = "0123456789"
 
 
-def read_digits(distances: list[dict[str, float]]) -> tuple[str, float]:
-    """それぞれいちばん近い数字と、違いの合計"""
-    best = [min(DIGITS, key=d.get) for d in distances]
-    return "".join(best), sum(d[c] for d, c in zip(distances, best))
+# 数字の並びの読み方を、近いものからいくつまで残すか
+DIGIT_READINGS_LIMIT = 20
 
 
-def read_kills(glyphs: list) -> tuple[int, int] | None:
-    """「4(3)」「11」から (チームの討伐数, 自分の討伐数)。カッコの位置はすべての並び方を試し、形がいちばん合うものにする
-    （1 文字ずつ決めると、細い「)」を「1」と読むことがある）"""
+def read_digits(distances: list[dict[str, float]]) -> list[tuple[str, float]]:
+    """数字の並びの読み方と違いの合計（近い順。DIGIT_READINGS_LIMIT 個まで）"""
+    readings = [("", 0.0)]
+    for d in distances:
+        readings = sorted(((text + c, total + d[c]) for text, total in readings for c in DIGITS), key=lambda r: r[1])
+        readings = readings[:DIGIT_READINGS_LIMIT]
+    return readings
+
+
+def read_kills(glyphs: list) -> list[tuple[int, int]]:
+    """「4(3)」「11」から (チームの討伐数, 自分の討伐数) の読み方（形の合う順。違いが大きすぎるものは除く）。
+    カッコの位置はすべての並び方を試す（1 文字ずつ決めると、細い「)」を「1」と読むことがある）。
+    いちばん合う読みが出現数と矛盾したとき（8 を 9 と読んで出現数 x8 を超えるなど）に次の読みを使えるよう、候補を並べて返す"""
     distances = [glyph_distances(glyph) for glyph in glyphs]
     candidates = []
     if distances:
-        candidates.append((read_digits(distances), None))
+        candidates += [(int(team), 0, distance) for team, distance in read_digits(distances)]
     # 数字 n 文字・「(」・数字 1 文字以上・「)」
     for n in range(1, len(distances) - 2):
-        team, team_distance = read_digits(distances[:n])
-        own, own_distance = read_digits(distances[n + 1:-1])
         paren_distance = distances[n]["("] + distances[-1][")"]
-        candidates.append(((team, team_distance + own_distance + paren_distance), own))
-    if not candidates:
-        return None
-    (team, distance), own = min(candidates, key=lambda c: c[0][1])
-    if distance / len(glyphs) > MAX_GLYPH_DISTANCE:
-        return None
-    return int(team), int(own or 0)
+        for (team, team_distance), (own, own_distance) in product(read_digits(distances[:n]), read_digits(distances[n + 1:-1])):
+            candidates.append((int(team), int(own), team_distance + own_distance + paren_distance))
+    candidates.sort(key=lambda c: c[2])
+    readings = [(team, own) for team, own, distance in candidates if distance / len(glyphs) <= MAX_GLYPH_DISTANCE]
+    return list(dict.fromkeys(readings))
 
 
 def read_number(glyphs: list) -> int | None:
     if not glyphs:
         return None
-    digits, distance = read_digits([glyph_distances(glyph) for glyph in glyphs])
+    digits, distance = read_digits([glyph_distances(glyph) for glyph in glyphs])[0]
     return int(digits) if distance / len(glyphs) <= MAX_GLYPH_DISTANCE else None
 
 
 def parse_boss_counts(kills_cell, appearances_cell) -> tuple[int, int, int] | None:
-    """「4(3) /」「出現数x4」から (出現数, チームの討伐数, 自分の討伐数)。読めなければ None"""
+    """「4(3) /」「出現数x4」から (出現数, チームの討伐数, 自分の討伐数)。読めなければ None。
+    討伐数は、出現数と矛盾しない（自分 <= チーム <= 出現数）読みのうち、いちばん形の合うもの"""
     glyphs = glyph_groups(kills_cell)
     slash = next((i for i, glyph in enumerate(glyphs) if is_slash(glyph)), None)
     if not slash:
@@ -1327,7 +1333,7 @@ def parse_boss_counts(kills_cell, appearances_cell) -> tuple[int, int, int] | No
 
     # 「出現数x」の後ろの、大きい数字（「出現数x」の文字は数字より低い）
     appearance_glyphs = glyph_groups(appearances_cell)
-    if kills is None or not appearance_glyphs:
+    if not kills or not appearance_glyphs:
         return None
     tallest = max(glyph.shape[0] for glyph in appearance_glyphs)
     digits = []
@@ -1336,10 +1342,9 @@ def parse_boss_counts(kills_cell, appearances_cell) -> tuple[int, int, int] | No
             break
         digits.insert(0, glyph)
     appearances = read_number(digits)
-    team, own = kills
-    if appearances is None or not own <= team <= appearances:
+    if appearances is None:
         return None
-    return appearances, team, own
+    return next(((appearances, team, own) for team, own in kills if own <= team <= appearances), None)
 
 
 def read_boss_rows(image, boxes: list[Box], names: dict[str, str], ocr_fn=ocr) -> dict[str, tuple[int, int, int]]:
@@ -1373,15 +1378,27 @@ def is_boss_list_end(boxes: list[Box]) -> bool:
 
 def merge_boss_rows(readings: list[dict[str, tuple[int, int, int]]], self_kills: int) -> list[dict] | None:
     """スクロールごとに読んだ行をまとめる（同じオオモノを何度か読んだら多数決）。
-    自分の討伐数の合計が「オオモノシャケ xN」と合わなければ、読み間違い・取りこぼしとみなして None"""
+    多数決が同数で割れたら、先に読めたほうを採る。それでは合計が合わないとき、自分の討伐数の合計が「オオモノシャケ xN」と合う選び方が
+    1 通りだけならそれを採る（片方の画面だけで読み間違えたとき）。合わなければ、読み間違い・取りこぼしとみなして None"""
     keys = list(dict.fromkeys(key for reading in readings for key in reading))
-    bosses = []
+    choices = []
     for key in keys:
-        appearances, team, own = majority([reading[key] for reading in readings if key in reading])
-        bosses.append({"boss": key, "appearances": appearances, "teamKills": team, "selfKills": own})
-    if sum(b["selfKills"] for b in bosses) != self_kills:
+        values = [reading[key] for reading in readings if key in reading]
+        top = max(values.count(v) for v in values)
+        # 同数のものを先に読めた順に（先頭が majority と同じ）
+        choices.append(list(dict.fromkeys(v for v in values if values.count(v) == top)))
+    combos = [combo for combo in product(*choices) if sum(own for _, _, own in combo) == self_kills]
+    first = tuple(c[0] for c in choices)
+    if first in combos:
+        chosen = first
+    elif len(combos) == 1:
+        chosen = combos[0]
+    else:
         return None
-    return bosses
+    return [
+        {"boss": key, "appearances": appearances, "teamKills": team, "selfKills": own}
+        for key, (appearances, team, own) in zip(keys, chosen)
+    ]
 
 
 def read_self_kills_on_scroll(boxes: list[Box]) -> int | None:

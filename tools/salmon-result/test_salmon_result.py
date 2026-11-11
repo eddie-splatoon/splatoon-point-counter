@@ -433,10 +433,25 @@ BOSSES = {
     "kingpin": (33, [("bakudan", 10, 10, 2), ("katapad", 8, 8, 3), ("teppan", 13, 13, 4), ("hebi", 5, 5, 2), ("tower", 8, 8, 4),
                      ("mogura", 10, 10, 4), ("koumori", 6, 6, 4), ("hashira", 6, 6, 2), ("diver", 12, 11, 3), ("tekkyu", 7, 6, 4),
                      ("nabebuta", 5, 5, 1)]),
+    # カッコ内の小さい「5」の左下がつながって 6 に近い（グリルの 13(5)）
+    "five": (25, [("bakudan", 8, 8, 3), ("katapad", 13, 12, 1), ("teppan", 5, 4, 1), ("hebi", 7, 7, 1), ("tower", 9, 9, 3),
+                  ("mogura", 9, 9, 3), ("koumori", 7, 6, 1), ("hashira", 10, 10, 1), ("diver", 8, 8, 2), ("nabebuta", 7, 7, 4),
+                  ("grill", 14, 13, 5)]),
+    # 大きい「8」の左が欠けて 9 に近い（ダイバーの 8(3) / 出現数x8）
+    "eight": (27, [("bakudan", 12, 12, 1), ("katapad", 8, 7, 2), ("teppan", 5, 5, 1), ("hebi", 6, 6, 1), ("tower", 4, 4, 3),
+                   ("mogura", 13, 13, 8), ("koumori", 7, 7, 2), ("hashira", 8, 7, 3), ("diver", 8, 8, 3), ("nabebuta", 7, 5, 3),
+                   ("kin_shake", 4, 4, 0)]),
+    # カッコ内の小さい「6」がつぶれて 8 に近い（モグラの 9(6)）
+    "six": (30, [("bakudan", 10, 10, 2), ("katapad", 7, 6, 2), ("teppan", 9, 9, 2), ("hebi", 20, 18, 5), ("tower", 8, 8, 2),
+                 ("mogura", 10, 9, 6), ("koumori", 12, 10, 2), ("hashira", 10, 10, 4), ("diver", 10, 10, 2), ("tekkyu", 2, 2, 0),
+                 ("nabebuta", 10, 10, 3)]),
+    # 1 枚目と 2 枚目でタワーの 11(5) の写り方が違う
+    "split": (28, [("bakudan", 14, 11, 4), ("katapad", 3, 3, 1), ("teppan", 6, 6, 2), ("hebi", 11, 11, 3), ("tower", 11, 11, 5),
+                   ("mogura", 8, 7, 4), ("koumori", 9, 5, 3), ("hashira", 9, 7, 1), ("diver", 8, 8, 1), ("nabebuta", 11, 11, 4)]),
 }
 
 
-@pytest.mark.parametrize("label", ["failure", "clear", "kingpin"])
+@pytest.mark.parametrize("label", list(BOSSES))
 def test_read_bosses_from_captures(label):
     self_kills, expected = BOSSES[label]
     readings, ends = [], []
@@ -470,6 +485,31 @@ def test_merge_boss_rows():
     assert s.merge_boss_rows([first, second], 14) is None
 
 
+def test_merge_boss_rows_settles_a_split_vote_by_the_total():
+    """同じオオモノの読みが画面ごとに割れて同数なら、合計が「オオモノシャケ xN」と合うほうを採る"""
+    first = {"bakudan": (8, 7, 3), "tower": (11, 11, 6)}
+    second = {"tower": (11, 11, 5), "hebi": (4, 3, 2)}
+    assert s.merge_boss_rows([first, second], 10) == [
+        {"boss": "bakudan", "appearances": 8, "teamKills": 7, "selfKills": 3},
+        {"boss": "tower", "appearances": 11, "teamKills": 11, "selfKills": 5},
+        {"boss": "hebi", "appearances": 4, "teamKills": 3, "selfKills": 2},
+    ]
+    # 先に読めたほうで合うなら、そちらを採る（今までどおり）
+    assert s.merge_boss_rows([first, second], 11)[1]["selfKills"] == 6
+    # どちらでも合わなければ読み間違い・取りこぼし
+    assert s.merge_boss_rows([first, second], 12) is None
+
+
+def test_merge_boss_rows_gives_up_when_the_total_fits_more_than_one_way():
+    """合計が合う選び方が 2 通り以上あれば、どれが正しいか決められないので None"""
+    first = {"bakudan": (8, 7, 3), "tower": (11, 11, 6)}
+    second = {"bakudan": (8, 7, 4), "tower": (11, 11, 7)}
+    # 3 + 7 と 4 + 6 のどちらも 10
+    assert s.merge_boss_rows([first, second], 10) is None
+    # 1 通り（4 + 7）なら採る
+    assert [b["selfKills"] for b in s.merge_boss_rows([first, second], 11)] == [4, 7]
+
+
 def glyph(text: str):
     return s._parse_glyph(text)
 
@@ -478,9 +518,21 @@ def test_read_kills_tells_the_closing_paren_from_one():
     from digit_glyphs import GLYPHS
 
     four, open_paren, two, close_paren, one = (glyph(GLYPHS[c][0]) for c in ("4", "(", "2", ")", "1"))
-    assert s.read_kills([four, open_paren, two, close_paren]) == (4, 2)
-    assert s.read_kills([one, one]) == (11, 0)
-    assert s.read_kills([]) is None
+    assert s.read_kills([four, open_paren, two, close_paren])[0] == (4, 2)
+    assert s.read_kills([one, one])[0] == (11, 0)
+    assert s.read_kills([]) == []
+
+
+def test_parse_boss_counts_skips_a_reading_beyond_the_appearances(monkeypatch):
+    """いちばん形の合う読みが出現数を超えたら（8 を 9 と読んだなど）、出現数と矛盾しない次の読みを採る"""
+    monkeypatch.setattr(s, "glyph_groups", lambda cell: cell)
+    monkeypatch.setattr(s, "is_slash", lambda g: g == "/")
+    monkeypatch.setattr(s, "read_kills", lambda glyphs: [(9, 3), (8, 3)])
+    monkeypatch.setattr(s, "read_number", lambda glyphs: 8)
+    big = s._parse_glyph("#/#")
+    assert s.parse_boss_counts(["9", "/"], [big]) == (8, 8, 3)
+    monkeypatch.setattr(s, "read_kills", lambda glyphs: [(9, 3)])
+    assert s.parse_boss_counts(["9", "/"], [big]) is None
 
 
 def test_is_slash():
