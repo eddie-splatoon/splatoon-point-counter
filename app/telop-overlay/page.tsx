@@ -2,7 +2,7 @@
 
 import axios from 'axios';
 import {AnimatePresence, motion} from 'motion/react';
-import React, {useState, useEffect, useCallback} from 'react';
+import React, {useState, useEffect, useCallback, useRef} from 'react';
 
 import FireworksEffect from '../../components/FireworksEffect';
 import SparkleEffect from '../../components/SparkleEffect';
@@ -26,6 +26,10 @@ const TelopOverlayPage: React.FC = () => {
     const [shown, setShown] = useState<{telop: Telop; hideAt: number} | null>(null);
     const [now, setNow] = useState(0);
     const [fontFamily, setFontFamily] = useState('');
+    // 花火とキラキラを出しているフォローのお礼の ID。花火は 20 秒の演出なので、テロップ（8 秒）が消えても、別のテロップに置き換わっても続ける
+    const [celebration, setCelebration] = useState<number | null>(null);
+    // 最後に見たフォローのお礼の ID。undefined はまだ一度も取得していない（開いた時点で出ていたものは演出しない）
+    const lastFollowIdRef = useRef<number | null | undefined>(undefined);
 
     const fetchDataInternal = useCallback(async () => {
         try {
@@ -40,6 +44,9 @@ const TelopOverlayPage: React.FC = () => {
                 const {current, serverTime} = res.data;
                 // 経過時間はサーバーの時計どうしで測り、残り時間をブラウザの時計に置き換える（OBS とサーバーの時計がずれていてもよいように）
                 setShown(current ? {telop: current, hideAt: Date.now() + telopDisplayDuration(current) - (serverTime - current.timestamp)} : null);
+                const followId = current?.effect === 'follow' ? current.id : null;
+                if (lastFollowIdRef.current !== undefined && followId !== null && followId !== lastFollowIdRef.current) setCelebration(followId);
+                if (lastFollowIdRef.current === undefined || followId !== null) lastFollowIdRef.current = followId;
             }
         } catch (error) {
             console.error('Failed to fetch telop data:', error);
@@ -87,9 +94,9 @@ const TelopOverlayPage: React.FC = () => {
             className="relative w-screen h-screen flex flex-col items-center justify-start pt-16 overflow-hidden"
             style={{backgroundColor: 'transparent'}}
         >
-            {/* フォローのお礼には花火とキラキラを重ねる。テロップごとに作り直して再生する */}
-            {isFollow && <FireworksEffect key={telop.id} trigger/>}
-            <SparkleEffect trigger={isFollow ? telop.id : null}/>
+            {/* フォローのお礼には花火とキラキラを重ねる。お礼ごとに作り直して再生する（花火は 20 秒で自分で消える） */}
+            {celebration !== null && <FireworksEffect key={celebration} trigger/>}
+            <SparkleEffect trigger={celebration}/>
             <AnimatePresence mode="popLayout">
                 {telop && (
                     <motion.div

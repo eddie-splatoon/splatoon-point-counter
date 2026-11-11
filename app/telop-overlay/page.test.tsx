@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from '@testing-library/react';
+import { act, render, screen, waitFor } from '@testing-library/react';
 import axios from 'axios';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -84,12 +84,37 @@ describe('TelopOverlayPage', () => {
     expect(screen.queryByTestId('telop')).not.toBeInTheDocument();
   });
 
-  it('celebrates a follow with fireworks', async () => {
+  // setInterval を止めているので、ポーリングの 2 回目以降は登録された関数を直接呼ぶ
+  const pollTelop = async () => {
+    const calls = vi.mocked(setInterval).mock.calls;
+    const poll = calls.find(([, ms]) => ms === 500)?.[0] as () => Promise<void>;
+    await act(async () => { await poll(); });
+  };
+
+  it('celebrates a new follow with fireworks that outlast the telop', async () => {
+    mockApis(makeData(null));
+    const { container } = render(<TelopOverlayPage />);
+    await waitFor(() => expect(mockedAxios.get).toHaveBeenCalledWith('/api/telop', expect.anything()));
+
+    mockApis(makeData({ text: 'フォローありがとうございます！🥳', ageMs: 500, effect: 'follow' }));
+    await pollTelop();
+    expect(screen.getByTestId('telop')).toHaveTextContent('フォローありがとうございます！🥳');
+    expect(container.querySelector('.fireworks')).toBeInTheDocument();
+
+    // 別のテロップに置き換わっても花火は続ける
+    mockApis({ ...makeData({ text: 'ナイス!', ageMs: 0 }), current: { id: 2, text: 'ナイス!', followFont: true, effect: null, timestamp: NOW } });
+    await pollTelop();
+    expect(screen.getByText('ナイス!')).toBeInTheDocument();
+    expect(container.querySelector('.fireworks')).toBeInTheDocument();
+  });
+
+  it('does not celebrate a follow that was already shown when the overlay opened', async () => {
     mockApis(makeData({ text: 'フォローありがとうございます！🥳', ageMs: 500, effect: 'follow' }));
     const { container } = render(<TelopOverlayPage />);
 
-    expect(await screen.findByTestId('telop')).toHaveTextContent('フォローありがとうございます！🥳');
-    expect(container.querySelector('.fireworks')).toBeInTheDocument();
+    expect(await screen.findByTestId('telop')).toBeInTheDocument();
+    await pollTelop();
+    expect(container.querySelector('.fireworks')).not.toBeInTheDocument();
   });
 
   it('keeps the follow telop longer than a normal one', async () => {
