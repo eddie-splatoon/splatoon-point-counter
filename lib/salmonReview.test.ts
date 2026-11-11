@@ -9,7 +9,7 @@ import { SalmonJobDetails } from './salmonTypes';
 import { getDefaultSidePanelSettings } from './sidePanelTypes';
 import { setManualWeapon } from './weaponCard';
 
-const job = { goldenEggs: 30, bossKills: 12, deaths: 1, cleared: true, waveReached: 3, stage: 'アラマキ砦', weapons: ['sshooter'] };
+const job = { goldenEggs: 30, bossKills: 12, deaths: 1, cleared: true, waveReached: 3, stage: 'アラマキ砦', weapons: ['sshooter'], jobKind: null };
 const created = { status: 'created' as const, clipId: 'Clip-1', editUrl: 'https://www.twitch.tv/x/clip/Clip-1/edit' };
 
 const details = (overrides: Record<string, unknown> = {}): SalmonJobDetails => {
@@ -74,6 +74,12 @@ describe('getSessionReview', () => {
       { boss: 'hebi', selfKills: 2, teamKills: 2, appearances: 2 },
       { boss: 'mogura', selfKills: 0, teamKills: 2, appearances: 3 },
     ]);
+  });
+
+  it('counts the failures up to WAVE 5 when the session has a team contest job', () => {
+    addJob({ ...job, cleared: false, waveReached: 4, jobKind: 'teamContest' }, 1000);
+    addJob({ ...job, cleared: false, waveReached: 2 }, 1100);
+    expect(getSessionReview()!.waveFailures).toEqual([0, 1, 0, 1, 0]);
   });
 
   it('ranks the team golden eggs of the imported jobs, the earlier job first on a tie', () => {

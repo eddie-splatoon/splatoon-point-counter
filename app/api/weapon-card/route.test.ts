@@ -25,7 +25,7 @@ beforeEach(() => {
 
 describe('Weapon card API', () => {
   it('returns the weapons filled by recorded jobs', async () => {
-    addJob({ goldenEggs: 30, bossKills: 12, deaths: 1, cleared: true, waveReached: 3, stage: '', weapons: ['sshooter'] }, 1000);
+    addJob({ goldenEggs: 30, bossKills: 12, deaths: 1, cleared: true, waveReached: 3, stage: '', weapons: ['sshooter'], jobKind: null }, 1000);
 
     const body = await (await GET()).json();
     expect(body).toEqual({ startedAt: 0, total: 71, obtained: [{ key: 'sshooter', at: 1000, source: 'job' }] });

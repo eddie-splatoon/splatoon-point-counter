@@ -24,6 +24,7 @@ import React, {useState, useEffect, useMemo, useCallback} from 'react';
 
 import ClipPanel from '../../components/ClipPanel';
 import SalmonRunPanel from '../../components/SalmonRunPanel';
+import ScoreDisplayPanel from '../../components/ScoreDisplayPanel';
 import SidePanelSettingsPanel from '../../components/SidePanelSettingsPanel';
 import TelopBar from '../../components/TelopBar';
 import TelopPanel from '../../components/TelopPanel';
@@ -151,9 +152,8 @@ const darkTheme = createTheme({
 
 const LOCAL_STORAGE_KEY = 'control-panel-state';
 
+// スコア表示（scoreLabel / scoreValue）はリザルトの取り込みで自動で書き換えるので、ここでは持たずに ScoreDisplayPanel が /api/score-display で保存する
 interface FormData {
-    scoreLabel: string;
-    scoreValue: string;
     burndown: BurndownData;
     fontFamily: string;
     fontSize: number;
@@ -192,8 +192,6 @@ const ControlPanelPage: React.FC = () => {
     const getPayload = useCallback(() => {
         if (!formData) return {};
         return {
-            scoreLabel: formData.scoreLabel,
-            scoreValue: formData.scoreValue,
             transitionEffect: formData.transitionEffect,
             transitionDuration: Number(formData.transitionDuration),
             fontFamily: formData.fontFamily,
@@ -254,8 +252,6 @@ const ControlPanelPage: React.FC = () => {
                         if (res.status === 200) {
                             const apiData = res.data;
                             setFormData({
-                                scoreLabel: apiData.scoreLabel,
-                                scoreValue: apiData.scoreValue,
                                 transitionEffect: apiData.transitionEffect,
                                 transitionDuration: apiData.transitionDuration,
                                 fontFamily: apiData.fontFamily,
@@ -404,13 +400,7 @@ const ControlPanelPage: React.FC = () => {
                         <Tab label="共通設定" value="common"/>
                     </Tabs>
 
-                    {formData.activeTab === 'score' && (
-                        <Paper elevation={12} sx={{p: 3, bgcolor: 'background.paper', backdropFilter: 'blur(10px)', border: '1px solid rgba(255, 255, 255, 0.1)'}}>
-                            <Typography variant="h6" gutterBottom>スコア設定</Typography>
-                            <TextField label="フィールド名" value={formData.scoreLabel} onChange={(e) => updateFormData({scoreLabel: e.target.value})} fullWidth margin="normal" variant="outlined" multiline rows={2}/>
-                            <TextField label="値" value={formData.scoreValue} onChange={(e) => updateFormData({scoreValue: e.target.value})} fullWidth margin="normal" variant="outlined"/>
-                        </Paper>
-                    )}
+                    {formData.activeTab === 'score' && <ScoreDisplayPanel/>}
 
                     {formData.activeTab === 'burndown' && (
                         <Paper elevation={12} sx={{p: 3, bgcolor: 'background.paper', backdropFilter: 'blur(10px)', border: '1px solid rgba(255, 255, 255, 0.1)'}}>

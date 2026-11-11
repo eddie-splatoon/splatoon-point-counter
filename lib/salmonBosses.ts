@@ -46,5 +46,5 @@ export type WaterLevel = typeof WATER_LEVELS[number];
 export const isWaterLevel = (value: unknown): value is WaterLevel =>
     typeof value === 'string' && (WATER_LEVELS as readonly string[]).includes(value);
 
-// EX-WAVE は WAVE 4 として保存する
-export const EX_WAVE = 4;
+// EX-WAVE は WAVE 6 として保存する（バイトチームコンテストの WAVE 4・5 と重ならないように）
+export const EX_WAVE = 6;

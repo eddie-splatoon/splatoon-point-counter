@@ -2,9 +2,25 @@
 // DB（node:sqlite）に依存する lib/salmon.ts とは分けている
 
 import {WaterLevel} from './salmonBosses';
+import {SalmonScheduleKind} from './salmonSchedule';
 
-// サーモンラン1回あたりの WAVE 数（クリア時の到達 WAVE）
+// サーモンラン1回あたりの WAVE 数（クリア時の到達 WAVE）。バイトチームコンテストだけは TEAM_CONTEST_MAX_WAVE
 export const MAX_WAVE = 3;
+export const TEAM_CONTEST_MAX_WAVE = 5;
+
+// バイトの種類（いつものバイト / ビッグラン / バイトチームコンテスト）。スケジュールの種類と同じ値
+export type SalmonJobKind = SalmonScheduleKind;
+export const SALMON_JOB_KINDS: readonly SalmonJobKind[] = ['regular', 'bigRun', 'teamContest'];
+export const SALMON_JOB_KIND_LABELS: Record<SalmonJobKind, string> = {
+    regular: 'いつものバイト',
+    bigRun: 'ビッグラン',
+    teamContest: 'バイトチームコンテスト',
+};
+export const isSalmonJobKind = (value: unknown): value is SalmonJobKind =>
+    typeof value === 'string' && (SALMON_JOB_KINDS as readonly string[]).includes(value);
+
+/** クリアしたときの WAVE 数。種類がわからない（手入力の以前の記録など）なら通常の 3 */
+export const maxWaveFor = (kind: SalmonJobKind | null): number => (kind === 'teamContest' ? TEAM_CONTEST_MAX_WAVE : MAX_WAVE);
 // 1回のバイトの金イクラ・オオモノ・デスの上限（入力ミスや異常値で合計が壊れないように）
 export const MAX_COUNT = 9999;
 export const MAX_STAGE_LENGTH = 50;
@@ -27,6 +43,7 @@ export interface SalmonJob {
     waveReached: number;
     stage: string;
     weapons: string[]; // 支給されたブキの key（lib/salmonWeapons.ts）。WAVE ごとに変わるので最大 MAX_JOB_WEAPONS 個
+    jobKind: SalmonJobKind | null; // 以前の記録・種類を読めなかったバイトは null
 }
 
 export interface SalmonTotals {
@@ -76,7 +93,7 @@ export const MAX_PLAYER_NAME_LENGTH = 30;
 export const MAX_PLAYERS = 4;
 
 export interface SalmonWaveDetail {
-    wave: number; // 1〜3。EX-WAVE は EX_WAVE（4）
+    wave: number; // 1〜5（バイトチームコンテストは 5 まで）。EX-WAVE は EX_WAVE（6）
     delivered: number | null; // 金イクラの納品数
     quota: number | null; // ノルマ（EX-WAVE には無い）
     waterLevel: WaterLevel | null;
@@ -159,7 +176,7 @@ export interface SalmonSessionReview {
     scales: {bronze: number; silver: number; gold: number};
     firstGrade: SalmonGrade | null; // セッションの最初と最後の評価
     lastGrade: SalmonGrade | null;
-    waveFailures: number[]; // WAVE 1〜3 で失敗した数（[W1, W2, W3]）
+    waveFailures: number[]; // WAVE ごとに失敗した数（[W1, W2, W3]。バイトチームコンテストがあれば W5 まで）
     kings: {appeared: number; defeated: number}; // オカシラ（EX-WAVE）
     bosses: BossCount[]; // 出現したオオモノすべて（自分の討伐数の多い順）
     bestJobId: number | null; // 金イクラがいちばん多いバイト

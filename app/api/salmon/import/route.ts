@@ -1,6 +1,7 @@
 import {NextResponse} from 'next/server';
 
 import {getRecordedJobs, listImports, listPendingImports, parseImportResult, requestImport, updateImport} from '../../../../lib/salmonImports';
+import {updateScoreDisplayFromImport} from '../../../../lib/scoreDisplay';
 
 /**
  * 取り込みの依頼の一覧（新しい順）。取り込みスクリプトは次を使う
@@ -32,7 +33,10 @@ export async function POST(request: Request) {
     return NextResponse.json({import: requestImport()});
 }
 
-/** 取り込みの開始（processing）・結果を書き込む（取り込みスクリプトから）。succeeded なら記録していないバイトを古い順に記録する */
+/**
+ * 取り込みの開始（processing）・結果を書き込む（取り込みスクリプトから）。succeeded なら記録していないバイトを古い順に記録し、
+ * 最新のバイトに合わせてスコア表示（バイト評価・ハイスコア）を書き換える
+ */
 export async function PATCH(request: Request) {
     const json = await readJson(request);
     if (json instanceof NextResponse) return json;
@@ -41,5 +45,13 @@ export async function PATCH(request: Request) {
     const result = updateImport(parsed.id, parsed.result);
     if (result === 'notFound') return NextResponse.json({message: 'Import request in that state not found.'}, {status: 404});
     if (result === 'duplicate') return NextResponse.json({message: 'All jobs have already been recorded.'}, {status: 409});
+    if (parsed.result.status === 'succeeded') {
+        // スコア表示の更新は記録のおまけなので、失敗しても取り込みは成功として返す
+        try {
+            await updateScoreDisplayFromImport(parsed.result.jobs);
+        } catch (error) {
+            console.error('Failed to update the score display from the imported job:', error);
+        }
+    }
     return NextResponse.json({import: result});
 }

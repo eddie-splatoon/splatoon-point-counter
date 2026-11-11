@@ -12,7 +12,6 @@ import {
     MAX_PLAYER_NAME_LENGTH,
     MAX_PLAYERS,
     MAX_STAGE_LENGTH,
-    MAX_WAVE,
     NewSalmonJob,
     SalmonJob,
     SalmonJobDetails,
@@ -22,6 +21,9 @@ import {
     SalmonSummary,
     SalmonTotals,
     SalmonWaveDetail,
+    TEAM_CONTEST_MAX_WAVE,
+    isSalmonJobKind,
+    maxWaveFor,
 } from './salmonTypes';
 import {MAX_JOB_WEAPONS, isSalmonSpecialKey, isSalmonWeaponKey} from './salmonWeapons';
 
@@ -44,6 +46,7 @@ interface JobRow {
     wave_reached: number;
     stage: string;
     weapons: string;
+    job_kind: string | null;
 }
 
 const toSession = (row: SessionRow): SalmonSession => ({id: row.id, startedAt: row.started_at, title: row.title});
@@ -59,6 +62,7 @@ const toJob = (row: JobRow): SalmonJob => ({
     waveReached: row.wave_reached,
     stage: row.stage,
     weapons: parseStoredWeapons(row.weapons),
+    jobKind: isSalmonJobKind(row.job_kind) ? row.job_kind : null,
 });
 
 /** 保存済みのブキ。壊れた JSON や、定義から消えたブキは捨てる */
@@ -127,11 +131,11 @@ export function addJob(job: NewSalmonJob, now = Date.now(), playedAt: string | n
     try {
         const result = db.prepare(`
             INSERT INTO salmon_jobs (
-                session_id, created_at, golden_eggs, boss_kills, deaths, cleared, wave_reached, stage, weapons, played_at,
+                session_id, created_at, golden_eggs, boss_kills, deaths, cleared, wave_reached, stage, weapons, played_at, job_kind,
                 hazard_level, grade_name, grade_point, job_point, job_score, job_rate_x100, clear_bonus,
                 team_golden_eggs, team_power_eggs, scale_bronze, scale_silver, scale_gold, king_name, king_defeated)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`).run(
-            session.id, now, job.goldenEggs, job.bossKills, job.deaths, job.cleared ? 1 : 0, job.waveReached, job.stage, JSON.stringify(job.weapons), playedAt,
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`).run(
+            session.id, now, job.goldenEggs, job.bossKills, job.deaths, job.cleared ? 1 : 0, job.waveReached, job.stage, JSON.stringify(job.weapons), playedAt, job.jobKind,
             details?.hazardLevel ?? null, details?.gradeName ?? null, details?.gradePoint ?? null, details?.jobPoint ?? null,
             details?.jobScore ?? null, details?.jobRate == null ? null : Math.round(details.jobRate * 100), details?.clearBonus ?? null,
             details?.teamGoldenEggs ?? null, details?.teamPowerEggs ?? null, details?.scaleBronze ?? null, details?.scaleSilver ?? null,
@@ -221,22 +225,25 @@ export const parseId = (value: string | null): number | null => {
 
 /** POST の本文を検証して記録できる形にする。不正ならエラーメッセージを返す */
 export function parseJob(body: unknown): NewSalmonJob | string {
-    const {goldenEggs, bossKills, deaths, cleared, waveReached, stage, weapons = []} = (body ?? {}) as Record<string, unknown>;
+    const {goldenEggs, bossKills, deaths, cleared, waveReached, stage, weapons = [], jobKind = null} = (body ?? {}) as Record<string, unknown>;
     if (!isCount(goldenEggs) || !isCount(bossKills) || !isCount(deaths)) {
         return `goldenEggs, bossKills and deaths must be integers between 0 and ${MAX_COUNT}.`;
     }
     if (typeof cleared !== 'boolean') return 'cleared must be a boolean.';
+    // jobKind は後から追加した項目なので省略可（種類がわからない記録は通常の WAVE 数で検証する）
+    if (jobKind !== null && !isSalmonJobKind(jobKind)) return 'jobKind must be null or one of regular, bigRun, teamContest.';
+    const maxWave = maxWaveFor(jobKind);
     // クリア時は最終 WAVE まで到達しているので省略可。失敗時はどの WAVE で失敗したかが必須
-    const wave = cleared && waveReached === undefined ? MAX_WAVE : waveReached;
-    if (typeof wave !== 'number' || !Number.isInteger(wave) || wave < 1 || wave > MAX_WAVE || (cleared && wave !== MAX_WAVE)) {
-        return `waveReached must be 1-${MAX_WAVE} (${MAX_WAVE} when cleared).`;
+    const wave = cleared && waveReached === undefined ? maxWave : waveReached;
+    if (typeof wave !== 'number' || !Number.isInteger(wave) || wave < 1 || wave > maxWave || (cleared && wave !== maxWave)) {
+        return `waveReached must be 1-${maxWave} (${maxWave} when cleared).`;
     }
     if (stage !== undefined && typeof stage !== 'string') return 'stage must be a string.';
     // weapons は後から追加した項目なので省略可（ブキを記録しない）。同じブキが2回支給されることもあるので重複は許す
     if (!Array.isArray(weapons) || weapons.length > MAX_JOB_WEAPONS || !weapons.every(isSalmonWeaponKey)) {
         return `weapons must be an array of up to ${MAX_JOB_WEAPONS} known weapon keys.`;
     }
-    return {goldenEggs, bossKills, deaths, cleared, waveReached: wave, stage: (stage ?? '').trim().slice(0, MAX_STAGE_LENGTH), weapons};
+    return {goldenEggs, bossKills, deaths, cleared, waveReached: wave, stage: (stage ?? '').trim().slice(0, MAX_STAGE_LENGTH), weapons, jobKind};
 }
 
 // ---- バイトの詳細（イカリング3から取り込んだとき）の検証 ----
@@ -254,7 +261,9 @@ const isOptionalText = (value: unknown): boolean => value === undefined || value
 
 function parseWave(value: unknown): SalmonWaveDetail | string {
     const {wave, delivered = null, quota = null, waterLevel = null, event = null, goldenAppearances = null, specialsUsed = null} = (value ?? {}) as Record<string, unknown>;
-    if (typeof wave !== 'number' || !Number.isInteger(wave) || wave < 1 || wave > EX_WAVE) return `waves[].wave must be 1-${EX_WAVE}.`;
+    if (typeof wave !== 'number' || !Number.isInteger(wave) || ((wave < 1 || wave > TEAM_CONTEST_MAX_WAVE) && wave !== EX_WAVE)) {
+        return `waves[].wave must be 1-${TEAM_CONTEST_MAX_WAVE} or ${EX_WAVE} (EX-WAVE).`;
+    }
     if (![delivered, quota, goldenAppearances, specialsUsed].every(isNullableCount)) {
         return `waves[] counts must be null or integers between 0 and ${MAX_COUNT}.`;
     }
@@ -340,7 +349,7 @@ export function parseJobDetails(body: unknown): SalmonJobDetails | string {
     }
     if (!isOptionalText(gradeName) || !isOptionalText(kingName)) return 'details.gradeName and kingName must be null or strings.';
     if (kingDefeated !== null && typeof kingDefeated !== 'boolean') return 'details.kingDefeated must be null or a boolean.';
-    const waves = parseList(record.waves, 'details.waves', EX_WAVE, parseWave, (w) => w.wave);
+    const waves = parseList(record.waves, 'details.waves', TEAM_CONTEST_MAX_WAVE, parseWave, (w) => w.wave);
     if (typeof waves === 'string') return waves;
     const players = parseList(record.players, 'details.players', MAX_PLAYERS, parsePlayer, (p) => p.position);
     if (typeof players === 'string') return players;

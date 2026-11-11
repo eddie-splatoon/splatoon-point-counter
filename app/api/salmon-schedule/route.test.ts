@@ -1,7 +1,9 @@
 // @vitest-environment node
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { CACHE_TTL_MS, GET, MAX_RESPONSE_BYTES, RETRY_AFTER_FAILURE_MS, __TEST_ONLY_resetSalmonScheduleCache } from './route';
+import { CACHE_TTL_MS, MAX_RESPONSE_BYTES, RETRY_AFTER_FAILURE_MS, __TEST_ONLY_resetSalmonScheduleCache } from '../../../lib/salmonScheduleFetch';
+
+import { GET } from './route';
 
 const weapons = [1, 2, 3, 4].map((i) => ({ name: `ブキ${i}`, image: `https://example.com/w${i}.png` }));
 const result = (name: string, isBigRun = false) => ({

@@ -20,7 +20,7 @@ import {
   SALMON_IMPORT_TIMED_OUT_ERROR,
 } from './salmonImportTypes';
 
-const job = (goldenEggs = 85) => ({ goldenEggs, bossKills: 12, deaths: 2, cleared: true, waveReached: 3, stage: 'シェケナダム', weapons: [] });
+const job = (goldenEggs = 85) => ({ goldenEggs, bossKills: 12, deaths: 2, cleared: true, waveReached: 3, stage: 'シェケナダム', weapons: [], jobKind: null });
 const succeeded = (...playedAts: string[]): SalmonImportResult => ({
   status: 'succeeded',
   jobs: playedAts.map((playedAt, i) => ({ job: job(80 + i), playedAt, details: null })),
