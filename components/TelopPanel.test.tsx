@@ -85,12 +85,12 @@ describe('TelopPanel', () => {
     fireEvent.change(screen.getByLabelText('新しいプリセット'), { target: { value: 'カンスト!' } });
     await act(async () => fireEvent.click(screen.getByRole('button', { name: '追加' })));
 
-    expect(lastPut()).toEqual({ presets: [...getDefaultTelopSettings().presets, { id: 5, text: 'カンスト!', speak: false, followFont: true }] });
+    expect(lastPut()).toEqual({ presets: [...getDefaultTelopSettings().presets, { id: 5, text: 'カンスト!', speak: false, followFont: true, chat: false }] });
     expect(editor().getByText('カンスト!')).toBeInTheDocument();
   });
 
   it('cannot add more than the maximum number of presets', async () => {
-    await renderLoaded(Array.from({ length: MAX_TELOP_PRESETS }, (_, i) => ({ id: i + 1, text: `p${i + 1}`, speak: false, followFont: true })));
+    await renderLoaded(Array.from({ length: MAX_TELOP_PRESETS }, (_, i) => ({ id: i + 1, text: `p${i + 1}`, speak: false, followFont: true, chat: false })));
 
     fireEvent.change(screen.getByLabelText('新しいプリセット'), { target: { value: 'もう1つ' } });
 
@@ -106,6 +106,9 @@ describe('TelopPanel', () => {
 
     await act(async () => fireEvent.click(screen.getByLabelText('「カタパッド残った…」を共通設定のフォントで表示')));
     expect(lastPut().presets[1]).toEqual({ ...catapad, speak: true, followFont: false });
+
+    await act(async () => fireEvent.click(screen.getByLabelText('「カタパッド残った…」を Twitch のチャットにも書き込む')));
+    expect(lastPut().presets[1]).toEqual({ ...catapad, speak: true, followFont: false, chat: true });
 
     await act(async () => fireEvent.click(screen.getByRole('button', { name: '「カタパッド残った…」を上へ' })));
     expect(lastPut().presets.slice(0, 2).map((p) => p.id)).toEqual([catapad.id, nice.id]);

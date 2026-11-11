@@ -107,7 +107,7 @@ const TelopPanel: React.FC<TelopPanelProps> = ({onPresetsChange}) => {
     const handleAddPreset = () => {
         if (!canAddPreset) return;
         const id = Math.max(0, ...presets.map((p) => p.id)) + 1;
-        void savePresets([...presets, {id, text: normalizedNewPreset, speak: false, followFont: true}]);
+        void savePresets([...presets, {id, text: normalizedNewPreset, speak: false, followFont: true, chat: false}]);
         setNewPreset('');
     };
 
@@ -170,6 +170,16 @@ const TelopPanel: React.FC<TelopPanelProps> = ({onPresetsChange}) => {
                                 }
                             />
                             <FormControlLabel
+                                label="コメント"
+                                control={
+                                    <Checkbox
+                                        checked={preset.chat}
+                                        onChange={(e) => void savePresets(presets.map((p) => p.id === preset.id ? {...p, chat: e.target.checked} : p))}
+                                        slotProps={{input: {'aria-label': `「${preset.text}」を Twitch のチャットにも書き込む`}}}
+                                    />
+                                }
+                            />
+                            <FormControlLabel
                                 label="共通フォント"
                                 control={
                                     <Checkbox
@@ -213,7 +223,7 @@ const TelopPanel: React.FC<TelopPanelProps> = ({onPresetsChange}) => {
                     <Button variant="contained" onClick={handleAddPreset} disabled={!canAddPreset} sx={{minWidth: '100px'}}>追加</Button>
                 </Box>
                 <Typography variant="caption" sx={{display: 'block', mt: 1, color: 'text.secondary'}}>
-                    最大 {MAX_TELOP_PRESETS} 個。上から順に 1〜9, 0 のキーが割り当てられます。「共通フォント」を外すと、共通設定のフォントではなく既定のフォントで表示します（そのフォントに無い文字が化けるとき用）。「読み上げ」にチェックを入れたものは、下の読み上げ設定が有効なら合成音声でも読み上げます。変更はすぐに保存されます。
+                    最大 {MAX_TELOP_PRESETS} 個。上から順に 1〜9, 0 のキーが割り当てられます。「共通フォント」を外すと、共通設定のフォントではなく既定のフォントで表示します（そのフォントに無い文字が化けるとき用）。「読み上げ」にチェックを入れたものは、下の読み上げ設定が有効なら合成音声でも読み上げます。「コメント」にチェックを入れたものは、Twitch 連携スクリプト（pnpm twitch）の起動中なら Twitch のチャットにも書き込みます。そのときの読み上げはコメントの読み上げに任せ、テロップ側では読みません（書き込めなかったときだけテロップ側で読みます）。変更はすぐに保存されます。
                 </Typography>
             </Paper>
         </>

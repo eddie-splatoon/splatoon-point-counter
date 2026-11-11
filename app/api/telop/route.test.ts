@@ -6,9 +6,9 @@ import { __TEST_ONLY_setDb, openDb, setAppState } from '../../../lib/db';
 import { VOICE_STATE_KEY, __TEST_ONLY_resetSpeechQueue, listSpeech } from '../../../lib/speech';
 import { getDefaultTelopSettings } from '../../../lib/telopTypes';
 
-import { GET, POST, PUT, __TEST_ONLY_resetTelop } from './route';
+import { CHAT_PICKUP_TTL_MS, CHAT_RESULT_TTL_MS, GET, PATCH, POST, PUT, __TEST_ONLY_resetTelop } from './route';
 
-const request = (method: 'POST' | 'PUT', body: unknown, contentType = 'application/json') =>
+const request = (method: 'POST' | 'PUT' | 'PATCH', body: unknown, contentType = 'application/json') =>
   new NextRequest('http://localhost/api/telop', {
     method,
     headers: { 'Content-Type': contentType },
@@ -70,7 +70,7 @@ describe('Telop API', () => {
   });
 
   it('saves presets and uses them for showing', async () => {
-    const presets = [{ id: 7, text: 'カンスト!', speak: true, followFont: false }];
+    const presets = [{ id: 7, text: 'カンスト!', speak: true, followFont: false, chat: false }];
     const response = await PUT(request('PUT', { presets }));
 
     expect(response.status).toBe(200);
@@ -130,6 +130,95 @@ describe('Telop API', () => {
 
       expect(response.status).toBe(200);
       expect(listSpeech()).toEqual([]);
+    });
+  });
+
+  describe('posting to Twitch chat', () => {
+    const chatGet = async () => (await (await GET(new NextRequest('http://localhost/api/telop?view=chat'))).json()).chatPosts;
+    const setPresets = (presets: unknown[]) => PUT(request('PUT', { presets }));
+
+    beforeEach(async () => {
+      setAppState(VOICE_STATE_KEY, { enabled: true, speakerId: 3, speakerName: 'ずんだもん', speedScale: 1, volumeScale: 1 });
+      await setPresets([
+        { id: 1, text: 'ナイス!!', speak: true, followFont: true, chat: true },
+        { id: 2, text: 'おしい', speak: false, followFont: true, chat: true },
+        { id: 3, text: 'ドンマイ', speak: true, followFont: true, chat: false },
+      ]);
+    });
+
+    it('queues a chat post instead of reading the telop aloud', async () => {
+      const data = await (await POST(request('POST', { presetId: 1 }))).json();
+
+      expect(data.current.text).toBe('ナイス!!');
+      expect(await chatGet()).toEqual([{ id: 1, text: 'ナイス!!', speak: true, picked: false, createdAt: NOW }]);
+      expect(listSpeech()).toEqual([]);
+    });
+
+    it('does not queue presets without chat', async () => {
+      await POST(request('POST', { presetId: 3 }));
+
+      expect(await chatGet()).toEqual([]);
+      expect(listSpeech().map((item) => item.text)).toEqual(['ドンマイ']);
+    });
+
+    it('does not expose chat posts in the normal response', async () => {
+      await POST(request('POST', { presetId: 1 }));
+      expect(await (await GET()).json()).not.toHaveProperty('chatPosts');
+    });
+
+    it('removes a sent post without reading it aloud', async () => {
+      await POST(request('POST', { presetId: 1 }));
+      expect((await PATCH(request('PATCH', { chatId: 1, status: 'picked' }))).status).toBe(200);
+      expect((await PATCH(request('PATCH', { chatId: 1, status: 'sent' }))).status).toBe(200);
+
+      expect(await chatGet()).toEqual([]);
+      expect(listSpeech()).toEqual([]);
+    });
+
+    it('reads a failed post aloud only when the preset reads aloud', async () => {
+      await POST(request('POST', { presetId: 1 }));
+      await POST(request('POST', { presetId: 2 }));
+      await PATCH(request('PATCH', { chatId: 1, status: 'failed' }));
+      await PATCH(request('PATCH', { chatId: 2, status: 'failed' }));
+
+      expect(await chatGet()).toEqual([]);
+      expect(listSpeech().map((item) => item.text)).toEqual(['ナイス!!']);
+    });
+
+    it('does not read the post aloud when the telop was shown with speak: false', async () => {
+      await POST(request('POST', { presetId: 1, speak: false }));
+      await PATCH(request('PATCH', { chatId: 1, status: 'failed' }));
+
+      expect(listSpeech()).toEqual([]);
+    });
+
+    it('reads aloud a post that was not picked up in time', async () => {
+      await POST(request('POST', { presetId: 1 }));
+      vi.spyOn(Date, 'now').mockReturnValue(NOW + CHAT_PICKUP_TTL_MS);
+
+      expect(await chatGet()).toEqual([]);
+      expect(listSpeech().map((item) => item.text)).toEqual(['ナイス!!']);
+      expect((await PATCH(request('PATCH', { chatId: 1, status: 'picked' }))).status).toBe(404);
+    });
+
+    it('keeps a picked post until the result arrives, then drops it silently', async () => {
+      await POST(request('POST', { presetId: 1 }));
+      await PATCH(request('PATCH', { chatId: 1, status: 'picked' }));
+      vi.spyOn(Date, 'now').mockReturnValue(NOW + CHAT_PICKUP_TTL_MS);
+      expect(await chatGet()).toMatchObject([{ id: 1, picked: true }]);
+
+      vi.spyOn(Date, 'now').mockReturnValue(NOW + CHAT_RESULT_TTL_MS);
+      expect(await chatGet()).toEqual([]);
+      expect(listSpeech()).toEqual([]);
+    });
+
+    it.each([[{}], [{ chatId: '1', status: 'sent' }], [{ chatId: 1, status: 'done' }]])('rejects %j', async (body) => {
+      expect((await PATCH(request('PATCH', body))).status).toBe(400);
+    });
+
+    it('returns 404 for an unknown post and 415 for non-JSON', async () => {
+      expect((await PATCH(request('PATCH', { chatId: 9, status: 'sent' }))).status).toBe(404);
+      expect((await PATCH(request('PATCH', '{"chatId":1,"status":"sent"}', 'text/plain'))).status).toBe(415);
     });
   });
 });

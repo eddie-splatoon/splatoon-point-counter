@@ -22,11 +22,17 @@ describe('parseTelopSettings', () => {
   });
 
   it('normalizes preset text', () => {
-    expect(parseTelopSettings({ presets: [{ id: 1, text: ' ナイス! ', speak: true, followFont: false }] })).toEqual({ presets: [{ id: 1, text: 'ナイス!', speak: true, followFont: false }] });
+    expect(parseTelopSettings({ presets: [{ id: 1, text: ' ナイス! ', speak: true, followFont: false, chat: true }] })).toEqual({ presets: [{ id: 1, text: 'ナイス!', speak: true, followFont: false, chat: true }] });
   });
 
-  it('follows the common font for presets saved before followFont existed', () => {
-    expect(parseTelopSettings({ presets: [{ id: 1, text: 'ナイス!', speak: true }] })).toEqual({ presets: [{ id: 1, text: 'ナイス!', speak: true, followFont: true }] });
+  it('follows the common font and does not post to chat for presets saved before followFont and chat existed', () => {
+    expect(parseTelopSettings({ presets: [{ id: 1, text: 'ナイス!', speak: true }] })).toEqual({ presets: [{ id: 1, text: 'ナイス!', speak: true, followFont: true, chat: false }] });
+  });
+
+  it('accepts up to 30 presets', () => {
+    expect(MAX_TELOP_PRESETS).toBe(30);
+    const presets = Array.from({ length: MAX_TELOP_PRESETS }, (_, i) => ({ id: i + 1, text: `${i}`, speak: false, followFont: true, chat: false }));
+    expect(parseTelopSettings({ presets })).toEqual({ presets });
   });
 
   it('accepts no presets', () => {
@@ -42,6 +48,7 @@ describe('parseTelopSettings', () => {
     ['empty text', { presets: [{ id: 1, text: ' ', speak: false }] }],
     ['a missing speak', { presets: [{ id: 1, text: 'a' }] }],
     ['a non-boolean followFont', { presets: [{ id: 1, text: 'a', speak: false, followFont: 'yes' }] }],
+    ['a non-boolean chat', { presets: [{ id: 1, text: 'a', speak: false, chat: 'yes' }] }],
   ])('rejects %s', (_, body) => {
     expect(typeof parseTelopSettings(body)).toBe('string');
   });

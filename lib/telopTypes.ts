@@ -1,6 +1,6 @@
 // 実況テロップの型と定数。クライアントからも使うため DB に依存させない
 
-export const MAX_TELOP_PRESETS = 12;
+export const MAX_TELOP_PRESETS = 30;
 export const MAX_TELOP_LENGTH = 30;
 // オーバーレイに表示しておく時間（ミリ秒）
 export const TELOP_DISPLAY_DURATION = 4000;
@@ -12,6 +12,7 @@ export interface TelopPreset {
     text: string;
     speak: boolean; // 合成音声（VOICEVOX）でも読み上げるか
     followFont: boolean; // 共通設定のフォントで表示するか。そのフォントに無い文字が化けるときは外して既定のフォントで出す
+    chat: boolean; // Twitch のチャットにも配信者のコメントとして書き込むか（読み上げはコメント側で行う）
 }
 
 export interface TelopSettings {
@@ -32,12 +33,24 @@ export interface TelopData {
     serverTime: number; // 応答時のサーバー時刻。オーバーレイは経過時間をこれで測る（ブラウザとサーバーの時計がずれていても表示時間を守るため）
 }
 
+/** Twitch のチャットへの書き込み待ち。Twitch 連携スクリプトが拾って書き込む */
+export interface TelopChatPost {
+    id: number;
+    text: string;
+    speak: boolean; // 書き込めなかったときにテロップ側で読み上げるか（本来テロップで読み上げる設定だったか）
+    picked: boolean; // Twitch 連携スクリプトが拾ったか
+    createdAt: number;
+}
+
+export const TELOP_CHAT_STATUSES = ['picked', 'sent', 'failed'] as const;
+export type TelopChatStatus = typeof TELOP_CHAT_STATUSES[number];
+
 export const getDefaultTelopSettings = (): TelopSettings => ({
     presets: [
-        {id: 1, text: 'ナイス!', speak: true, followFont: true},
-        {id: 2, text: 'カタパッド残った…', speak: false, followFont: true},
-        {id: 3, text: '満潮きた', speak: false, followFont: true},
-        {id: 4, text: 'ヘルプ感謝', speak: true, followFont: true},
+        {id: 1, text: 'ナイス!', speak: true, followFont: true, chat: false},
+        {id: 2, text: 'カタパッド残った…', speak: false, followFont: true, chat: false},
+        {id: 3, text: '満潮きた', speak: false, followFont: true, chat: false},
+        {id: 4, text: 'ヘルプ感謝', speak: true, followFont: true, chat: false},
     ],
 });
 
@@ -50,17 +63,18 @@ export function normalizeTelopText(text: string): string | null {
 
 /** 設定を検証する。不正ならエラーメッセージを返す */
 export function parseTelopSettings(body: unknown): TelopSettings | string {
-    const invalid = `presets must be an array of up to ${MAX_TELOP_PRESETS} {id, text, speak, followFont} with unique ids and text of 1-${MAX_TELOP_LENGTH} characters.`;
+    const invalid = `presets must be an array of up to ${MAX_TELOP_PRESETS} {id, text, speak, followFont, chat} with unique ids and text of 1-${MAX_TELOP_LENGTH} characters.`;
     const {presets} = (body ?? {}) as Record<string, unknown>;
     if (!Array.isArray(presets) || presets.length > MAX_TELOP_PRESETS) return invalid;
     const parsed: TelopPreset[] = [];
     for (const item of presets) {
         // followFont は後から追加した項目なので、保存済みのプリセットに無ければ共通設定のフォントに追従する
-        const {id, text, speak, followFont = true} = (item ?? {}) as Record<string, unknown>;
-        if (typeof id !== 'number' || !Number.isInteger(id) || id < 1 || typeof speak !== 'boolean' || typeof followFont !== 'boolean' || typeof text !== 'string') return invalid;
+        // chat も後から追加した項目なので、無ければ書き込まない
+        const {id, text, speak, followFont = true, chat = false} = (item ?? {}) as Record<string, unknown>;
+        if (typeof id !== 'number' || !Number.isInteger(id) || id < 1 || typeof speak !== 'boolean' || typeof followFont !== 'boolean' || typeof chat !== 'boolean' || typeof text !== 'string') return invalid;
         const normalized = normalizeTelopText(text);
         if (normalized === null || parsed.some((p) => p.id === id)) return invalid;
-        parsed.push({id, text: normalized, speak, followFont});
+        parsed.push({id, text: normalized, speak, followFont, chat});
     }
     return {presets: parsed};
 }

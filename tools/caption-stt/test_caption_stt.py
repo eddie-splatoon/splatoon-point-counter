@@ -18,6 +18,7 @@ from caption_stt import (
     match_clip,
     match_effect,
     match_telop,
+    split_sentences,
     parse_device,
     save_sample,
     select_segments,
@@ -79,8 +80,22 @@ def test_select_segments_drops_low_confidence():
     assert rejected[0][0] == "信頼度 -1.20"
 
 
+@pytest.mark.parametrize(
+    ("text", "expected"),
+    [
+        ("ナイス。いいね。そのカニは強い。", ["ナイス。", "いいね。", "そのカニは強い。"]),
+        ("ナイス?ありがとう。", ["ナイス?", "ありがとう。"]),
+        ("ナイス!!熱い", ["ナイス!!", "熱い"]),
+        ("ナイス、ナイス。", ["ナイス、ナイス。"]),
+        ("  ", []),
+    ],
+)
+def test_split_sentences(text, expected):
+    assert split_sentences(text) == expected
+
+
 def test_build_prompt_puts_glossary_last():
-    assert build_prompt(["ナイス!", "満潮きた"]) == "ナイス!。満潮きた。" + GLOSSARY
+    assert build_prompt(["ナイス!", "満潮きた"]) == "満潮きた。ナイス!。" + GLOSSARY
     assert build_prompt([]) == GLOSSARY
 
 
@@ -152,13 +167,57 @@ def test_telop_matcher_shows_matched_preset_once_per_cooldown():
     matcher, clock, shown, _ = make_matcher()
     matcher.refresh()
 
-    assert matcher.try_show("ナイス")["id"] == 1
+    assert matcher.try_show("ナイス")[0]["id"] == 1
     clock.now = TELOP_COOLDOWN_SECONDS - 1
-    assert matcher.try_show("ナイス")["id"] == 1  # 字幕には送らないが出し直さない
+    assert matcher.try_show("ナイス")[0]["id"] == 1  # 字幕には送らないが出し直さない
     clock.now = TELOP_COOLDOWN_SECONDS + 1
-    assert matcher.try_show("ナイス")["id"] == 1
+    assert matcher.try_show("ナイス")[0]["id"] == 1
     assert matcher.try_show("こんにちは") is None
     assert shown == [1, 1]
+
+
+def test_telop_matcher_matches_the_whole_utterance_first():
+    matcher, _, shown, _ = make_matcher()
+    matcher.refresh()
+
+    preset, matched, rest = matcher.try_show("ナイス、ナイス。")
+    assert (preset["id"], matched, rest) == (1, "ナイス、ナイス。", "")
+    assert shown == [1]
+
+
+def test_telop_matcher_matches_a_sentence_and_returns_the_rest():
+    matcher, _, shown, _ = make_matcher()
+    matcher.refresh()
+
+    preset, matched, rest = matcher.try_show("そのヘビ、マジで邪魔。よいしょ。ナイス。")
+    assert (preset["id"], matched, rest) == (1, "ナイス。", "そのヘビ、マジで邪魔。よいしょ。")
+    assert shown == [1]
+
+
+def test_telop_matcher_shows_only_the_first_matching_sentence():
+    matcher, _, shown, _ = make_matcher()
+    matcher.refresh()
+
+    preset, matched, rest = matcher.try_show("満潮きた。ナイス。")
+    assert (preset["id"], matched, rest) == (3, "満潮きた。", "ナイス。")
+    assert shown == [3]
+
+
+def test_telop_matcher_leaves_repeated_sentences_of_the_same_telop_out_of_the_caption():
+    matcher, _, shown, _ = make_matcher()
+    matcher.refresh()
+
+    preset, matched, rest = matcher.try_show("ナイス!よいしょ。ナイス!")
+    assert (preset["id"], matched, rest) == (1, "ナイス!", "よいしょ。")
+    assert shown == [1]
+
+
+def test_telop_matcher_does_not_match_a_word_inside_a_long_sentence():
+    matcher, _, shown, _ = make_matcher()
+    matcher.refresh()
+
+    assert matcher.try_show("ナイスって言ってる場合じゃない。よいしょ。") is None
+    assert shown == []
 
 
 def test_telop_matcher_refreshes_presets_periodically():

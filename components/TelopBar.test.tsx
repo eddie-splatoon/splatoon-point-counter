@@ -41,6 +41,13 @@ describe('TelopBar', () => {
     expect(buttons().getByRole('button', { name: '2カタパッド残った…' })).toBeInTheDocument();
   });
 
+  it('shows presets beyond the shortcut keys without a key', async () => {
+    await renderLoaded(Array.from({ length: 11 }, (_, i) => ({ id: i + 1, text: `p${i + 1}`, speak: false, followFont: true, chat: false })));
+
+    expect(buttons().getByRole('button', { name: '0p10' })).toBeInTheDocument();
+    expect(buttons().getByRole('button', { name: 'p11' })).toBeInTheDocument();
+  });
+
   it('shows the preset assigned to a number key', async () => {
     await renderLoaded();
 
@@ -90,7 +97,7 @@ describe('TelopBar', () => {
 
   it('reloads the presets when reloadKey changes', async () => {
     const { rerender } = await renderLoaded();
-    respondWith([{ id: 7, text: 'カンスト!', speak: false, followFont: true }]);
+    respondWith([{ id: 7, text: 'カンスト!', speak: false, followFont: true, chat: false }]);
 
     rerender(<TelopBar reloadKey={1} />);
 

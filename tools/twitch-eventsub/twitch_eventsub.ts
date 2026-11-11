@@ -2,6 +2,7 @@
  * Twitch のフォロワー数とフォロワー目標を EventSub WebSocket で受信し、/api/twitch へ送信する常駐スクリプト。
  * チャットも受信し、初めてコメントした視聴者への挨拶と配信者自身のコメントを /api/speech（読み上げキュー）へ送る。
  * /api/clip に届いたクリップの依頼（声・ボタン）を受けて、クリップを作る。
+ * /api/telop の「コメント」付きのテロップを、配信者のコメントとしてチャットに書き込む。
  *
  *   pnpm twitch    # リポジトリのルートで起動（README.md 参照）
  *
@@ -12,7 +13,7 @@ import { chmod, mkdir, readFile, writeFile } from 'node:fs/promises';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-export const SCOPES = ['moderator:read:followers', 'channel:read:goals', 'user:read:chat', 'clips:edit'];
+export const SCOPES = ['moderator:read:followers', 'channel:read:goals', 'user:read:chat', 'clips:edit', 'user:write:chat'];
 export const EVENTSUB_URL = 'wss://eventsub.wss.twitch.tv/ws';
 const ID_URL = 'https://id.twitch.tv/oauth2';
 const HELIX_URL = 'https://api.twitch.tv/helix';
@@ -21,6 +22,8 @@ const HELIX_URL = 'https://api.twitch.tv/helix';
 const RESYNC_INTERVAL_MS = 60_000;
 // クリップの依頼を確認する間隔（言ってからクリップになるまでの遅れを小さくする）
 const CLIP_POLL_INTERVAL_MS = 1_000;
+// テロップのコメントの書き込み待ちを確認する間隔（アプリは 3 秒拾われなければテロップ側で読み上げる）
+const CHAT_POST_POLL_INTERVAL_MS = 1_000;
 const INITIAL_RECONNECT_DELAY_MS = 1_000;
 const MAX_RECONNECT_DELAY_MS = 60_000;
 // keepalive_timeout_seconds を過ぎてもメッセージが来なければ切断とみなす（ネットワーク遅延分の猶予）
@@ -240,6 +243,17 @@ export class TwitchClient {
     const clip = (await res.json()).data?.[0];
     if (typeof clip?.id !== 'string' || typeof clip?.edit_url !== 'string') throw new Error('クリップの作成結果を読めませんでした');
     return { clipId: clip.id, editUrl: clip.edit_url };
+  }
+
+  /** 配信者としてチャットに書き込む。Twitch に弾かれたとき（AutoMod など）はエラー */
+  async sendChatMessage(message: string): Promise<void> {
+    const res = await this.helix('/chat/messages', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ broadcaster_id: this.userId, sender_id: this.userId, message }),
+    });
+    const result = (await res.json()).data?.[0];
+    if (result?.is_sent !== true) throw new Error(`チャットに書き込めませんでした: ${result?.drop_reason?.message ?? '理由不明'}`);
   }
 
   async subscribeAll(sessionId: string): Promise<void> {
@@ -651,6 +665,68 @@ export function createClipProcessor(options: ClipProcessorOptions): () => Promis
   };
 }
 
+// ---- テロップのコメント ----
+
+interface ChatPostProcessorOptions {
+  telopUrl: string;
+  sendChatMessage: (text: string) => Promise<void>;
+  fetchFn?: FetchFn;
+  log?: (message: string) => void;
+}
+
+/**
+ * /api/telop のチャットへの書き込み待ちを 1 件ずつ書き込み、結果を返す関数を作る。
+ * 拾ったことを先に伝え（picked）、アプリ側で期限切れにして読み上げないようにしてから書き込む。
+ * 拾う前に期限切れになっていたら（404）書き込まない（もうテロップ側で読み上げているので）。
+ * 前回の処理が終わっていなければ何もしない。一度試したものはやり直さない（同じテロップを 2 回書き込まない）
+ */
+export function createChatPostProcessor(options: ChatPostProcessorOptions): () => Promise<void> {
+  const { telopUrl, sendChatMessage, fetchFn = fetch, log = console.log } = options;
+  let running = false;
+  const attempted = new Set<number>();
+
+  const report = async (chatId: number, status: 'picked' | 'sent' | 'failed'): Promise<boolean> => {
+    const res = await fetchFn(telopUrl, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ chatId, status }),
+    });
+    if (res.status === 404) return false;
+    if (!res.ok) throw new Error(`${telopUrl} への結果の送信に失敗しました: ${res.status}`);
+    return true;
+  };
+
+  const processOne = async (chatId: number, text: string) => {
+    attempted.add(chatId);
+    if (!(await report(chatId, 'picked'))) return;
+    try {
+      await sendChatMessage(text);
+    } catch (error) {
+      log(`テロップ「${text}」をチャットに書き込めませんでした: ${(error as Error).message}`);
+      await report(chatId, 'failed');
+      return;
+    }
+    log(`テロップ「${text}」をチャットに書き込みました`);
+    await report(chatId, 'sent');
+  };
+
+  return async () => {
+    if (running) return;
+    running = true;
+    try {
+      const res = await fetchFn(`${telopUrl}?view=chat`);
+      if (!res.ok) throw new Error(`${telopUrl} の取得に失敗しました: ${res.status}`);
+      const { chatPosts } = (await res.json()) as { chatPosts: { id: number; text: string; picked: boolean }[] };
+      for (const { id, text, picked } of chatPosts) {
+        // picked は前回の自分が拾ったもの（attempted に入っている）か、別に起動したスクリプトが拾ったもの
+        if (!picked && !attempted.has(id)) await processOne(id, text);
+      }
+    } finally {
+      running = false;
+    }
+  };
+}
+
 /** テロップを出して読み上げる（読み上げが無効ならテロップだけ） */
 export async function publishTelop(telopUrl: string, text: string, fetchFn: FetchFn = fetch): Promise<void> {
   const res = await fetchFn(telopUrl, {
@@ -731,6 +807,24 @@ async function main(): Promise<void> {
       },
     );
   }, CLIP_POLL_INTERVAL_MS);
+
+  const processChatPosts = createChatPostProcessor({
+    telopUrl,
+    sendChatMessage: (text) => client.sendChatMessage(text),
+    log,
+  });
+  let chatPostWarned = false;
+  setInterval(() => {
+    processChatPosts().then(
+      () => {
+        chatPostWarned = false;
+      },
+      (error) => {
+        if (!chatPostWarned) log(`警告: テロップのコメントを処理できませんでした: ${(error as Error).message}`);
+        chatPostWarned = true;
+      },
+    );
+  }, CHAT_POST_POLL_INTERVAL_MS);
 
   const chatContext: ChatSpeechContext = {
     broadcasterId: client.userId,
