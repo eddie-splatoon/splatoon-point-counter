@@ -1,8 +1,8 @@
-import { render, screen, waitFor } from '@testing-library/react';
+import { act, render, screen, waitFor } from '@testing-library/react';
 import axios from 'axios';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { TELOP_DISPLAY_DURATION, TelopData } from '../../lib/telopTypes';
+import { FOLLOW_TELOP_DISPLAY_DURATION, TELOP_DISPLAY_DURATION, TelopData, TelopEffect } from '../../lib/telopTypes';
 
 import TelopOverlayPage from './page';
 
@@ -12,9 +12,9 @@ const mockedAxios = vi.mocked(axios);
 const NOW = 1_700_000_000_000;
 
 // serverTime はサーバーの時計。ブラウザの時計（Date.now = NOW）とずらして、経過時間をサーバーの時計で測ることを確かめる
-const makeData = (current: { text: string; ageMs: number; followFont?: boolean } | null, serverTime = NOW): TelopData => ({
+const makeData = (current: { text: string; ageMs: number; followFont?: boolean; effect?: TelopEffect } | null, serverTime = NOW): TelopData => ({
   presets: [],
-  current: current && { id: 1, text: current.text, followFont: current.followFont ?? true, timestamp: serverTime - current.ageMs },
+  current: current && { id: 1, text: current.text, followFont: current.followFont ?? true, effect: current.effect ?? null, timestamp: serverTime - current.ageMs },
   revision: current ? 1 : 0,
   serverTime,
 });
@@ -82,5 +82,69 @@ describe('TelopOverlayPage', () => {
 
     await waitFor(() => expect(mockedAxios.get).toHaveBeenCalled());
     expect(screen.queryByTestId('telop')).not.toBeInTheDocument();
+  });
+
+  // setInterval を止めているので、ポーリングの 2 回目以降は登録された関数を直接呼ぶ
+  const pollTelop = async () => {
+    const calls = vi.mocked(setInterval).mock.calls;
+    const poll = calls.find(([, ms]) => ms === 500)?.[0] as () => Promise<void>;
+    await act(async () => { await poll(); });
+  };
+
+  it('celebrates a new follow with fireworks that outlast the telop', async () => {
+    mockApis(makeData(null));
+    const { container } = render(<TelopOverlayPage />);
+    await waitFor(() => expect(mockedAxios.get).toHaveBeenCalledWith('/api/telop', expect.anything()));
+
+    mockApis(makeData({ text: 'フォローありがとうございます！🥳', ageMs: 500, effect: 'follow' }));
+    await pollTelop();
+    expect(screen.getByTestId('telop')).toHaveTextContent('フォローありがとうございます！🥳');
+    expect(container.querySelector('.fireworks')).toBeInTheDocument();
+
+    // 別のテロップに置き換わっても花火は続ける
+    mockApis({ ...makeData({ text: 'ナイス!', ageMs: 0 }), current: { id: 2, text: 'ナイス!', followFont: true, effect: null, timestamp: NOW } });
+    await pollTelop();
+    expect(screen.getByText('ナイス!')).toBeInTheDocument();
+    expect(container.querySelector('.fireworks')).toBeInTheDocument();
+  });
+
+  it('does not celebrate a follow that was already shown when the overlay opened', async () => {
+    mockApis(makeData({ text: 'フォローありがとうございます！🥳', ageMs: 500, effect: 'follow' }));
+    const { container } = render(<TelopOverlayPage />);
+
+    expect(await screen.findByTestId('telop')).toBeInTheDocument();
+    await pollTelop();
+    expect(container.querySelector('.fireworks')).not.toBeInTheDocument();
+  });
+
+  it('keeps the follow telop longer than a normal one', async () => {
+    mockApis(makeData({ text: 'フォローありがとうございます！🥳', ageMs: TELOP_DISPLAY_DURATION, effect: 'follow' }));
+    render(<TelopOverlayPage />);
+    expect(await screen.findByTestId('telop')).toBeInTheDocument();
+  });
+
+  it('does not show the follow telop after its display duration', async () => {
+    mockApis(makeData({ text: 'フォローありがとうございます！🥳', ageMs: FOLLOW_TELOP_DISPLAY_DURATION, effect: 'follow' }));
+    render(<TelopOverlayPage />);
+
+    await waitFor(() => expect(mockedAxios.get).toHaveBeenCalled());
+    expect(screen.queryByTestId('telop')).not.toBeInTheDocument();
+  });
+
+  it('does not show fireworks for a normal telop', async () => {
+    mockApis(makeData({ text: 'ナイス!', ageMs: 500 }));
+    const { container } = render(<TelopOverlayPage />);
+
+    await screen.findByTestId('telop');
+    expect(container.querySelector('.fireworks')).not.toBeInTheDocument();
+  });
+
+  it('places the telop at the lower right of the game screen', async () => {
+    mockApis(makeData({ text: 'ナイス!', ageMs: 500 }));
+    render(<TelopOverlayPage />);
+
+    await screen.findByTestId('telop');
+    expect(screen.getByTestId('telop-area')).toHaveClass('items-end', 'justify-end');
+    expect(screen.getByTestId('telop-area')).toHaveStyle({ paddingRight: '520px', paddingBottom: '232px' });
   });
 });

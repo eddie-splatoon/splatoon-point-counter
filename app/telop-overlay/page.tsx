@@ -2,9 +2,11 @@
 
 import axios from 'axios';
 import {AnimatePresence, motion} from 'motion/react';
-import React, {useState, useEffect, useCallback} from 'react';
+import React, {useState, useEffect, useCallback, useRef} from 'react';
 
-import {TELOP_DISPLAY_DURATION, Telop, TelopData} from '../../lib/telopTypes';
+import FireworksEffect from '../../components/FireworksEffect';
+import SparkleEffect from '../../components/SparkleEffect';
+import {Telop, TelopData, telopDisplayDuration} from '../../lib/telopTypes';
 import {StreamData} from '../api/stream-data/route';
 
 // ワンボタンで出すものなので、字幕（1秒）より短い間隔で問い合わせる
@@ -16,12 +18,25 @@ const FALLBACK_FONT = 'sans-serif';
 
 // インク風の帯の色。テロップごとに順に変える
 const INK_COLORS = ['#FF6F00', '#B05CFF', '#00C2FF', '#FF3EA5'];
+// フォローのお礼のテロップの帯。インクの色を全部混ぜて、通常のテロップより目立たせる
+const FOLLOW_BACKGROUND = `linear-gradient(90deg, ${INK_COLORS.join(', ')})`;
+
+// テロップの位置（1920x1080 のオーバーレイでの px）。配信画面のゲーム画面（x 61〜1571 / y 40〜888 付近）の右下に、
+// 右端を揃えて出す。ゲーム画面の右下の角には立ち絵（x 1427〜 / y 618〜 付近）が重なるので、右端はその左に置く
+const TELOP_RIGHT = 520;
+const TELOP_BOTTOM = 232;
+// ゲーム画面の左端からはみ出さない幅
+const TELOP_MAX_WIDTH = 1300;
 
 const TelopOverlayPage: React.FC = () => {
     // 表示中のテロップと、ブラウザの時計で消す時刻
     const [shown, setShown] = useState<{telop: Telop; hideAt: number} | null>(null);
     const [now, setNow] = useState(0);
     const [fontFamily, setFontFamily] = useState('');
+    // 花火とキラキラを出しているフォローのお礼（出した時刻）。花火は 20 秒の演出なので、テロップ（8 秒）が消えても、別のテロップに置き換わっても続ける
+    const [celebration, setCelebration] = useState<number | null>(null);
+    // 最後に見たフォローのお礼（出した時刻）。undefined はまだ一度も取得していない（開いた時点で出ていたものは演出しない）
+    const lastFollowIdRef = useRef<number | null | undefined>(undefined);
 
     const fetchDataInternal = useCallback(async () => {
         try {
@@ -35,7 +50,11 @@ const TelopOverlayPage: React.FC = () => {
             if (res.status === 200) {
                 const {current, serverTime} = res.data;
                 // 経過時間はサーバーの時計どうしで測り、残り時間をブラウザの時計に置き換える（OBS とサーバーの時計がずれていてもよいように）
-                setShown(current ? {telop: current, hideAt: Date.now() + TELOP_DISPLAY_DURATION - (serverTime - current.timestamp)} : null);
+                setShown(current ? {telop: current, hideAt: Date.now() + telopDisplayDuration(current) - (serverTime - current.timestamp)} : null);
+                // ID はサーバーの再起動で振り直されるので、出した時刻で見分ける
+                const followId = current?.effect === 'follow' ? current.timestamp : null;
+                if (lastFollowIdRef.current !== undefined && followId !== null && followId !== lastFollowIdRef.current) setCelebration(followId);
+                if (lastFollowIdRef.current === undefined || followId !== null) lastFollowIdRef.current = followId;
             }
         } catch (error) {
             console.error('Failed to fetch telop data:', error);
@@ -76,27 +95,32 @@ const TelopOverlayPage: React.FC = () => {
 
     // 出してから表示時間内のものだけ表示する（オーバーレイを開き直したときに、古いテロップは出さない）
     const telop = shown && now < shown.hideAt ? shown.telop : null;
+    const isFollow = telop?.effect === 'follow';
 
     return (
         <div
-            className="w-screen h-screen flex flex-col items-center justify-start pt-16 overflow-hidden"
-            style={{backgroundColor: 'transparent'}}
+            data-testid="telop-area"
+            className="relative w-screen h-screen flex flex-col items-end justify-end overflow-hidden"
+            style={{backgroundColor: 'transparent', paddingRight: TELOP_RIGHT, paddingBottom: TELOP_BOTTOM}}
         >
+            {/* フォローのお礼には花火とキラキラを重ねる。お礼ごとに作り直して再生する（花火は 20 秒で自分で消える） */}
+            {celebration !== null && <FireworksEffect key={celebration} trigger/>}
+            <SparkleEffect trigger={celebration}/>
             <AnimatePresence mode="popLayout">
                 {telop && (
                     <motion.div
                         key={telop.id}
                         data-testid="telop"
-                        initial={{opacity: 0, x: -120, skewX: -12}}
-                        animate={{opacity: 1, x: 0, skewX: -8}}
-                        exit={{opacity: 0, x: 120}}
-                        transition={{type: 'spring', stiffness: 400, damping: 28}}
-                        className="px-10 py-3 rounded-2xl shadow-2xl border-4 border-white text-white font-black text-center"
+                        initial={isFollow ? {opacity: 0, scale: 0.2, rotate: -8} : {opacity: 0, x: -120, skewX: -12}}
+                        animate={isFollow ? {opacity: 1, scale: [0.2, 1.25, 0.95, 1], rotate: [-8, 4, -2, 0]} : {opacity: 1, x: 0, skewX: -8}}
+                        exit={isFollow ? {opacity: 0, scale: 1.4} : {opacity: 0, x: 120}}
+                        transition={isFollow ? {duration: 0.8, ease: 'easeOut'} : {type: 'spring', stiffness: 400, damping: 28}}
+                        className="relative z-10 px-10 py-3 rounded-2xl shadow-2xl border-4 border-white text-white font-black text-center"
                         style={{
-                            backgroundColor: INK_COLORS[telop.id % INK_COLORS.length],
+                            background: isFollow ? FOLLOW_BACKGROUND : INK_COLORS[telop.id % INK_COLORS.length],
                             fontFamily: telop.followFont ? fontFamily || FALLBACK_FONT : FALLBACK_FONT,
-                            fontSize: 56,
-                            maxWidth: '90%',
+                            fontSize: isFollow ? 64 : 56,
+                            maxWidth: TELOP_MAX_WIDTH,
                             textShadow: '3px 3px 0 rgba(0, 0, 0, 0.6)',
                         }}
                     >

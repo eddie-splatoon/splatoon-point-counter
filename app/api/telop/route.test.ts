@@ -4,7 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { __TEST_ONLY_setDb, openDb, setAppState } from '../../../lib/db';
 import { VOICE_STATE_KEY, __TEST_ONLY_resetSpeechQueue, listSpeech } from '../../../lib/speech';
-import { getDefaultTelopSettings } from '../../../lib/telopTypes';
+import { FOLLOW_SPEECH_TEXT, FOLLOW_TELOP_COOLDOWN_MS, FOLLOW_TELOP_TEXT, getDefaultTelopSettings } from '../../../lib/telopTypes';
 
 import { CHAT_PICKUP_TTL_MS, CHAT_RESULT_TTL_MS, GET, PATCH, POST, PUT, __TEST_ONLY_resetTelop } from './route';
 
@@ -37,7 +37,7 @@ describe('Telop API', () => {
     const response = await POST(request('POST', { presetId: 3 }));
 
     expect(response.status).toBe(200);
-    expect((await response.json()).current).toEqual({ id: 1, text: '満潮きた', followFont: true, timestamp: NOW });
+    expect((await response.json()).current).toEqual({ id: 1, text: '満潮きた', followFont: true, effect: null, timestamp: NOW });
     expect(await (await GET()).json()).toMatchObject({ current: { id: 1, text: '満潮きた' }, revision: 1 });
   });
 
@@ -45,7 +45,7 @@ describe('Telop API', () => {
     await POST(request('POST', { presetId: 1 }));
     const data = await (await POST(request('POST', { text: '  ありがとう\nございます ' }))).json();
 
-    expect(data.current).toEqual({ id: 2, text: 'ありがとう ございます', followFont: true, timestamp: NOW });
+    expect(data.current).toEqual({ id: 2, text: 'ありがとう ございます', followFont: true, effect: null, timestamp: NOW });
   });
 
   it('shows free text without the common font when followFont is false', async () => {
@@ -130,6 +130,47 @@ describe('Telop API', () => {
 
       expect(response.status).toBe(200);
       expect(listSpeech()).toEqual([]);
+    });
+  });
+
+  describe('thanking for a follow', () => {
+    beforeEach(() => {
+      setAppState(VOICE_STATE_KEY, { enabled: true, speakerId: 3, speakerName: 'ずんだもん', speedScale: 1, volumeScale: 1 });
+    });
+
+    it('shows the follow telop with its effect and reads it aloud without the emoji', async () => {
+      const response = await POST(request('POST', { event: 'follow' }));
+
+      expect(response.status).toBe(200);
+      expect((await response.json()).current).toEqual({ id: 1, text: FOLLOW_TELOP_TEXT, followFont: true, effect: 'follow', timestamp: NOW });
+      expect(listSpeech().map((item) => item.text)).toEqual([FOLLOW_SPEECH_TEXT]);
+    });
+
+    it('shows follows in a row only once within the cooldown', async () => {
+      await POST(request('POST', { event: 'follow' }));
+      vi.mocked(Date.now).mockReturnValue(NOW + FOLLOW_TELOP_COOLDOWN_MS - 1);
+      const response = await POST(request('POST', { event: 'follow' }));
+
+      expect(response.status).toBe(200);
+      expect((await response.json()).revision).toBe(1);
+      expect(listSpeech()).toHaveLength(1);
+
+      vi.mocked(Date.now).mockReturnValue(NOW + FOLLOW_TELOP_COOLDOWN_MS);
+      expect((await (await POST(request('POST', { event: 'follow' }))).json()).revision).toBe(2);
+      expect(listSpeech()).toHaveLength(2);
+    });
+
+    it('does not post the follow telop to Twitch chat', async () => {
+      await POST(request('POST', { event: 'follow' }));
+
+      expect((await (await GET(new NextRequest('http://localhost/api/telop?view=chat'))).json()).chatPosts).toEqual([]);
+    });
+
+    it('rejects an unknown event or an event combined with other fields', async () => {
+      expect((await POST(request('POST', { event: 'raid' }))).status).toBe(400);
+      expect((await POST(request('POST', { event: 'follow', text: 'a' }))).status).toBe(400);
+      expect((await POST(request('POST', { event: 'follow', presetId: 1 }))).status).toBe(400);
+      expect((await (await GET()).json()).current).toBeNull();
     });
   });
 

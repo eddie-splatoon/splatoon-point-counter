@@ -22,6 +22,7 @@ import {
   loadToken,
   parseIgnoredLogins,
   publishSpeech,
+  publishFollowTelop,
   publishTelop,
   speakChatMessage,
   speakableName,
@@ -948,6 +949,23 @@ describe('publishTelop', () => {
   it('throws when the telop cannot be shown', async () => {
     const fetchFn = vi.fn(async () => json({}, 500));
     await expect(publishTelop('http://localhost:3000/api/telop', 'x', fetchFn as unknown as typeof fetch)).rejects.toThrow('500');
+  });
+});
+
+describe('publishFollowTelop', () => {
+  it('asks the app to show the follow telop', async () => {
+    const fetchFn = vi.fn(async () => json({}));
+    await publishFollowTelop('http://localhost:3000/api/telop', fetchFn as unknown as typeof fetch);
+
+    const [url, init] = fetchFn.mock.calls[0] as unknown as [string, RequestInit];
+    expect(url).toBe('http://localhost:3000/api/telop');
+    expect(init.headers).toEqual({ 'Content-Type': 'application/json' });
+    expect(JSON.parse(String(init.body))).toEqual({ event: 'follow' });
+  });
+
+  it('throws when the telop cannot be shown', async () => {
+    const fetchFn = vi.fn(async () => json({}, 500));
+    await expect(publishFollowTelop('http://localhost:3000/api/telop', fetchFn as unknown as typeof fetch)).rejects.toThrow('500');
   });
 });
 
