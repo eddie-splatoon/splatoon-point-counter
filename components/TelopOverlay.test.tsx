@@ -2,9 +2,11 @@ import { render, screen, waitFor } from '@testing-library/react';
 import axios from 'axios';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { TELOP_DISPLAY_DURATION, TelopData } from '../../lib/telopTypes';
+import { TELOP_DISPLAY_DURATION, TelopData } from '../lib/telopTypes';
 
-import TelopOverlayPage from './page';
+import TelopOverlay from './TelopOverlay';
+
+const TelopOverlayPage = () => <TelopOverlay layout="landscape" />;
 
 vi.mock('axios');
 const mockedAxios = vi.mocked(axios);
@@ -25,7 +27,7 @@ const mockApis = (telop: TelopData, fontFamily = 'FOT-Kurokane Std') => {
     url === '/api/telop' ? { data: telop, status: 200 } : { data: { fontFamily }, status: 200 });
 };
 
-describe('TelopOverlayPage', () => {
+describe('TelopOverlay', () => {
   beforeEach(() => {
     mockedAxios.get.mockReset();
     vi.spyOn(global, 'setInterval').mockImplementation(vi.fn());
@@ -74,6 +76,18 @@ describe('TelopOverlayPage', () => {
 
     await waitFor(() => expect(mockedAxios.get).toHaveBeenCalledWith('/api/stream-data', expect.anything()));
     expect(await screen.findByTestId('telop')).toHaveStyle({ fontFamily: 'sans-serif' });
+  });
+
+  it('shows the telop near the top in landscape and near the bottom with a larger font in portrait', async () => {
+    mockApis(makeData({ text: 'ナイス!', ageMs: 500 }));
+    const { unmount } = render(<TelopOverlayPage />);
+    expect(screen.getByTestId('telop-overlay')).toHaveClass('justify-start');
+    expect(await screen.findByTestId('telop')).toHaveStyle({ fontSize: '56px' });
+    unmount();
+
+    render(<TelopOverlay layout="portrait" />);
+    expect(screen.getByTestId('telop-overlay')).toHaveClass('justify-end');
+    expect(await screen.findByTestId('telop')).toHaveStyle({ fontSize: '64px' });
   });
 
   it('does not show a telop older than the display duration', async () => {
