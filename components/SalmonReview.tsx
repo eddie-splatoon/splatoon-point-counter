@@ -154,14 +154,15 @@ const OutcomeBar: React.FC<{clears: number; waveFailures: number[]}> = ({clears,
                     </div>
                 ))}
             </div>
-            <div className="flex gap-4 mt-2">
+            {/* 凡例と失敗した WAVE は 1 行に並べる（横長で結果カードを低くするため。幅が足りなければ折り返す） */}
+            <div className="flex flex-wrap items-baseline gap-x-4 gap-y-1 mt-2">
                 {parts.map((p) => <LegendKey key={p.label} color={p.color} label={`${p.label} ${p.value}`}/>)}
+                {failures > 0 && (
+                    <span style={{fontSize: 16, color: INK.secondary}}>
+                        失敗した WAVE: {waveFailures.map((n, i) => `W${i + 1} ${n} 回`).join(' / ')}
+                    </span>
+                )}
             </div>
-            {failures > 0 && (
-                <p className="mt-2" style={{fontSize: 16, color: INK.secondary}}>
-                    失敗した WAVE: {waveFailures.map((n, i) => `W${i + 1} ${n} 回`).join(' / ')}
-                </p>
-            )}
         </div>
     );
 };
@@ -232,10 +233,10 @@ const SalmonReview: React.FC<SalmonReviewProps> = ({review, layout = 'landscape'
         <motion.header className="flex flex-wrap items-end justify-between gap-y-2" initial={animate ? {opacity: 0} : false} animate={{opacity: 1}}
                        transition={{duration: 0.5}}>
             <div>
-                <p style={{fontSize: 22, color: INK.muted}}>
+                <p className="leading-tight" style={{fontSize: 22, color: INK.muted}}>
                     {review.session ? [formatDate(review.session.startedAt), review.session.title].filter(Boolean).join('　') : ''}
                 </p>
-                <h1 className="font-bold" style={{fontSize: 56, color: '#FF6F00'}}>本日のサーモンラン</h1>
+                <h1 className="font-bold leading-tight" style={{fontSize: 56, color: '#FF6F00'}}>本日のサーモンラン</h1>
             </div>
             <div className="flex items-baseline gap-3">
                 <span style={{fontSize: 24, color: INK.muted}}>クリア率</span>
@@ -271,26 +272,28 @@ const SalmonReview: React.FC<SalmonReviewProps> = ({review, layout = 'landscape'
         </Card>
     );
 
+    // 横長では結果カードの高さが中段の高さを決める。行を足すと下段（オオモノ 7 行・ブキ）が 1080px からはみ出すので、
+    // 足すときは横長の見た目で下段が収まることを確かめる
     const resultCard = (
         <Card title="結果" order={3} animate={animate} className={portrait ? '' : 'w-[620px]'}>
             <OutcomeBar clears={totals.clears} waveFailures={review.waveFailures}/>
             {review.kings.appeared > 0 && (
-                <p className="mt-4" style={{fontSize: 20, color: INK.primary}} data-testid="review-kings">
+                <p className="mt-3 leading-snug" style={{fontSize: 20, color: INK.primary}} data-testid="review-kings">
                     オカシラ {review.kings.defeated} / {review.kings.appeared} 撃破
                 </p>
             )}
             {review.firstGrade && review.lastGrade && (
-                <p className="mt-2" style={{fontSize: 20, color: INK.primary}} data-testid="review-grade">
+                <p className="mt-2 leading-snug" style={{fontSize: 20, color: INK.primary}} data-testid="review-grade">
                     評価 {review.firstGrade.name} {review.firstGrade.point} → {review.lastGrade.name} {review.lastGrade.point}
                 </p>
             )}
             {best && (
-                <p className="mt-2" style={{fontSize: 20, color: INK.primary}} data-testid="review-best-job">
+                <p className="mt-2 leading-snug" style={{fontSize: 20, color: INK.primary}} data-testid="review-best-job">
                     ベスト 金イクラ {best.goldenEggs}（{jobs.indexOf(best) + 1} バイト目{best.stage ? `・${best.stage}` : ''}）
                 </p>
             )}
             {bestBoss && (
-                <p className="mt-2" style={{fontSize: 20, color: INK.primary}} data-testid="review-best-boss-job">
+                <p className="mt-2 leading-snug" style={{fontSize: 20, color: INK.primary}} data-testid="review-best-boss-job">
                     ベスト オオモノ {bestBoss.bossKills}（{jobs.indexOf(bestBoss) + 1} バイト目{bestBoss.stage ? `・${bestBoss.stage}` : ''}）
                 </p>
             )}
