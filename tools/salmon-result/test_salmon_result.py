@@ -441,6 +441,10 @@ BOSSES = {
     "eight": (27, [("bakudan", 12, 12, 1), ("katapad", 8, 7, 2), ("teppan", 5, 5, 1), ("hebi", 6, 6, 1), ("tower", 4, 4, 3),
                    ("mogura", 13, 13, 8), ("koumori", 7, 7, 2), ("hashira", 8, 7, 3), ("diver", 8, 8, 3), ("nabebuta", 7, 5, 3),
                    ("kin_shake", 4, 4, 0)]),
+    # カッコ内の小さい「6」がつぶれて 8 に近い（モグラの 9(6)）
+    "six": (30, [("bakudan", 10, 10, 2), ("katapad", 7, 6, 2), ("teppan", 9, 9, 2), ("hebi", 20, 18, 5), ("tower", 8, 8, 2),
+                 ("mogura", 10, 9, 6), ("koumori", 12, 10, 2), ("hashira", 10, 10, 4), ("diver", 10, 10, 2), ("tekkyu", 2, 2, 0),
+                 ("nabebuta", 10, 10, 3)]),
     # 1 枚目と 2 枚目でタワーの 11(5) の写り方が違う
     "split": (28, [("bakudan", 14, 11, 4), ("katapad", 3, 3, 1), ("teppan", 6, 6, 2), ("hebi", 11, 11, 3), ("tower", 11, 11, 5),
                    ("mogura", 8, 7, 4), ("koumori", 9, 5, 3), ("hashira", 9, 7, 1), ("diver", 8, 8, 1), ("nabebuta", 11, 11, 4)]),
