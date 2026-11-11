@@ -2,7 +2,7 @@ import { render, screen, waitFor } from '@testing-library/react';
 import axios from 'axios';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { TELOP_DISPLAY_DURATION, TelopData } from '../../lib/telopTypes';
+import { FOLLOW_TELOP_DISPLAY_DURATION, TELOP_DISPLAY_DURATION, TelopData, TelopEffect } from '../../lib/telopTypes';
 
 import TelopOverlayPage from './page';
 
@@ -12,9 +12,9 @@ const mockedAxios = vi.mocked(axios);
 const NOW = 1_700_000_000_000;
 
 // serverTime はサーバーの時計。ブラウザの時計（Date.now = NOW）とずらして、経過時間をサーバーの時計で測ることを確かめる
-const makeData = (current: { text: string; ageMs: number; followFont?: boolean } | null, serverTime = NOW): TelopData => ({
+const makeData = (current: { text: string; ageMs: number; followFont?: boolean; effect?: TelopEffect } | null, serverTime = NOW): TelopData => ({
   presets: [],
-  current: current && { id: 1, text: current.text, followFont: current.followFont ?? true, timestamp: serverTime - current.ageMs },
+  current: current && { id: 1, text: current.text, followFont: current.followFont ?? true, effect: current.effect ?? null, timestamp: serverTime - current.ageMs },
   revision: current ? 1 : 0,
   serverTime,
 });
@@ -82,5 +82,35 @@ describe('TelopOverlayPage', () => {
 
     await waitFor(() => expect(mockedAxios.get).toHaveBeenCalled());
     expect(screen.queryByTestId('telop')).not.toBeInTheDocument();
+  });
+
+  it('celebrates a follow with fireworks', async () => {
+    mockApis(makeData({ text: 'フォローありがとうございます！🥳', ageMs: 500, effect: 'follow' }));
+    const { container } = render(<TelopOverlayPage />);
+
+    expect(await screen.findByTestId('telop')).toHaveTextContent('フォローありがとうございます！🥳');
+    expect(container.querySelector('.fireworks')).toBeInTheDocument();
+  });
+
+  it('keeps the follow telop longer than a normal one', async () => {
+    mockApis(makeData({ text: 'フォローありがとうございます！🥳', ageMs: TELOP_DISPLAY_DURATION, effect: 'follow' }));
+    render(<TelopOverlayPage />);
+    expect(await screen.findByTestId('telop')).toBeInTheDocument();
+  });
+
+  it('does not show the follow telop after its display duration', async () => {
+    mockApis(makeData({ text: 'フォローありがとうございます！🥳', ageMs: FOLLOW_TELOP_DISPLAY_DURATION, effect: 'follow' }));
+    render(<TelopOverlayPage />);
+
+    await waitFor(() => expect(mockedAxios.get).toHaveBeenCalled());
+    expect(screen.queryByTestId('telop')).not.toBeInTheDocument();
+  });
+
+  it('does not show fireworks for a normal telop', async () => {
+    mockApis(makeData({ text: 'ナイス!', ageMs: 500 }));
+    const { container } = render(<TelopOverlayPage />);
+
+    await screen.findByTestId('telop');
+    expect(container.querySelector('.fireworks')).not.toBeInTheDocument();
   });
 });
