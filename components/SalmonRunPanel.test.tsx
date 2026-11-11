@@ -237,6 +237,51 @@ describe('SalmonRunPanel', () => {
     expect(within(screen.getByTestId('salmon-history')).getByText('記録がありません')).toBeInTheDocument();
   });
 
+  it('corrects a recorded job with PATCH instead of recording a new one', async () => {
+    mockGet(summaryOf([job({ id: 5, goldenEggs: 3142, stage: 'ムニ・エール海洋発電所', jobKind: 'regular' })]));
+    mockedAxios.patch.mockResolvedValue({ data: summaryOf([job({ id: 5, goldenEggs: 31 })]), status: 200 });
+    render(<SalmonRunPanel />);
+
+    fireEvent.click(await screen.findByRole('button', { name: '記録 1 を修正' }));
+    expect(screen.getByText('記録 1 を修正しています')).toBeInTheDocument();
+    expect(screen.getByLabelText('金イクラ')).toHaveValue(3142);
+    expect(screen.getByLabelText('ステージ')).toHaveValue('ムニ・エール海洋発電所');
+
+    fireEvent.change(screen.getByLabelText('金イクラ'), { target: { value: '31' } });
+    await act(async () => fireEvent.click(screen.getByRole('button', { name: '修正を保存' })));
+
+    expect(mockedAxios.patch).toHaveBeenCalledWith('/api/salmon', {
+      id: 5, goldenEggs: 31, bossKills: 12, deaths: 1, cleared: true, waveReached: 3, stage: 'ムニ・エール海洋発電所', weapons: [], jobKind: 'regular',
+    });
+    expect(mockedAxios.post).not.toHaveBeenCalled();
+    expect(screen.queryByText('記録 1 を修正しています')).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '記録' })).toBeDisabled();
+  });
+
+  it('cancels a correction and empties the form', async () => {
+    mockGet(summaryOf([job({ id: 5 })]));
+    render(<SalmonRunPanel />);
+
+    fireEvent.click(await screen.findByRole('button', { name: '記録 1 を修正' }));
+    fireEvent.click(screen.getByRole('button', { name: 'キャンセル' }));
+
+    expect(screen.queryByText('記録 1 を修正しています')).not.toBeInTheDocument();
+    expect(screen.getByLabelText('金イクラ')).toHaveValue(null);
+    expect(screen.getByRole('button', { name: '記録' })).toBeDisabled();
+  });
+
+  it('shows an error when the correction fails', async () => {
+    mockGet(summaryOf([job({ id: 5 })]));
+    mockedAxios.patch.mockRejectedValue(new Error('network'));
+    render(<SalmonRunPanel />);
+
+    fireEvent.click(await screen.findByRole('button', { name: '記録 1 を修正' }));
+    await act(async () => fireEvent.click(screen.getByRole('button', { name: '修正を保存' })));
+
+    expect(screen.getByText(/記録の修正に失敗しました/)).toBeInTheDocument();
+    expect(screen.getByText('記録 1 を修正しています')).toBeInTheDocument();
+  });
+
   it('starts a new session with a title and reloads', async () => {
     mockedAxios.post.mockResolvedValue({ data: {}, status: 200 });
     render(<SalmonRunPanel />);

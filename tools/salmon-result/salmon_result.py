@@ -92,8 +92,9 @@ def find_box(boxes: list[Box], *keywords: str, min_y: float = 0.0, max_y: float 
     return min(found, key=lambda b: b.y, default=None)
 
 
-# x を「メ」と読むことがある（オオモノジャケ メ17）
-COUNT_PATTERN = re.compile(r"[xX×メ]\s*([0-9Iil|]{1,4})(?![0-9A-Za-z])|[xX×メ]\s*(\d{1,4})")
+# x を「メ」と読むことがある（オオモノジャケ メ17）。
+# 数のすぐ後ろが「>」のものは読まない（x31<2> の「<」を 4 と読んだ「x3142>」を 3142 にしないため。どこまでが数か分からない）
+COUNT_PATTERN = re.compile(r"[xX×メ]\s*([0-9Iil|]{1,4})(?![0-9A-Za-z>])|[xX×メ]\s*(\d{1,4})(?![\d>])")
 # 1 を英字に読み間違えることがある（Xl、XI など）
 DIGIT_LOOKALIKES = str.maketrans({"I": "1", "i": "1", "l": "1", "|": "1"})  # x17 を「メi7」と読むことがある（parse_count）
 

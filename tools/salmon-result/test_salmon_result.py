@@ -43,6 +43,8 @@ HISTORY_BOXES = [
     [
         ("x12<8>", 12), ("X60", 60), ("x25cl>", 25), ("×710", 710), ("オオモノシャケx24", 24), ("オオモノジャケ ×17", 17),
         ("Xl", 1), ("XI", 1), ("オオモノジャケ メi7", 17), ("オオモノシャケ xil", None), ("x", None), ("普通", None),
+        # x31<2> の「<」を 4 と読んだもの。3142 や 314 にしない
+        ("×3142>", None), ("X3142>0）", None), ("X31<2>", 31), ("X31c2>$/", 31), ("×31¢2>：", 31),
     ],
 )
 def test_parse_count(text, expected):
@@ -348,6 +350,12 @@ def test_vote_count_takes_the_majority():
     readings = iter(["x12<8>", "x121", "", "", "x12"])
     assert s.vote_count(blank_detail_image(), lambda image, scale: [Box(next(readings), 0, 0, 1, 1)]) == 12
     assert s.vote_count(blank_detail_image(), lambda image, scale: []) is None
+
+
+def test_vote_count_ignores_assist_misread_as_digit():
+    # 実際の配信で x31<2> を 3142 と記録した読み方の並び（<2> の「<」を 4 と読んだ）
+    readings = iter(["×3142>", "×3142>", "X31c2>$/", "X31<2>", ""])
+    assert s.vote_count(blank_detail_image(), lambda image, scale: [Box(next(readings), 0, 0, 1, 1)]) == 31
 
 
 def icon(color, shape):

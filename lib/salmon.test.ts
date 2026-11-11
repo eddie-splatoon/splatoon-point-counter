@@ -2,7 +2,7 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 
 import { __TEST_ONLY_setDb, getDb, openDb } from './db';
-import { addJob, deleteJob, getSummary, listSessions, parseId, parseJob, parseJobDetails, startSession } from './salmon';
+import { addJob, deleteJob, getSummary, listSessions, parseId, parseJob, parseJobDetails, startSession, updateJob } from './salmon';
 import { MAX_COUNT, MAX_STAGE_LENGTH, SalmonJobDetails } from './salmonTypes';
 
 const job = { goldenEggs: 30, bossKills: 12, deaths: 1, cleared: true, waveReached: 3, stage: 'アラマキ砦', weapons: ['sshooter', 'kuma_blaster'], jobKind: null };
@@ -217,6 +217,26 @@ describe('job details', () => {
     addJob(job, 2000);
     expect(getSummary().bossRanking.lastJob).toEqual([]);
     expect(getSummary().bossRanking.session).toHaveLength(3);
+  });
+
+  it('updates a misread job keeping its date and details, and fixes the own player row', () => {
+    const recorded = addJob({ ...job, goldenEggs: 3142 }, 1000, '2026/11/11 18:04', details());
+
+    expect(updateJob(recorded.id, { ...job, goldenEggs: 31, bossKills: 20, deaths: 2 })).toBe(true);
+
+    const db = getDb();
+    expect(db.prepare('SELECT golden_eggs, played_at, created_at, hazard_level FROM salmon_jobs WHERE id = ?').get(recorded.id))
+      .toEqual({ golden_eggs: 31, played_at: '2026/11/11 18:04', created_at: 1000, hazard_level: 333 });
+    expect(db.prepare('SELECT position, golden_eggs, boss_kills, rescued FROM salmon_job_players WHERE job_id = ? ORDER BY position').all(recorded.id))
+      .toEqual([
+        { position: 0, golden_eggs: 31, boss_kills: 20, rescued: 2 },
+        expect.objectContaining({ position: 1 }),
+      ]);
+    expect(getSummary().totals.goldenEggs).toBe(31);
+  });
+
+  it('returns false when updating an unknown job', () => {
+    expect(updateJob(999, job)).toBe(false);
   });
 
   it('deletes the details with the job', () => {

@@ -5,13 +5,20 @@ import { beforeEach, describe, expect, it } from 'vitest';
 import { __TEST_ONLY_setDb, openDb } from '../../../lib/db';
 import { startSession } from '../../../lib/salmon';
 
-import { DELETE, GET, POST } from './route';
+import { DELETE, GET, PATCH, POST } from './route';
 
 const url = (query = '') => `http://localhost/api/salmon${query}`;
 
 const post = (body: unknown, contentType = 'application/json') =>
   POST(new NextRequest(url(), {
     method: 'POST',
+    headers: { 'Content-Type': contentType },
+    body: typeof body === 'string' ? body : JSON.stringify(body),
+  }));
+
+const patch = (body: unknown, contentType = 'application/json') =>
+  PATCH(new NextRequest(url(), {
+    method: 'PATCH',
     headers: { 'Content-Type': contentType },
     body: typeof body === 'string' ? body : JSON.stringify(body),
   }));
@@ -69,6 +76,33 @@ describe('Salmon API', () => {
     it('returns 415 when Content-Type is not JSON', async () => {
       expect((await post(JSON.stringify(job), 'text/plain')).status).toBe(415);
       expect((await (await GET(new NextRequest(url()))).json()).totals.jobs).toBe(0);
+    });
+  });
+
+  describe('PATCH', () => {
+    it('updates a job and returns the updated summary', async () => {
+      const { lastJob } = await (await post(job)).json();
+
+      const response = await patch({ ...job, id: lastJob.id, goldenEggs: 31 });
+      expect(response.status).toBe(200);
+      const body = await response.json();
+      expect(body.lastJob).toMatchObject({ id: lastJob.id, goldenEggs: 31 });
+      expect(body.totals).toMatchObject({ jobs: 1, goldenEggs: 31 });
+    });
+
+    it('returns 400 for an invalid id or job and 404 for an unknown one', async () => {
+      const { lastJob } = await (await post(job)).json();
+      expect((await patch({ ...job, id: 'x' })).status).toBe(400);
+      expect((await patch(job)).status).toBe(400);
+      expect((await patch({ ...job, id: lastJob.id, cleared: false })).status).toBe(400);
+      expect((await patch('{invalid')).status).toBe(400);
+      expect((await patch({ ...job, id: 999 })).status).toBe(404);
+    });
+
+    it('returns 415 when Content-Type is not JSON', async () => {
+      const { lastJob } = await (await post(job)).json();
+      expect((await patch(JSON.stringify({ ...job, id: lastJob.id, goldenEggs: 1 }), 'text/plain')).status).toBe(415);
+      expect((await (await GET(new NextRequest(url()))).json()).totals.goldenEggs).toBe(30);
     });
   });
 
