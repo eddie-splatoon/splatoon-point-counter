@@ -364,7 +364,7 @@ Twitch のフォロワー数とフォロワー目標を受け取る機能と、�
 - 詳細の集計は、詳細を取り込んだバイト（`detailedJobs`）だけ。手入力のバイトがあると、画面に「取り込んだ n 件の合計」と添える
 - 本体は `components/SalmonReview.tsx`。グラフは依存を増やさず SVG・div で描く（dataviz スキルの作法: ダークの配色だけ、クリア / 失敗はどのグラフでも青 / オレンジ（色覚の違いでも見分けられることを検証済み）、棒は細く根元は四角・先は丸く、値は最多のバイトにだけ出す、目盛りはきりのいい数（`niceTicks`）、2 つの値を 1 つのグラフの左右の軸に出さない）。OBS ではマウスを使わないので、ツールチップは付けない
 - 開いたときにカードを上から順に出す motion の演出（初回だけ。`animate={false}` で無し）。5 秒ごとにポーリングし、フォントは `/api/stream-data` の `fontFamily`。ポーリングは `components/SalmonReviewOverlay.tsx`（`layout` を受ける）で、2 つのページはこれを置くだけ
-- レイアウトは `layout: 'landscape' | 'portrait'`（`REVIEW_SIZES`）。portrait（`/salmon-review-overlay/vertical`、1080x1920）はカードを縦に積み、最後にハイスコアとブキを横に並べる。カードの中身は共通で、外側の並びだけを分けている。カードを足すときは両方の並びに入れる
+- レイアウトは `layout: 'landscape' | 'portrait'`（`REVIEW_SIZES`）。portrait（`/salmon-review-overlay/vertical`、1080x1920）はカードを縦に積み、最後にハイスコアとブキを横に並べる。カードの中身は共通で、外側の並びだけを分けている。カードを足すときは両方の並びに入れる。横長は高さに余裕が無く、中段は「結果」カードの高さで決まるので、行を足すと下段（オオモノ 7 行・ブキ）がはみ出す。足したら横長の見た目で下段が収まることを確かめる
 - SNS 用の画像: コントロールパネルの「サーモンラン」タブ（`components/SalmonReviewDownload.tsx`）で、選んだ過去のセッション（選ばなければ今のセッション）の振り返りを横長 / 縦長の PNG でダウンロードする。オーバーレイと見た目を一致させるため、ブキ埋めカードと違い Canvas で描き直さず、画面外に実寸で描いた DOM を `html-to-image` の `toBlob` で画像にする（演出なし・不透明な背景）。ブキ・オオモノの画像は raw.githubusercontent.com（CORS 許可）なので埋め込める
 
 ### `/app/side-panel-overlay/page.tsx` と `/app/api/side-panel/route.ts`
