@@ -70,7 +70,7 @@ describe('Telop API', () => {
   });
 
   it('saves presets and uses them for showing', async () => {
-    const presets = [{ id: 7, text: 'カンスト!', speak: true, followFont: false, chat: false }];
+    const presets = [{ id: 7, text: 'カンスト!', speak: true, followFont: false, display: true, chat: false }];
     const response = await PUT(request('PUT', { presets }));
 
     expect(response.status).toBe(200);
@@ -140,10 +140,30 @@ describe('Telop API', () => {
     beforeEach(async () => {
       setAppState(VOICE_STATE_KEY, { enabled: true, speakerId: 3, speakerName: 'ずんだもん', speedScale: 1, volumeScale: 1 });
       await setPresets([
-        { id: 1, text: 'ナイス!!', speak: true, followFont: true, chat: true },
-        { id: 2, text: 'おしい', speak: false, followFont: true, chat: true },
-        { id: 3, text: 'ドンマイ', speak: true, followFont: true, chat: false },
+        { id: 1, text: 'ナイス!!', speak: true, followFont: true, display: true, chat: true },
+        { id: 2, text: 'おしい', speak: false, followFont: true, display: true, chat: true },
+        { id: 3, text: 'ドンマイ', speak: true, followFont: true, display: true, chat: false },
+        { id: 4, text: 'おつかれ', speak: true, followFont: true, display: false, chat: true },
       ]);
+    });
+
+    it('posts a comment-only preset without showing it on the overlay', async () => {
+      await POST(request('POST', { presetId: 1 }));
+      const data = await (await POST(request('POST', { presetId: 4 }))).json();
+
+      expect(data.current).toMatchObject({ id: 1, text: 'ナイス!!' });
+      expect(data.revision).toBe(1);
+      expect((await chatGet()).map((p: { text: string }) => p.text)).toEqual(['ナイス!!', 'おつかれ']);
+      expect(listSpeech()).toEqual([]);
+    });
+
+    it('reads a comment-only preset aloud when it cannot be written', async () => {
+      await POST(request('POST', { presetId: 4 }));
+      await PATCH(request('PATCH', { chatId: 1, status: 'picked' }));
+      await PATCH(request('PATCH', { chatId: 1, status: 'failed' }));
+
+      expect((await (await GET()).json()).current).toBeNull();
+      expect(listSpeech().map((item) => item.text)).toEqual(['おつかれ']);
     });
 
     it('queues a chat post instead of reading the telop aloud', async () => {

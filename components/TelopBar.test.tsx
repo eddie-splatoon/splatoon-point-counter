@@ -42,10 +42,20 @@ describe('TelopBar', () => {
   });
 
   it('shows presets beyond the shortcut keys without a key', async () => {
-    await renderLoaded(Array.from({ length: 11 }, (_, i) => ({ id: i + 1, text: `p${i + 1}`, speak: false, followFont: true, chat: false })));
+    await renderLoaded(Array.from({ length: 11 }, (_, i) => ({ id: i + 1, text: `p${i + 1}`, speak: false, followFont: true, display: true, chat: false })));
 
     expect(buttons().getByRole('button', { name: '0p10' })).toBeInTheDocument();
     expect(buttons().getByRole('button', { name: 'p11' })).toBeInTheDocument();
+  });
+
+  it('marks comment-only presets', async () => {
+    await renderLoaded([
+      { id: 1, text: 'ナイス!', speak: false, followFont: true, display: true, chat: true },
+      { id: 2, text: 'おつかれ', speak: false, followFont: true, display: false, chat: true },
+    ]);
+
+    expect(buttons().getByRole('button', { name: /ナイス!/ })).not.toContainElement(screen.queryByRole('img', { name: 'コメントだけ' }));
+    expect(within(buttons().getByRole('button', { name: /おつかれ/ })).getByRole('img', { name: 'コメントだけ' })).toBeInTheDocument();
   });
 
   it('shows the preset assigned to a number key', async () => {
@@ -97,7 +107,7 @@ describe('TelopBar', () => {
 
   it('reloads the presets when reloadKey changes', async () => {
     const { rerender } = await renderLoaded();
-    respondWith([{ id: 7, text: 'カンスト!', speak: false, followFont: true, chat: false }]);
+    respondWith([{ id: 7, text: 'カンスト!', speak: false, followFont: true, display: true, chat: false }]);
 
     rerender(<TelopBar reloadKey={1} />);
 

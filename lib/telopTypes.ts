@@ -12,6 +12,7 @@ export interface TelopPreset {
     text: string;
     speak: boolean; // 合成音声（VOICEVOX）でも読み上げるか
     followFont: boolean; // 共通設定のフォントで表示するか。そのフォントに無い文字が化けるときは外して既定のフォントで出す
+    display: boolean; // 配信画面のテロップに出すか（false ならコメントだけ）
     chat: boolean; // Twitch のチャットにも配信者のコメントとして書き込むか（読み上げはコメント側で行う）
 }
 
@@ -47,10 +48,10 @@ export type TelopChatStatus = typeof TELOP_CHAT_STATUSES[number];
 
 export const getDefaultTelopSettings = (): TelopSettings => ({
     presets: [
-        {id: 1, text: 'ナイス!', speak: true, followFont: true, chat: false},
-        {id: 2, text: 'カタパッド残った…', speak: false, followFont: true, chat: false},
-        {id: 3, text: '満潮きた', speak: false, followFont: true, chat: false},
-        {id: 4, text: 'ヘルプ感謝', speak: true, followFont: true, chat: false},
+        {id: 1, text: 'ナイス!', speak: true, followFont: true, display: true, chat: false},
+        {id: 2, text: 'カタパッド残った…', speak: false, followFont: true, display: true, chat: false},
+        {id: 3, text: '満潮きた', speak: false, followFont: true, display: true, chat: false},
+        {id: 4, text: 'ヘルプ感謝', speak: true, followFont: true, display: true, chat: false},
     ],
 });
 
@@ -63,18 +64,20 @@ export function normalizeTelopText(text: string): string | null {
 
 /** 設定を検証する。不正ならエラーメッセージを返す */
 export function parseTelopSettings(body: unknown): TelopSettings | string {
-    const invalid = `presets must be an array of up to ${MAX_TELOP_PRESETS} {id, text, speak, followFont, chat} with unique ids and text of 1-${MAX_TELOP_LENGTH} characters.`;
+    const invalid = `presets must be an array of up to ${MAX_TELOP_PRESETS} {id, text, speak, followFont, display, chat} with unique ids, text of 1-${MAX_TELOP_LENGTH} characters, and display or chat enabled.`;
     const {presets} = (body ?? {}) as Record<string, unknown>;
     if (!Array.isArray(presets) || presets.length > MAX_TELOP_PRESETS) return invalid;
     const parsed: TelopPreset[] = [];
     for (const item of presets) {
         // followFont は後から追加した項目なので、保存済みのプリセットに無ければ共通設定のフォントに追従する
-        // chat も後から追加した項目なので、無ければ書き込まない
-        const {id, text, speak, followFont = true, chat = false} = (item ?? {}) as Record<string, unknown>;
-        if (typeof id !== 'number' || !Number.isInteger(id) || id < 1 || typeof speak !== 'boolean' || typeof followFont !== 'boolean' || typeof chat !== 'boolean' || typeof text !== 'string') return invalid;
+        // display・chat も後から追加した項目なので、無ければテロップに出し、チャットには書き込まない
+        const {id, text, speak, followFont = true, display = true, chat = false} = (item ?? {}) as Record<string, unknown>;
+        if (typeof id !== 'number' || !Number.isInteger(id) || id < 1 || typeof speak !== 'boolean' || typeof followFont !== 'boolean' || typeof display !== 'boolean' || typeof chat !== 'boolean' || typeof text !== 'string') return invalid;
+        // テロップにもコメントにも出さないプリセットは、出しても何も起きないので受け付けない
+        if (!display && !chat) return invalid;
         const normalized = normalizeTelopText(text);
         if (normalized === null || parsed.some((p) => p.id === id)) return invalid;
-        parsed.push({id, text: normalized, speak, followFont, chat});
+        parsed.push({id, text: normalized, speak, followFont, display, chat});
     }
     return {presets: parsed};
 }

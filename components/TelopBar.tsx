@@ -85,6 +85,12 @@ const TelopBar: React.FC<TelopBarProps> = ({reloadKey = 0}) => {
                                     {TELOP_SHORTCUT_KEYS[index]}
                                 </Box>
                             )}
+                            {/* テロップに出さず、コメントだけのもの（押しても配信画面には出ない） */}
+                            {!preset.display && (
+                                <Box component="span" role="img" aria-label="コメントだけ" title="配信画面には出さず、チャットに書き込むだけ" sx={{mr: 0.5}}>
+                                    💬
+                                </Box>
+                            )}
                             {preset.text}
                         </Button>
                     ))}
