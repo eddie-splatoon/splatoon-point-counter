@@ -83,7 +83,7 @@ OBS のブラウザソースには `http://localhost:3000/telop-overlay`（幅 1
 
 縦型配信（1080x1920）では `http://localhost:3000/telop-overlay/vertical`（幅 1080・高さ 1920）を使います。中身は同じで、画面上部のサイドパネルと重ならないよう画面の下のほうに、少し大きな文字で出します（長い文は折り返します）。
 
-Stream Deck などから出すときは、`POST /api/telop` に `Content-Type: application/json` で `{"presetId": <プリセットの id>}` か `{"text": "<30 文字までの文>"}` を送ります（自由入力は `"followFont": false` を付けると既定のフォントで表示し、`"speak": true` を付けると読み上げます。プリセットはプリセットの「読み上げ」の設定に従います）。
+Stream Deck などから出すときは、`POST /api/telop` に `Content-Type: application/json` で `{"presetId": <プリセットの id>}` か `{"text": "<30 文字までの文>"}` を送ります（自由入力は `"followFont": false` を付けると既定のフォントで表示し、`"speak": true` を付けると読み上げます。プリセットはプリセットの「読み上げ」「テロップ」「コメント」の設定に従います。「テロップ」を外したプリセットは画面には出ず、コメントだけ書き込みます）。
 
 ```bash
 curl -X POST http://localhost:3000/api/telop -H "Content-Type: application/json" -d '{"presetId": 1}'
