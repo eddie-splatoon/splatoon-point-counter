@@ -17,8 +17,9 @@ const POLL_INTERVAL_MS = 3000;
  */
 const ScoreDisplayPanel: React.FC = () => {
     const [saved, setSaved] = useState<ScoreDisplaySettings | null>(null);
-    // 編集中の値（null なら保存済みの値を表示する。編集中は読み込み直しで入力を上書きしない）
-    const [draft, setDraft] = useState<ScoreDisplay | null>(null);
+    // 編集した項目だけ（null なら保存済みの値を表示する）。編集中は読み込み直しで入力を上書きせず、
+    // 「反映」では編集した項目だけを送る（触っていない項目を、取り込みで書き換わる前の値で書き戻さないため）
+    const [draft, setDraft] = useState<Partial<ScoreDisplay> | null>(null);
     const [error, setError] = useState('');
 
     const load = useCallback(async () => {
@@ -57,8 +58,8 @@ const ScoreDisplayPanel: React.FC = () => {
         return error ? <Alert severity="error">{error}</Alert> : <Typography>読み込み中...</Typography>;
     }
 
-    const shown: ScoreDisplay = draft ?? {scoreLabel: saved.scoreLabel, scoreValue: saved.scoreValue};
-    const edit = (delta: Partial<ScoreDisplay>) => setDraft({...shown, ...delta});
+    const shown: ScoreDisplay = {scoreLabel: saved.scoreLabel, scoreValue: saved.scoreValue, ...draft};
+    const edit = (delta: Partial<ScoreDisplay>) => setDraft({...draft, ...delta});
 
     return (
         <Paper elevation={12} sx={paperSx}>

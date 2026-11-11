@@ -56,6 +56,21 @@ describe('ScoreDisplayPanel', () => {
     expect(screen.getByLabelText('値')).toHaveValue('740');
   });
 
+  it('sends only the edited item so that an imported value is not written back', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    render(<ScoreDisplayPanel />);
+    await waitFor(() => expect(screen.getByLabelText('値')).toHaveValue('720'));
+
+    fireEvent.change(screen.getByLabelText('フィールド名'), { target: { value: '評価' } });
+    // 編集中に取り込みで値が書き換わる
+    mockedAxios.get.mockResolvedValue({ data: { ...settings, scoreValue: '740' }, status: 200 });
+    await act(async () => { await vi.advanceTimersByTimeAsync(3000); });
+    expect(screen.getByLabelText('値')).toHaveValue('740');
+    await act(async () => fireEvent.click(screen.getByRole('button', { name: '反映' })));
+
+    expect(mockedAxios.patch).toHaveBeenCalledWith('/api/score-display', { scoreLabel: '評価' });
+  });
+
   it('turns off the auto update immediately', async () => {
     render(<ScoreDisplayPanel />);
     const toggle = await screen.findByRole('switch', { name: 'リザルトの取り込みで自動更新する' });
