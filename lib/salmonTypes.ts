@@ -180,6 +180,7 @@ export interface SalmonSessionReview {
     kings: {appeared: number; defeated: number}; // オカシラ（EX-WAVE）
     bosses: BossCount[]; // 出現したオオモノすべて（自分の討伐数の多い順）
     bestJobId: number | null; // 金イクラがいちばん多いバイト
+    bestBossJobId: number | null; // 自分のオオモノ討伐数がいちばん多いバイト（同数なら先のバイト。0 体だけなら null）
     teamHighScores: SalmonTeamHighScore[]; // チームの金イクラ納品数の多い順（取り込んだバイトだけ。REVIEW_HIGH_SCORE_LIMIT 件まで）
     weapons: {key: string; count: number}[]; // 支給された回数の多い順
     newWeapons: string[]; // このセッション中にブキ埋めカードで埋まったブキ（埋まった順）。今のカードの分だけ（新しいカードを始めると、それより前の分は出ない）

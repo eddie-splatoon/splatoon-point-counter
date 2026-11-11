@@ -82,6 +82,21 @@ describe('getSessionReview', () => {
     expect(getSessionReview()!.waveFailures).toEqual([0, 1, 0, 1, 0]);
   });
 
+  it('picks the job with the most bosses I defeated, the earlier job first on a tie', () => {
+    startSession('', 1000);
+    addJob({ ...job, bossKills: 18 }, 1100);
+    const most = addJob({ ...job, bossKills: 24, cleared: false, waveReached: 2 }, 1200);
+    addJob({ ...job, bossKills: 24 }, 1300);
+    expect(getSessionReview()?.bestBossJobId).toBe(most.id);
+  });
+
+  it('has no best boss job when I defeated no bosses', () => {
+    expect(getSessionReview()?.bestBossJobId).toBeNull();
+    startSession('', 1000);
+    addJob({ ...job, bossKills: 0 }, 1100);
+    expect(getSessionReview()?.bestBossJobId).toBeNull();
+  });
+
   it('ranks the team golden eggs of the imported jobs, the earlier job first on a tie', () => {
     startSession('', 1000);
     const scores = [110, 95, 128, 110, 70, 100];
