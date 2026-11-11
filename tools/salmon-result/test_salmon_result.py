@@ -277,6 +277,35 @@ def test_read_details_from_captures(fixture):
 
 
 @pytest.mark.parametrize(
+    ("fixture", "header"),
+    [
+        # 「獲得ポイント」のラベルが読めない画面。スコアの下のラベルの行を基準に読む。キケン度も全体の OCR では見つからない
+        ("header-nolabel.png", {"hazardLevel": 244, "gradeName": "でんせつ", "gradePoint": 440, "jobPoint": 417, "jobScore": 136, "jobRate": 2.7, "clearBonus": 50,
+                                "teamGoldenEggs": 109, "teamPowerEggs": 5565}),
+        # 「573p」を「513p」と読む画面。ポイントはスコアの行から計算する
+        ("header-misread-points.png", {"hazardLevel": 333, "gradeName": "でんせつ", "gradePoint": 985, "jobPoint": 573, "jobScore": 161, "jobRate": 3.25, "clearBonus": 50,
+                                       "teamGoldenEggs": 138, "teamPowerEggs": 4637}),
+        # 「316%」の右端から切り出すと 3 が切れて 16 と読む画面
+        ("header-hazard-316.png", {"hazardLevel": 316, "jobPoint": 483}),
+    ],
+)
+def test_read_header_from_captures(fixture, header):
+    with Image.open(FIXTURES / fixture) as image:
+        image = image.convert("RGB")
+        result = s.read_header(image, s.ocr(image, s.FULL_OCR_SCALE))
+    assert {k: result[k] for k in header} == header
+
+
+def test_job_point_of():
+    assert s.job_point_of(136, 2.7, 50) == 417  # 367.2 の切り捨て
+    assert s.job_point_of(149, 3.15, 50) == 519
+    assert s.job_point_of(186, 2.8, 100) == 620  # 520.8 の切り捨て
+    assert s.job_point_of(76, 2.95, 0) == 224
+    assert s.job_point_of(None, 3.25, 50) is None
+    assert s.job_point_of(130, 3.25, None) is None
+
+
+@pytest.mark.parametrize(
     ("text", "expected"),
     [("x12<8>", 8), ("x25c1>", 1), ("x17<4>", 4), ("x60", None), ("x1Tぐ4>", None), ("<8>", None)],
 )
@@ -763,23 +792,34 @@ def test_process_request_leaves_the_telop_to_the_celebration(monkeypatch, tmp_pa
     assert api.telops == telops
 
 
-def test_read_hazard_level_from_the_number_even_when_the_label_is_misread():
-    """「キケン度」を「約」と読んでも、「%」の付いた文字の右端から数字を切り出して読む"""
-    readings = []
+def test_read_hazard_level_from_the_usual_position():
+    """全体の OCR の文字ではなく、いつもの位置を切り出して読み直した多数決を使う（「キケン度」を「約」と読んでも、2 が抜けても）"""
+    crops = []
 
     def fake_ocr(image, scale=1):
-        readings.append(image.width)
-        return [Box("鹿290%", 0, 0, 1, 1)]
-
-    assert s.read_hazard_level(blank_detail_image(), [Box("約290%", 0.6, 0.24, 0.15, 0.02)], fake_ocr) == 290
-    assert readings  # 全体の OCR の文字ではなく、切り出して読み直した結果を使う
-
-    def misread(image, scale=1):
+        crops.append(image.width)
         return [Box("准285%", 0, 0, 1, 1)]
 
-    # 全体の OCR が「キケン度85%」（2 が抜けた）でも、切り出した読みの多数決で 285
-    assert s.read_hazard_level(blank_detail_image(), [Box("キケン度85%", 0.55, 0.24, 0.2, 0.02)], misread) == 285
-    assert s.read_hazard_level(blank_detail_image(), [Box("Clear!!", 0.4, 0.2, 0.2, 0.03)], misread) is None
+    assert s.read_hazard_level(blank_detail_image(), [Box("キケン度85%", 0.55, 0.24, 0.2, 0.02)], fake_ocr) == 285
+    assert crops[0] == s.crop_relative(blank_detail_image(), s.HAZARD_REGION).width
+    assert s.read_hazard_level(blank_detail_image(), [Box("Clear!!", 0.4, 0.2, 0.2, 0.03)], fake_ocr) == 285
+    assert s.read_hazard_level(blank_detail_image(), [], lambda image, scale=1: []) is None
+
+
+def ocr_except_usual_position(text):
+    """いつもの位置の切り出しでは何も読めず、それ以外の切り出しでは text を読む OCR"""
+    region = s.crop_relative(blank_detail_image(), s.HAZARD_REGION)
+    region_widths = {region.width, s.binarize_white_text(region, s.CELL_OCR_SCALE).width}
+
+    def fake_ocr(image, scale=1):
+        return [] if image.width in region_widths else [Box(text, 0, 0, 1, 1)]
+    return fake_ocr
+
+
+def test_read_hazard_level_falls_back_to_the_percent_text():
+    """いつもの位置で読めなければ、「%」の付いた文字の右端から数字を切り出して読む"""
+    assert s.read_hazard_level(blank_detail_image(), [Box("約290%", 0.6, 0.24, 0.15, 0.02)], ocr_except_usual_position("鹿290%")) == 290
+    assert s.read_hazard_level(blank_detail_image(), [Box("Clear!!", 0.4, 0.2, 0.2, 0.03)], ocr_except_usual_position("290%")) is None
 
 
 @pytest.mark.parametrize(("read", "reread", "expected"), [
@@ -818,13 +858,8 @@ def test_every_glyph_template_reads_as_itself():
 
 
 def test_read_hazard_level_prefers_the_labeled_percent():
-    """「%」の付いた文字が複数あれば、「キケン度」の付いた方を使う"""
-    crops = []
-
-    def fake_ocr(image, scale=1):
-        crops.append(image.width)
-        return [Box("290%", 0, 0, 1, 1)]
-
+    """（いつもの位置で読めないとき）「%」の付いた文字が複数あれば、「キケン度」の付いた方を使う"""
+    fake_ocr = ocr_except_usual_position("290%")
     boxes = [Box("50%", 0.1, 0.24, 0.1, 0.02), Box("キケン度290%", 0.55, 0.24, 0.2, 0.02)]
     assert s.read_hazard_level(blank_detail_image(), boxes, fake_ocr) == 290
     # ラベルが無く「%」が 2 つあれば、どちらか分からないので「キケン度」を探す（無ければ読まない）
