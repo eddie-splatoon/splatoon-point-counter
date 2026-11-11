@@ -1,6 +1,16 @@
 import { describe, expect, it } from 'vitest';
 
-import { MAX_TELOP_LENGTH, MAX_TELOP_PRESETS, getDefaultTelopSettings, normalizeTelopText, parseTelopSettings } from './telopTypes';
+import {
+  FOLLOW_TELOP_DISPLAY_DURATION,
+  FOLLOW_TELOP_TEXT,
+  MAX_TELOP_LENGTH,
+  MAX_TELOP_PRESETS,
+  TELOP_DISPLAY_DURATION,
+  getDefaultTelopSettings,
+  normalizeTelopText,
+  parseTelopSettings,
+  telopDisplayDuration,
+} from './telopTypes';
 
 describe('normalizeTelopText', () => {
   it('joins lines and collapses spaces into one line', () => {
@@ -53,5 +63,17 @@ describe('parseTelopSettings', () => {
     ['neither display nor chat', { presets: [{ id: 1, text: 'a', speak: false, display: false, chat: false }] }],
   ])('rejects %s', (_, body) => {
     expect(typeof parseTelopSettings(body)).toBe('string');
+  });
+});
+
+describe('telopDisplayDuration', () => {
+  it('shows the follow telop longer than normal ones', () => {
+    expect(telopDisplayDuration({ effect: null })).toBe(TELOP_DISPLAY_DURATION);
+    expect(telopDisplayDuration({ effect: 'follow' })).toBe(FOLLOW_TELOP_DISPLAY_DURATION);
+    expect(FOLLOW_TELOP_DISPLAY_DURATION).toBeGreaterThan(TELOP_DISPLAY_DURATION);
+  });
+
+  it('keeps the follow telop within the telop length limit', () => {
+    expect(normalizeTelopText(FOLLOW_TELOP_TEXT)).toBe(FOLLOW_TELOP_TEXT);
   });
 });

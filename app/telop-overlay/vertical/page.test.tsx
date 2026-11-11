@@ -12,11 +12,11 @@ vi.mocked(axios).get.mockReturnValue(new Promise(() => {}));
 describe('telop overlay pages', () => {
   it('uses the landscape layout for /telop-overlay', () => {
     render(<TelopOverlayPage />);
-    expect(screen.getByTestId('telop-overlay')).toHaveAttribute('data-layout', 'landscape');
+    expect(screen.getByTestId('telop-area')).toHaveAttribute('data-layout', 'landscape');
   });
 
   it('uses the portrait layout for /telop-overlay/vertical', () => {
     render(<VerticalTelopOverlayPage />);
-    expect(screen.getByTestId('telop-overlay')).toHaveAttribute('data-layout', 'portrait');
+    expect(screen.getByTestId('telop-area')).toHaveAttribute('data-layout', 'portrait');
   });
 });

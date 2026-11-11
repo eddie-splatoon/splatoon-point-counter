@@ -778,6 +778,16 @@ export async function publishTelop(telopUrl: string, text: string, fetchFn: Fetc
   if (!res.ok) throw new Error(`${telopUrl} への送信に失敗しました: ${res.status}`);
 }
 
+/** フォローのお礼のテロップ（演出・読み上げ付き）を依頼する。文言と、続いたフォローをまとめるのはアプリ側で決める */
+export async function publishFollowTelop(telopUrl: string, fetchFn: FetchFn = fetch): Promise<void> {
+  const res = await fetchFn(telopUrl, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ event: 'follow' }),
+  });
+  if (!res.ok) throw new Error(`${telopUrl} への送信に失敗しました: ${res.status}`);
+}
+
 // ---- アプリへの送信 ----
 
 export async function publishState(apiUrl: string, state: TwitchState, fetchFn: FetchFn = fetch): Promise<void> {
@@ -890,6 +900,12 @@ async function main(): Promise<void> {
         state = applyNotification(state, type, event, Date.now());
         log(`${type} を受信しました（フォロワー数: ${state.followerTotal}）`);
         void publish();
+        if (type === 'channel.follow') {
+          // フォローした人の名前はログにもテロップにも出さない
+          publishFollowTelop(telopUrl).catch((error) => {
+            log(`警告: フォローのテロップを送信できませんでした: ${(error as Error).message}`);
+          });
+        }
       },
       onError: (error) => {
         console.error(`[twitch] ${error.message}`);

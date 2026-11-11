@@ -7,6 +7,18 @@ export const TELOP_DISPLAY_DURATION = 4000;
 // コントロールパネルのキーボードショートカット。並び順の先頭から 1〜9, 0 を割り当てる
 export const TELOP_SHORTCUT_KEYS = ['1', '2', '3', '4', '5', '6', '7', '8', '9', '0'] as const;
 
+// フォローのお礼のテロップ。フォローした人の名前は入れない（フォロワー名は保持しない）
+export const FOLLOW_TELOP_TEXT = 'フォローありがとうございます！🥳';
+// 読み上げる文。VOICEVOX に絵文字を読ませない
+export const FOLLOW_SPEECH_TEXT = 'フォローありがとうございます！';
+// レイドの後などフォローが続いたときは、この間に 1 回だけ出す（間のフォローはサイドパネルのゲージの泡だけ）
+export const FOLLOW_TELOP_COOLDOWN_MS = 15_000;
+// 花火などの演出を見せるので、通常のテロップより長く出す
+export const FOLLOW_TELOP_DISPLAY_DURATION = 8000;
+
+// テロップの演出。follow: フォローのお礼（花火などを重ねて派手に出す）
+export type TelopEffect = 'follow';
+
 export interface TelopPreset {
     id: number;
     text: string;
@@ -24,8 +36,13 @@ export interface Telop {
     id: number;
     text: string;
     followFont: boolean;
+    effect: TelopEffect | null; // 通常のテロップは null
     timestamp: number;
 }
+
+/** テロップを出しておく時間（ミリ秒） */
+export const telopDisplayDuration = (telop: Pick<Telop, 'effect'>): number =>
+    telop.effect === 'follow' ? FOLLOW_TELOP_DISPLAY_DURATION : TELOP_DISPLAY_DURATION;
 
 export interface TelopData {
     presets: TelopPreset[];

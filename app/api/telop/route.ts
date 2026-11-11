@@ -3,6 +3,9 @@ import {NextResponse} from 'next/server';
 import {getAppState, setAppState} from '../../../lib/db';
 import {enqueueSpeech} from '../../../lib/speech';
 import {
+    FOLLOW_SPEECH_TEXT,
+    FOLLOW_TELOP_COOLDOWN_MS,
+    FOLLOW_TELOP_TEXT,
     MAX_TELOP_LENGTH,
     TELOP_CHAT_STATUSES,
     Telop,
@@ -27,6 +30,8 @@ let revision = 0;
 // Twitch のチャットへの書き込み待ち。ID は起動時刻から振る（再起動後に、スクリプトが試した ID と重ならないように）
 let chatPosts: TelopChatPost[] = [];
 let nextChatId = Date.now();
+// 最後にフォローのお礼を出した時刻（続いたフォローを 1 回にまとめるため）
+let lastFollowTelopAt: number | null = null;
 
 /**
  * **FOR TESTING PURPOSES ONLY**
@@ -37,6 +42,7 @@ export function __TEST_ONLY_resetTelop() {
     revision = 0;
     chatPosts = [];
     nextChatId = 1;
+    lastFollowTelopAt = null;
 }
 
 /** 期限を過ぎた書き込み待ちを外す。拾われなかったものは、読み上げる設定ならテロップ側で読み上げる */
@@ -83,12 +89,20 @@ async function readJson(request: Request): Promise<{body: unknown} | NextRespons
  * 自由入力の followFont（共通設定のフォントで表示するか）は省略すると true、speak（読み上げるか）は省略すると false。
  * プリセットはその設定どおりに読み上げるが、`speak: false` なら読み上げない（文字起こしから出すときに、配信者の声と重ならないように）。
  * プリセットの display が false なら画面のテロップには出さない（chat が true のものだけなので、コメントとして出る）。
- * 読み上げるものは読み上げキューにも入れる（読み上げが無効なら入れない）
+ * 読み上げるものは読み上げキューにも入れる（読み上げが無効なら入れない）。
+ * `{event: 'follow'}` はフォローのお礼（Twitch 連携スクリプトがフォローのたびに送る）。文言は固定で、演出付きで出して読み上げる。
+ * 前回から FOLLOW_TELOP_COOLDOWN_MS 以内なら何もしない（レイドの後などに続けて出さない）
  */
 export async function POST(request: Request) {
     const json = await readJson(request);
     if (json instanceof NextResponse) return json;
-    const {presetId, text, followFont = true, speak} = (json.body ?? {}) as Record<string, unknown>;
+    const {presetId, text, followFont = true, speak, event} = (json.body ?? {}) as Record<string, unknown>;
+    if (event !== undefined) {
+        if (event !== 'follow' || presetId !== undefined || text !== undefined) {
+            return NextResponse.json({message: "event must be 'follow' and cannot be combined with presetId or text."}, {status: 400});
+        }
+        return showFollowTelop();
+    }
     if (speak !== undefined && typeof speak !== 'boolean') {
         return NextResponse.json({message: 'speak must be a boolean.'}, {status: 400});
     }
@@ -117,7 +131,7 @@ export async function POST(request: Request) {
     // テロップに出さない（コメントだけの）プリセットは、オーバーレイの表示を変えない
     if (display) {
         revision += 1;
-        current = {id: revision, ...telop, timestamp: now};
+        current = {id: revision, ...telop, effect: null, timestamp: now};
     }
     if (postToChat) {
         // 書き込んだコメントは配信者のコメントとして読み上げられるので、ここでは読まない（二重にならないように）。
@@ -127,6 +141,17 @@ export async function POST(request: Request) {
     } else if (shouldSpeak) {
         enqueueSpeech(telop.text);
     }
+    return NextResponse.json(toData());
+}
+
+/** フォローのお礼を出す。チャットには書き込まない */
+function showFollowTelop() {
+    const now = Date.now();
+    if (lastFollowTelopAt !== null && now - lastFollowTelopAt < FOLLOW_TELOP_COOLDOWN_MS) return NextResponse.json(toData());
+    lastFollowTelopAt = now;
+    revision += 1;
+    current = {id: revision, text: FOLLOW_TELOP_TEXT, followFont: true, effect: 'follow', timestamp: now};
+    enqueueSpeech(FOLLOW_SPEECH_TEXT);
     return NextResponse.json(toData());
 }
 
