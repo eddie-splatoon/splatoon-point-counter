@@ -16,13 +16,13 @@ vi.mock('motion/react', () => ({
   },
 }));
 
-const job = (id: number, goldenEggs: number, cleared = true, waveReached = 3) =>
-  ({ id, goldenEggs, bossKills: 10, deaths: 1, cleared, waveReached, stage: 'アラマキ砦', hazardLevel: 300 });
+const job = (id: number, goldenEggs: number, cleared = true, waveReached = 3, bossKills = 10) =>
+  ({ id, goldenEggs, bossKills, deaths: 1, cleared, waveReached, stage: 'アラマキ砦', hazardLevel: 300 });
 
 const review = (overrides: Partial<SalmonSessionReview> = {}): SalmonSessionReview => ({
   session: { id: 1, startedAt: new Date(2026, 10, 10, 21).getTime(), title: '夜の部' },
   totals: { jobs: 4, goldenEggs: 100, bossKills: 40, deaths: 4, clears: 3, failures: 1 },
-  jobs: [job(1, 30), job(2, 12, false, 2), job(3, 35), job(4, 23)],
+  jobs: [job(1, 30), job(2, 12, false, 2, 24), job(3, 35), job(4, 23)],
   detailedJobs: 4,
   powerEggs: 3200,
   rescues: 9,
@@ -39,6 +39,7 @@ const review = (overrides: Partial<SalmonSessionReview> = {}): SalmonSessionRevi
     { boss: 'mogura', selfKills: 0, teamKills: 4, appearances: 5 },
   ],
   bestJobId: 3,
+  bestBossJobId: 2,
   teamHighScores: [
     { jobId: 3, jobNumber: 3, teamGoldenEggs: 128, hazardLevel: 311, cleared: true },
     { jobId: 1, jobNumber: 1, teamGoldenEggs: 110, hazardLevel: null, cleared: true },
@@ -62,8 +63,15 @@ describe('SalmonReview', () => {
     expect(screen.getByTestId('review-outcome')).toHaveTextContent('失敗した WAVE: W1 0 回 / W2 1 回 / W3 0 回');
     expect(screen.getByTestId('review-grade')).toHaveTextContent('でんせつ 400 → でんせつ 460');
     expect(screen.getByTestId('review-best-job')).toHaveTextContent('金イクラ 35（3 バイト目・アラマキ砦）');
+    expect(screen.getByTestId('review-best-boss-job')).toHaveTextContent('ベスト オオモノ 24（2 バイト目・アラマキ砦）');
     expect(screen.getByTestId('review-challenges')).toHaveTextContent('お題 2 / 3 達成');
     expect(screen.getByTestId('review-clips')).toHaveTextContent('クリップ 2 本');
+  });
+
+  it('lists the totals with the rescues next to the bosses', () => {
+    render(<SalmonReview review={review()} />);
+    const labels = screen.getAllByTestId('review-stat').map((tile) => tile.firstChild?.textContent);
+    expect(labels).toEqual(['金イクラ', 'オオモノ', '救助', 'デス', '赤イクラ', '獲得ポイント', '最高キケン度']);
   });
 
   it('draws a bar per job colored by the result and labels only the best job', () => {
@@ -149,8 +157,9 @@ describe('SalmonReview', () => {
   });
 
   it('shows a message before any job is recorded', () => {
-    render(<SalmonReview review={review({ jobs: [], totals: { jobs: 0, goldenEggs: 0, bossKills: 0, deaths: 0, clears: 0, failures: 0 }, bestJobId: null })} />);
+    render(<SalmonReview review={review({ jobs: [], totals: { jobs: 0, goldenEggs: 0, bossKills: 0, deaths: 0, clears: 0, failures: 0 }, bestJobId: null, bestBossJobId: null })} />);
     expect(screen.getByText('まだバイトの記録がありません')).toBeInTheDocument();
+    expect(screen.queryByTestId('review-best-boss-job')).not.toBeInTheDocument();
     expect(screen.getByTestId('review-clear-rate')).toHaveTextContent('0%');
   });
 });

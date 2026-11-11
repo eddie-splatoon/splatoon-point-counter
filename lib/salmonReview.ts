@@ -43,6 +43,7 @@ const EMPTY_REVIEW: Omit<SalmonSessionReview, 'session' | 'totals'> = {
     kings: {appeared: 0, defeated: 0},
     bosses: [],
     bestJobId: null,
+    bestBossJobId: null,
     teamHighScores: [],
     weapons: [],
     newWeapons: [],
@@ -114,7 +115,11 @@ export function getSessionReview(sessionId?: number): SalmonSessionReview | null
     // バイトチームコンテストのバイトがあれば WAVE 5 まで並べる
     const waveCount = rows.some((row) => row.job_kind === 'teamContest') ? TEAM_CONTEST_MAX_WAVE : MAX_WAVE;
     const waveFailures = Array.from({length: waveCount}, (_, i) => jobs.filter((j) => !j.cleared && j.waveReached === i + 1).length);
-    const best = jobs.reduce<(typeof jobs)[number] | null>((top, job) => (top === null || job.goldenEggs > top.goldenEggs ? job : top), null);
+    // 同じ数なら先に遊んだバイトを残す
+    const bestBy = (value: (job: (typeof jobs)[number]) => number) =>
+        jobs.reduce<(typeof jobs)[number] | null>((top, job) => (top === null || value(job) > value(top) ? job : top), null);
+    const best = bestBy((job) => job.goldenEggs);
+    const bestBoss = bestBy((job) => job.bossKills);
 
     // 同じ納品数なら先に遊んだバイトを上にする
     const teamHighScores = rows
@@ -168,6 +173,7 @@ export function getSessionReview(sessionId?: number): SalmonSessionReview | null
         kings: {appeared: Number(detail.kingsAppeared), defeated: Number(detail.kingsDefeated)},
         bosses,
         bestJobId: best && best.goldenEggs > 0 ? best.id : null,
+        bestBossJobId: bestBoss && bestBoss.bossKills > 0 ? bestBoss.id : null,
         teamHighScores,
         weapons,
         newWeapons,

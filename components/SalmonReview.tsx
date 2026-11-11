@@ -216,6 +216,7 @@ const SalmonReview: React.FC<SalmonReviewProps> = ({review, layout = 'landscape'
     const portrait = layout === 'portrait';
     const clearRate = totals.jobs > 0 ? Math.round((totals.clears / totals.jobs) * 100) : 0;
     const best = jobs.find((j) => j.id === review.bestJobId) ?? null;
+    const bestBoss = jobs.find((j) => j.id === review.bestBossJobId) ?? null;
     const weapons = review.weapons.flatMap((w) => {
         const weapon = findSalmonWeapon(w.key);
         return weapon ? [{weapon, count: w.count}] : [];
@@ -249,9 +250,9 @@ const SalmonReview: React.FC<SalmonReviewProps> = ({review, layout = 'landscape'
             <div className={`grid gap-4 ${portrait ? 'grid-cols-4' : 'grid-cols-7'}`}>
                 <StatTile label="金イクラ" value={formatNumber(totals.goldenEggs)}/>
                 <StatTile label="オオモノ" value={formatNumber(totals.bossKills)}/>
+                <StatTile label="救助" value={review.detailedJobs > 0 ? formatNumber(review.rescues) : '-'} note={detailNote}/>
                 <StatTile label="デス" value={formatNumber(totals.deaths)}/>
                 <StatTile label="赤イクラ" value={review.detailedJobs > 0 ? formatNumber(review.powerEggs) : '-'} note={detailNote}/>
-                <StatTile label="救助" value={review.detailedJobs > 0 ? formatNumber(review.rescues) : '-'} note={detailNote}/>
                 <StatTile label="獲得ポイント" value={review.detailedJobs > 0 ? `${formatNumber(review.jobPoints)}p` : '-'}/>
                 <StatTile label="最高キケン度" value={review.maxHazardLevel !== null ? `${review.maxHazardLevel}%` : '-'}/>
             </div>
@@ -288,6 +289,11 @@ const SalmonReview: React.FC<SalmonReviewProps> = ({review, layout = 'landscape'
                     ベスト 金イクラ {best.goldenEggs}（{jobs.indexOf(best) + 1} バイト目{best.stage ? `・${best.stage}` : ''}）
                 </p>
             )}
+            {bestBoss && (
+                <p className="mt-2" style={{fontSize: 20, color: INK.primary}} data-testid="review-best-boss-job">
+                    ベスト オオモノ {bestBoss.bossKills}（{jobs.indexOf(bestBoss) + 1} バイト目{bestBoss.stage ? `・${bestBoss.stage}` : ''}）
+                </p>
+            )}
         </Card>
     );
 
@@ -302,9 +308,10 @@ const SalmonReview: React.FC<SalmonReviewProps> = ({review, layout = 'landscape'
     const highScoresCard = (
         <Card title="チーム納品ハイスコア" order={5} animate={animate} className="w-[300px]" testId="review-team-high-scores">
             {review.teamHighScores.length > 0 ? (
+                // 5 行がオオモノ討伐（7 行）と同じくらいの高さに収まるよう、行間を詰める
                 <ol className="flex flex-col gap-1">
                     {review.teamHighScores.map((score, i) => (
-                        <li key={score.jobId} className="flex items-baseline gap-3">
+                        <li key={score.jobId} className="flex items-baseline gap-3 leading-tight">
                             <span className="w-5 text-right font-bold" style={{fontSize: 18, color: INK.muted}}>{i + 1}</span>
                             <span className="w-16 text-right font-bold" style={{fontSize: 30, color: INK.primary, fontVariantNumeric: 'tabular-nums'}}>
                                 {score.teamGoldenEggs}
