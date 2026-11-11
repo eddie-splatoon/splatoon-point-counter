@@ -11,6 +11,7 @@ import {
   EVENTSUB_URL,
   EventSubConnection,
   HelixError,
+  MutedOwnMessages,
   SCOPES,
   TwitchClient,
   applyNotification,
@@ -540,6 +541,16 @@ describe('chatToSpeech', () => {
     ...overrides,
   });
 
+  it('does not read an own message that was muted, only once', () => {
+    const muted = new MutedOwnMessages();
+    muted.add('ナイス！！');
+    const ctx = { ...context(), mutedOwnMessages: muted };
+    const own = chat({ chatter_user_id: '123', message: { text: 'ナイス!!' } });
+
+    expect(chatToSpeech(own, ctx)).toBeNull();
+    expect(chatToSpeech(own, ctx)).toBe('ナイス!!');
+  });
+
   it('greets a viewer by name on their first message without reading the message', () => {
     expect(chatToSpeech(chat(), context())).toBe('ViewerAさん、いらっしゃい！');
   });
@@ -792,13 +803,27 @@ describe('createClipProcessor', () => {
   });
 });
 
+describe('MutedOwnMessages', () => {
+  it('forgets messages after a while and can be undone', () => {
+    let now = 0;
+    const muted = new MutedOwnMessages(() => now);
+    const undo = muted.add('おしい');
+    muted.add('満潮きた');
+
+    undo();
+    expect(muted.consume('おしい')).toBe(false);
+    now = 30_000;
+    expect(muted.consume('満潮きた')).toBe(false);
+  });
+});
+
 describe('createChatPostProcessor', () => {
   const telopUrl = 'http://localhost:3000/api/telop';
-  type Post = { id: number; text: string; picked: boolean };
+  type Post = { id: number; text: string; speak?: boolean; picked: boolean };
 
-  const setup = (posts: Post[], sendChatMessage: (text: string) => Promise<void>, patchStatus = 200) => {
-    const fetchFn = vi.fn(async (_url: string, init?: RequestInit) => (init?.method === 'PATCH' ? json({}, patchStatus) : json({ chatPosts: posts })));
-    const process = createChatPostProcessor({ telopUrl, sendChatMessage, fetchFn: fetchFn as unknown as typeof fetch, log: silent });
+  const setup = (posts: Post[], sendChatMessage: (text: string) => Promise<void>, patchStatus = 200, mutedOwnMessages?: MutedOwnMessages) => {
+    const fetchFn = vi.fn(async (_url: string, init?: RequestInit) => (init?.method === 'PATCH' ? json({}, patchStatus) : json({ chatPosts: posts.map((p) => ({ speak: true, ...p })) })));
+    const process = createChatPostProcessor({ telopUrl, sendChatMessage, mutedOwnMessages, fetchFn: fetchFn as unknown as typeof fetch, log: silent });
     const patches = () => fetchFn.mock.calls.filter(([, init]) => init?.method === 'PATCH').map(([, init]) => JSON.parse(String(init!.body)));
     return { fetchFn, process, patches };
   };
@@ -817,6 +842,30 @@ describe('createChatPostProcessor', () => {
       { chatId: 2, status: 'picked' },
       { chatId: 2, status: 'sent' },
     ]);
+  });
+
+  it('mutes the own message of a telop that is not read aloud before writing it', async () => {
+    const muted = new MutedOwnMessages();
+    const mutedWhileSending: boolean[] = [];
+    const send = vi.fn(async (text: string) => {
+      mutedWhileSending.push(muted.consume(text));
+    });
+    const { process } = setup([{ id: 1, text: 'おしい', speak: false, picked: false }, { id: 2, text: 'ナイス!!', speak: true, picked: false }], send, 200, muted);
+
+    await process();
+
+    expect(mutedWhileSending).toEqual([true, false]);
+  });
+
+  it('unmutes the message when it cannot be written', async () => {
+    const muted = new MutedOwnMessages();
+    const { process } = setup([{ id: 1, text: 'おしい', speak: false, picked: false }], async () => {
+      throw new Error('dropped');
+    }, 200, muted);
+
+    await process();
+
+    expect(muted.consume('おしい')).toBe(false);
   });
 
   it('reports a failure so that the app reads the telop aloud', async () => {

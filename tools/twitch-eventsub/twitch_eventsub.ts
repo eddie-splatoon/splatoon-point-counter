@@ -500,7 +500,43 @@ export interface ChatSpeechContext {
   greeted: Set<string>;
   // 読み上げないアカウント（Nightbot などのボット）のログイン名。小文字
   ignoredLogins: Set<string>;
+  // 読み上げない自分のコメント（読み上げない設定のテロップを書き込んだもの）。戻ってきたら 1 回だけ外す
+  mutedOwnMessages?: MutedOwnMessages;
 }
+
+// 読み上げない自分のコメントを覚えておく時間（書き込んだコメントが EventSub で戻ってこなかったときに、後の同じコメントまで読まなくならないように）
+const MUTED_OWN_MESSAGE_TTL_MS = 30_000;
+
+/** 読み上げない自分のコメント。本文は chatToSpeech と同じく NFKC・空白をそろえて比べる */
+export class MutedOwnMessages {
+  private entries: { text: string; until: number }[] = [];
+  private now: () => number;
+
+  constructor(now: () => number = Date.now) {
+    this.now = now;
+  }
+
+  /** 登録して、取り消す関数を返す（書き込めなかったときに使う） */
+  add(text: string): () => void {
+    const entry = { text: normalizeChatText(text), until: this.now() + MUTED_OWN_MESSAGE_TTL_MS };
+    this.entries.push(entry);
+    return () => {
+      this.entries = this.entries.filter((e) => e !== entry);
+    };
+  }
+
+  /** 登録されていれば 1 件外して true */
+  consume(text: string): boolean {
+    const now = this.now();
+    this.entries = this.entries.filter((e) => e.until > now);
+    const index = this.entries.findIndex((e) => e.text === text);
+    if (index < 0) return false;
+    this.entries.splice(index, 1);
+    return true;
+  }
+}
+
+const normalizeChatText = (text: string) => text.normalize('NFKC').replace(/\s+/g, ' ').trim();
 
 const MAX_CHAT_SPEECH_LENGTH = 100;
 // 挨拶で読み上げる名前の長さ。表示名を文のようにして読ませる悪用を防ぐため短く切る
@@ -543,8 +579,9 @@ export function chatToSpeech(event: unknown, context: ChatSpeechContext): string
   if (chat.source_broadcaster_user_id && chat.source_broadcaster_user_id !== context.broadcasterId) return null;
 
   if (userId === context.broadcasterId) {
-    const text = (chat.message?.text ?? '').normalize('NFKC').replace(/\s+/g, ' ').trim();
+    const text = normalizeChatText(chat.message?.text ?? '');
     if (text === '' || text.startsWith('!') || URL_PATTERN.test(text)) return null;
+    if (context.mutedOwnMessages?.consume(text)) return null;
     return truncate(text, MAX_CHAT_SPEECH_LENGTH);
   }
 
@@ -670,6 +707,8 @@ export function createClipProcessor(options: ClipProcessorOptions): () => Promis
 interface ChatPostProcessorOptions {
   telopUrl: string;
   sendChatMessage: (text: string) => Promise<void>;
+  // 読み上げない設定のテロップは、書き込んだコメントも読み上げない（戻ってくるのが書き込みの応答より先のことがあるので、書き込む前に登録する）
+  mutedOwnMessages?: MutedOwnMessages;
   fetchFn?: FetchFn;
   log?: (message: string) => void;
 }
@@ -681,7 +720,7 @@ interface ChatPostProcessorOptions {
  * 前回の処理が終わっていなければ何もしない。一度試したものはやり直さない（同じテロップを 2 回書き込まない）
  */
 export function createChatPostProcessor(options: ChatPostProcessorOptions): () => Promise<void> {
-  const { telopUrl, sendChatMessage, fetchFn = fetch, log = console.log } = options;
+  const { telopUrl, sendChatMessage, mutedOwnMessages, fetchFn = fetch, log = console.log } = options;
   let running = false;
   const attempted = new Set<number>();
 
@@ -696,12 +735,14 @@ export function createChatPostProcessor(options: ChatPostProcessorOptions): () =
     return true;
   };
 
-  const processOne = async (chatId: number, text: string) => {
+  const processOne = async (chatId: number, text: string, speak: boolean) => {
     attempted.add(chatId);
     if (!(await report(chatId, 'picked'))) return;
+    const unmute = speak ? undefined : mutedOwnMessages?.add(text);
     try {
       await sendChatMessage(text);
     } catch (error) {
+      unmute?.();
       log(`テロップ「${text}」をチャットに書き込めませんでした: ${(error as Error).message}`);
       await report(chatId, 'failed');
       return;
@@ -716,10 +757,10 @@ export function createChatPostProcessor(options: ChatPostProcessorOptions): () =
     try {
       const res = await fetchFn(`${telopUrl}?view=chat`);
       if (!res.ok) throw new Error(`${telopUrl} の取得に失敗しました: ${res.status}`);
-      const { chatPosts } = (await res.json()) as { chatPosts: { id: number; text: string; picked: boolean }[] };
-      for (const { id, text, picked } of chatPosts) {
+      const { chatPosts } = (await res.json()) as { chatPosts: { id: number; text: string; speak: boolean; picked: boolean }[] };
+      for (const { id, text, speak, picked } of chatPosts) {
         // picked は前回の自分が拾ったもの（attempted に入っている）か、別に起動したスクリプトが拾ったもの
-        if (!picked && !attempted.has(id)) await processOne(id, text);
+        if (!picked && !attempted.has(id)) await processOne(id, text, speak);
       }
     } finally {
       running = false;
@@ -808,9 +849,11 @@ async function main(): Promise<void> {
     );
   }, CLIP_POLL_INTERVAL_MS);
 
+  const mutedOwnMessages = new MutedOwnMessages();
   const processChatPosts = createChatPostProcessor({
     telopUrl,
     sendChatMessage: (text) => client.sendChatMessage(text),
+    mutedOwnMessages,
     log,
   });
   let chatPostWarned = false;
@@ -830,6 +873,7 @@ async function main(): Promise<void> {
     broadcasterId: client.userId,
     greeted: new Set(),
     ignoredLogins: parseIgnoredLogins(process.env.TWITCH_SPEECH_IGNORE),
+    mutedOwnMessages,
   };
 
   const connection = new EventSubConnection(
