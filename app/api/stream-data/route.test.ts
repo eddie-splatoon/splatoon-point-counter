@@ -38,6 +38,7 @@ describe('Stream Data API', () => {
 
       const request = new NextRequest('http://localhost/api/stream-data', {
         method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(newData),
       });
 
@@ -62,6 +63,7 @@ describe('Stream Data API', () => {
 
       const request = new NextRequest('http://localhost/api/stream-data', {
         method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(invalidData),
       });
 
@@ -76,6 +78,7 @@ describe('Stream Data API', () => {
       delete withoutScore.scoreValue;
       const response = await POST(new NextRequest('http://localhost/api/stream-data', {
         method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(withoutScore),
       }));
       const body = await response.json();
@@ -83,6 +86,16 @@ describe('Stream Data API', () => {
       expect(response.status).toBe(200);
       expect(body).toMatchObject({ scoreLabel: 'ハイスコア', scoreValue: '264', fontSize: 60 });
       expect(await (await GET()).json()).toMatchObject({ scoreValue: '264' });
+    });
+
+    it('rejects requests that are not JSON', async () => {
+      const response = await POST(new NextRequest('http://localhost/api/stream-data', {
+        method: 'POST',
+        headers: { 'Content-Type': 'text/plain' },
+        body: JSON.stringify({ ...getInitialStreamData(), scoreValue: '改ざん' }),
+      }));
+      expect(response.status).toBe(415);
+      expect((await (await GET()).json()).scoreValue).toBe(getInitialStreamData().scoreValue);
     });
 
     it('should update lastEvent when it is in the payload', async () => {
@@ -95,6 +108,7 @@ describe('Stream Data API', () => {
 
         const request = new NextRequest('http://localhost/api/stream-data', {
             method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(payload),
         });
 

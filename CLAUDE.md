@@ -224,7 +224,7 @@ export interface StreamData {
 - オーバーレイが定期的にポーリング
 
 **`POST /api/stream-data`**
-- `StreamData` を更新（`scoreLabel` / `scoreValue` は省略可。コントロールパネルは送らない）
+- `StreamData` を更新（`scoreLabel` / `scoreValue` は省略可。コントロールパネルは送らない）。`Content-Type: application/json` 必須（スコア表示は SQLite に残るので、他サイトからの単純リクエストで書き換えさせない）
 - コントロールパネルから呼び出される
 - `revision` が自動的にインクリメントされる
 

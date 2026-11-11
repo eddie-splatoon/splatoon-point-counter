@@ -101,6 +101,10 @@ export async function GET() {
 }
 
 export async function POST(request: Request) {
+    // 他サイトからプリフライトなしで送れる text/plain などの「単純リクエスト」を拒否する（スコア表示は SQLite に残るので書き換えさせない）
+    if (!request.headers.get('content-type')?.toLowerCase().startsWith('application/json')) {
+        return NextResponse.json({message: 'Content-Type must be application/json.'}, {status: 415});
+    }
     try {
         const body = await request.json();
         const {
