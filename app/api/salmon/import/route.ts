@@ -1,7 +1,9 @@
 import {NextResponse} from 'next/server';
 
+import {detectAchievements, formatCelebration} from '../../../../lib/salmonCelebration';
 import {getRecordedJobs, listImports, listPendingImports, parseImportResult, requestImport, updateImport} from '../../../../lib/salmonImports';
 import {updateScoreDisplayFromImport} from '../../../../lib/scoreDisplay';
+import {showCelebrationTelop} from '../../../../lib/telop';
 
 /**
  * 取り込みの依頼の一覧（新しい順）。取り込みスクリプトは次を使う
@@ -35,7 +37,9 @@ export async function POST(request: Request) {
 
 /**
  * 取り込みの開始（processing）・結果を書き込む（取り込みスクリプトから）。succeeded なら記録していないバイトを古い順に記録し、
- * 最新のバイトに合わせてスコア表示（バイト評価・ハイスコア）を書き換える
+ * 最新のバイトに合わせてスコア表示（バイト評価・ハイスコア）を書き換える。
+ * 最新のバイトで本日の最高記録・オオモノ全処理が出たら、お祝いのテロップ・コメント・読み上げを出し、応答の celebrated を true にする
+ * （取り込みスクリプトは、そのときは「リザルトを記録しました」のテロップを出さない。お祝いを上書きしないように）
  */
 export async function PATCH(request: Request) {
     const json = await readJson(request);
@@ -53,5 +57,19 @@ export async function PATCH(request: Request) {
             console.error('Failed to update the score display from the imported job:', error);
         }
     }
-    return NextResponse.json({import: result});
+    return NextResponse.json({import: result, celebrated: parsed.result.status === 'succeeded' && celebrate(result.jobId)});
+}
+
+/** 記録したバイトで本日の最高記録などが出たら祝う。お祝いは記録のおまけなので、失敗しても取り込みは成功として返す */
+function celebrate(jobId: number | null): boolean {
+    if (jobId === null) return false;
+    try {
+        const celebration = formatCelebration(detectAchievements(jobId));
+        if (celebration === null) return false;
+        showCelebrationTelop(celebration);
+        return true;
+    } catch (error) {
+        console.error('Failed to celebrate the imported job:', error);
+        return false;
+    }
 }

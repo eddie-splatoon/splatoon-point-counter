@@ -16,8 +16,11 @@ export const FOLLOW_TELOP_COOLDOWN_MS = 15_000;
 // 花火などの演出を見せるので、通常のテロップより長く出す
 export const FOLLOW_TELOP_DISPLAY_DURATION = 8000;
 
-// テロップの演出。follow: フォローのお礼（花火などを重ねて派手に出す）
-export type TelopEffect = 'follow';
+// サーモンランの記録のお祝い（リザルトの取り込みで出す）。2 行の文を演出付きで出すので、通常のテロップより長く出す
+export const RECORD_TELOP_DISPLAY_DURATION = 8000;
+
+// テロップの演出。follow: フォローのお礼、record: サーモンランの記録のお祝い（どちらも花火などを重ねて派手に出す）
+export type TelopEffect = 'follow' | 'record';
 
 export interface TelopPreset {
     id: number;
@@ -34,15 +37,18 @@ export interface TelopSettings {
 
 export interface Telop {
     id: number;
-    text: string;
+    text: string; // 記録のお祝い（effect が record）だけは 2 行（改行区切り）
     followFont: boolean;
     effect: TelopEffect | null; // 通常のテロップは null
     timestamp: number;
 }
 
 /** テロップを出しておく時間（ミリ秒） */
-export const telopDisplayDuration = (telop: Pick<Telop, 'effect'>): number =>
-    telop.effect === 'follow' ? FOLLOW_TELOP_DISPLAY_DURATION : TELOP_DISPLAY_DURATION;
+export const telopDisplayDuration = (telop: Pick<Telop, 'effect'>): number => {
+    if (telop.effect === 'follow') return FOLLOW_TELOP_DISPLAY_DURATION;
+    if (telop.effect === 'record') return RECORD_TELOP_DISPLAY_DURATION;
+    return TELOP_DISPLAY_DURATION;
+};
 
 export interface TelopData {
     presets: TelopPreset[];

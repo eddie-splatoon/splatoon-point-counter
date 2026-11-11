@@ -4,9 +4,10 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { __TEST_ONLY_setDb, openDb, setAppState } from '../../../lib/db';
 import { VOICE_STATE_KEY, __TEST_ONLY_resetSpeechQueue, listSpeech } from '../../../lib/speech';
+import { CHAT_PICKUP_TTL_MS, CHAT_RESULT_TTL_MS, __TEST_ONLY_resetTelop, showCelebrationTelop } from '../../../lib/telop';
 import { FOLLOW_SPEECH_TEXT, FOLLOW_TELOP_COOLDOWN_MS, FOLLOW_TELOP_TEXT, getDefaultTelopSettings } from '../../../lib/telopTypes';
 
-import { CHAT_PICKUP_TTL_MS, CHAT_RESULT_TTL_MS, GET, PATCH, POST, PUT, __TEST_ONLY_resetTelop } from './route';
+import { GET, PATCH, POST, PUT } from './route';
 
 const request = (method: 'POST' | 'PUT' | 'PATCH', body: unknown, contentType = 'application/json') =>
   new NextRequest('http://localhost/api/telop', {
@@ -171,6 +172,31 @@ describe('Telop API', () => {
       expect((await POST(request('POST', { event: 'follow', text: 'a' }))).status).toBe(400);
       expect((await POST(request('POST', { event: 'follow', presetId: 1 }))).status).toBe(400);
       expect((await (await GET()).json()).current).toBeNull();
+    });
+  });
+
+  describe('celebrating a salmon run record', () => {
+    const celebration = { telop: '🎉 本日の最高記録を更新！\n金イクラ 38個', message: '本日の最高納品数を更新しました！38個' };
+
+    beforeEach(() => {
+      setAppState(VOICE_STATE_KEY, { enabled: true, speakerId: 3, speakerName: 'ずんだもん', speedScale: 1, volumeScale: 1 });
+    });
+
+    it('shows the telop with its effect and posts the message to chat instead of reading it aloud', async () => {
+      showCelebrationTelop(celebration);
+
+      expect((await (await GET()).json()).current).toEqual({ id: 1, text: celebration.telop, followFont: true, effect: 'record', timestamp: NOW });
+      expect((await (await GET(new NextRequest('http://localhost/api/telop?view=chat'))).json()).chatPosts)
+        .toEqual([{ id: 1, text: celebration.message, speak: true, picked: false, createdAt: NOW }]);
+      expect(listSpeech()).toEqual([]);
+    });
+
+    it('reads the message aloud when the Twitch script does not pick it up', async () => {
+      showCelebrationTelop(celebration);
+      vi.mocked(Date.now).mockReturnValue(NOW + CHAT_PICKUP_TTL_MS);
+      await GET();
+
+      expect(listSpeech().map((item) => item.text)).toEqual([celebration.message]);
     });
   });
 

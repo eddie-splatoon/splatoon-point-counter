@@ -16,6 +16,9 @@ const renderLoaded = async (presets: TelopPreset[] = getDefaultTelopSettings().p
   respondWith(presets);
   const view = render(<TelopBar />);
   await screen.findByTestId('telop-buttons');
+  // findBy の待機中の描画は act の外なので、キーボードのリスナーを登録する effect がまだ走っていないことがある（CI で不安定になる）。
+  // 残りの effect を流し切ってからキーを押す
+  await act(async () => {});
   return view;
 };
 
