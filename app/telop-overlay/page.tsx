@@ -33,9 +33,9 @@ const TelopOverlayPage: React.FC = () => {
     const [shown, setShown] = useState<{telop: Telop; hideAt: number} | null>(null);
     const [now, setNow] = useState(0);
     const [fontFamily, setFontFamily] = useState('');
-    // 花火とキラキラを出しているフォローのお礼の ID。花火は 20 秒の演出なので、テロップ（8 秒）が消えても、別のテロップに置き換わっても続ける
+    // 花火とキラキラを出しているフォローのお礼（出した時刻）。花火は 20 秒の演出なので、テロップ（8 秒）が消えても、別のテロップに置き換わっても続ける
     const [celebration, setCelebration] = useState<number | null>(null);
-    // 最後に見たフォローのお礼の ID。undefined はまだ一度も取得していない（開いた時点で出ていたものは演出しない）
+    // 最後に見たフォローのお礼（出した時刻）。undefined はまだ一度も取得していない（開いた時点で出ていたものは演出しない）
     const lastFollowIdRef = useRef<number | null | undefined>(undefined);
 
     const fetchDataInternal = useCallback(async () => {
@@ -51,7 +51,8 @@ const TelopOverlayPage: React.FC = () => {
                 const {current, serverTime} = res.data;
                 // 経過時間はサーバーの時計どうしで測り、残り時間をブラウザの時計に置き換える（OBS とサーバーの時計がずれていてもよいように）
                 setShown(current ? {telop: current, hideAt: Date.now() + telopDisplayDuration(current) - (serverTime - current.timestamp)} : null);
-                const followId = current?.effect === 'follow' ? current.id : null;
+                // ID はサーバーの再起動で振り直されるので、出した時刻で見分ける
+                const followId = current?.effect === 'follow' ? current.timestamp : null;
                 if (lastFollowIdRef.current !== undefined && followId !== null && followId !== lastFollowIdRef.current) setCelebration(followId);
                 if (lastFollowIdRef.current === undefined || followId !== null) lastFollowIdRef.current = followId;
             }
