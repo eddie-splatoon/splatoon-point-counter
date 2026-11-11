@@ -178,8 +178,10 @@ describe('Telop API', () => {
     it('reads a failed post aloud only when the preset reads aloud', async () => {
       await POST(request('POST', { presetId: 1 }));
       await POST(request('POST', { presetId: 2 }));
-      await PATCH(request('PATCH', { chatId: 1, status: 'failed' }));
-      await PATCH(request('PATCH', { chatId: 2, status: 'failed' }));
+      for (const chatId of [1, 2]) {
+        await PATCH(request('PATCH', { chatId, status: 'picked' }));
+        await PATCH(request('PATCH', { chatId, status: 'failed' }));
+      }
 
       expect(await chatGet()).toEqual([]);
       expect(listSpeech().map((item) => item.text)).toEqual(['ナイス!!']);
@@ -187,6 +189,7 @@ describe('Telop API', () => {
 
     it('does not read the post aloud when the telop was shown with speak: false', async () => {
       await POST(request('POST', { presetId: 1, speak: false }));
+      await PATCH(request('PATCH', { chatId: 1, status: 'picked' }));
       await PATCH(request('PATCH', { chatId: 1, status: 'failed' }));
 
       expect(listSpeech()).toEqual([]);
@@ -210,6 +213,13 @@ describe('Telop API', () => {
       vi.spyOn(Date, 'now').mockReturnValue(NOW + CHAT_RESULT_TTL_MS);
       expect(await chatGet()).toEqual([]);
       expect(listSpeech()).toEqual([]);
+    });
+
+    it('accepts a result only for a picked post', async () => {
+      await POST(request('POST', { presetId: 1 }));
+
+      expect((await PATCH(request('PATCH', { chatId: 1, status: 'sent' }))).status).toBe(409);
+      expect(await chatGet()).toMatchObject([{ id: 1, picked: false }]);
     });
 
     it.each([[{}], [{ chatId: '1', status: 'sent' }], [{ chatId: 1, status: 'done' }]])('rejects %j', async (body) => {

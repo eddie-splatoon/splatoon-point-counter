@@ -141,6 +141,9 @@ export async function PATCH(request: Request) {
 
     if ((status as TelopChatStatus) === 'picked') {
         post.picked = true;
+    } else if (!post.picked) {
+        // 結果は拾ったものにだけ受け付ける（拾う前に sent で消されて書き込まれない、などを防ぐ）
+        return NextResponse.json({message: 'Chat post has not been picked.'}, {status: 409});
     } else {
         chatPosts = chatPosts.filter((p) => p.id !== chatId);
         if (status === 'failed' && post.speak) enqueueSpeech(post.text);
