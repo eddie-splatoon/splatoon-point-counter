@@ -22,7 +22,7 @@ interface TelopBarProps {
 
 /**
  * コントロールパネルの上部に常に出すテロップのボタン。どのタブを開いていても、
- * ボタンかキーボードの 1〜9, 0 で並び順のプリセットを出せる
+ * ボタンかキーボードの 1〜9, 0（先頭の 10 個）で並び順のプリセットを出せる
  */
 const TelopBar: React.FC<TelopBarProps> = ({reloadKey = 0}) => {
     const [presets, setPresets] = useState<TelopPreset[] | null>(null);
@@ -70,9 +70,16 @@ const TelopBar: React.FC<TelopBarProps> = ({reloadKey = 0}) => {
         <Paper elevation={12} sx={{position: 'sticky', top: 0, zIndex: 10, mb: 2, p: 1.5, bgcolor: '#2A2A2A', border: '1px solid rgba(255, 255, 255, 0.15)'}}>
             {error && <Alert severity="error" sx={{mb: 1}}>{error}</Alert>}
             {presets && presets.length > 0 ? (
-                <Box data-testid="telop-buttons" sx={{display: 'flex', flexWrap: 'wrap', gap: 1}}>
+                // プリセットが多いとバーが高くなるので詰めて並べる。キーの割り当ての無いものは outlined で区別する
+                <Box data-testid="telop-buttons" sx={{display: 'flex', flexWrap: 'wrap', gap: 0.75}}>
                     {presets.map((preset, index) => (
-                        <Button key={preset.id} variant="contained" size="small" onClick={() => void show(preset.id)} sx={{textTransform: 'none'}}>
+                        <Button
+                            key={preset.id}
+                            variant={TELOP_SHORTCUT_KEYS[index] !== undefined ? 'contained' : 'outlined'}
+                            size="small"
+                            onClick={() => void show(preset.id)}
+                            sx={{textTransform: 'none'}}
+                        >
                             {TELOP_SHORTCUT_KEYS[index] !== undefined && (
                                 <Box component="kbd" sx={{mr: 1, px: 0.75, borderRadius: 1, bgcolor: 'rgba(0,0,0,0.3)', fontFamily: 'monospace'}}>
                                     {TELOP_SHORTCUT_KEYS[index]}

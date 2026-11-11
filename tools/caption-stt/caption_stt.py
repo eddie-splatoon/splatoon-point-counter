@@ -1,7 +1,7 @@
 """マイク音声をリアルタイムに文字起こしし、/api/caption へ送信するスクリプト。
 
 Silero VAD で発話を区切り、発話ごとに mlx-whisper (Apple Silicon) で文字起こしする。
-発話がテロップのプリセットに近ければ、字幕の代わりに /api/telop でそのテロップを出す。
+発話（またはその中の 1 文）がテロップのプリセットに近ければ、その部分は字幕の代わりに /api/telop でそのテロップを出す。
 決まった言葉（「ナイス」など）を含めば、/api/stream-data でスコア表示オーバーレイにエフェクトを出す。
 「クリップ撮って」などと言えば、/api/clip で Twitch のクリップを依頼する（作るのは tools/twitch-eventsub）。
 """
@@ -62,6 +62,7 @@ TELOP_MATCH_THRESHOLD = 0.8  # 発話とテロップの類似度がこれ以上�
 TELOP_SHORT_LENGTH = 2  # 正規化後この文字数以下のテロップは完全一致のときだけ出す
 TELOP_REFRESH_SECONDS = 30  # テロップのプリセットを取り直す間隔
 TELOP_COOLDOWN_SECONDS = 10  # 同じテロップを出し直さない時間
+SENTENCE_PATTERN = re.compile(r"[^。！？!?]+[。！？!?]*")
 
 # 話した言葉で出すエフェクト（/api/stream-data の lastEvent.name）。上から順に見て、最初に含まれていたものを出す
 EFFECT_KEYWORDS = [
@@ -152,8 +153,17 @@ def select_segments(segments: list[dict]) -> tuple[str, list[tuple[str, str]]]:
 
 
 def build_prompt(telop_texts: list[str]) -> str:
-    """Whisper に渡すプロンプト。配信者が実際に言うテロップの文と用語集。"""
-    return "".join(f"{t}。" for t in telop_texts) + GLOSSARY
+    """Whisper に渡すプロンプト。配信者が実際に言うテロップの文と用語集。
+
+    Whisper は長いプロンプトの先頭を切り捨てるので、テロップは並び順の逆に置く
+    （テロップが多いときに落ちるのが、並びの後ろのあまり使わないものになるように）。
+    """
+    return "".join(f"{t}。" for t in reversed(telop_texts)) + GLOSSARY
+
+
+def split_sentences(text: str) -> list[str]:
+    """発話を文に分ける。「。」「！」「？」で区切り、記号は前の文に残す（読点では区切らない）。"""
+    return [m.strip() for m in SENTENCE_PATTERN.findall(text) if m.strip()]
 
 
 def match_telop(text: str, presets: list[dict]) -> dict | None:
@@ -240,22 +250,41 @@ class TelopMatcher:
         except Exception as e:  # noqa: BLE001 - テロップが取れなくても字幕は続ける
             print(f"[caption-stt] テロップのプリセットを取得できませんでした: {e}", file=sys.stderr)
 
-    def try_show(self, text: str) -> dict | None:
-        """発話に近いテロップを出す。出したらそのプリセットを返す（その発話は字幕に送らない）。"""
-        preset = match_telop(text, self.presets)
-        if preset is None:
+    def try_show(self, text: str) -> tuple[dict, str, str] | None:
+        """発話に近いテロップを出す。出したら（そのプリセット, 一致した文, 残りの文）を返す。
+
+        文ごとに比べ、最初に一致した文のテロップを出す（「ナイス。いいね。」でも出せるように）。
+        一致した文は字幕に送らず、残りの文だけを字幕にする。テロップは 1 発話で 1 つだけ。
+        """
+        found = self._find(text)
+        if found is None:
             return None
+        preset, matched, rest = found
         now = self._clock()
         last = self._shown_at.get(preset["id"])
         if last is not None and now - last < TELOP_COOLDOWN_SECONDS:
-            return preset  # 出したばかりなので出し直さないが、字幕にも送らない
+            return found  # 出したばかりなので出し直さないが、一致した文は字幕にも送らない
         try:
             self._show_telop(self.url, preset["id"])
         except Exception as e:  # noqa: BLE001 - 出せなかったら字幕として送る
             print(f"[caption-stt] テロップを出せませんでした: {e}", file=sys.stderr)
             return None
         self._shown_at[preset["id"]] = now
-        return preset
+        return found
+
+    def _find(self, text: str) -> tuple[dict, str, str] | None:
+        sentences = split_sentences(text)
+        if len(sentences) >= 2:
+            for sentence in sentences:
+                preset = match_telop(sentence, self.presets)
+                if preset is None:
+                    continue
+                # 「ナイス!ナイス!」のように同じテロップに一致する文は、残りの字幕にも入れない
+                rest = [s for s in sentences if match_telop(s, self.presets) is not preset]
+                return preset, sentence, "".join(rest)
+        # 1 文だけ、または文に分けると一致しない（文をまたぐテロップ）ときは発話全体で比べる
+        preset = match_telop(text, self.presets)
+        return (preset, text, "") if preset is not None else None
 
 
 def default_telop_url(caption_url: str) -> str:
@@ -466,10 +495,13 @@ def run(
         if effect:
             print(f"[caption-stt] (エフェクト: {effect}) {text}")
             trigger_effect(effect_url, effect)
-        preset = telop.try_show(text) if telop else None
-        if preset:
-            print(f"[caption-stt] (テロップ: {preset['text']}) {text}")
-            return
+        shown = telop.try_show(text) if telop else None
+        if shown:
+            preset, matched, text = shown
+            print(f"[caption-stt] (テロップ: {preset['text']}) {matched}")
+            # 一致した文の残りは字幕にする（相づちだけなど字幕にならないものは捨てる）
+            if not text or caption_rejection(text):
+                return
         print(f"[caption-stt] {text}")
         post_caption(caption_url, text)
 

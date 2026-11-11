@@ -11,11 +11,13 @@ import {
   EVENTSUB_URL,
   EventSubConnection,
   HelixError,
+  MutedOwnMessages,
   SCOPES,
   TwitchClient,
   applyNotification,
   chatToSpeech,
   clipFailureReason,
+  createChatPostProcessor,
   createClipProcessor,
   loadToken,
   parseIgnoredLogins,
@@ -296,6 +298,27 @@ describe('TwitchClient', () => {
       await expect(client.createClip()).rejects.toThrow('クリップの作成結果');
     });
 
+    it('posts a chat message as the broadcaster', async () => {
+      const fetchFn = vi.fn();
+      const client = await authenticated(fetchFn);
+      fetchFn.mockResolvedValueOnce(json({ data: [{ message_id: 'm1', is_sent: true }] }));
+
+      await client.sendChatMessage('ナイス!!');
+      const [url, init] = fetchFn.mock.calls[1];
+      expect(url).toBe('https://api.twitch.tv/helix/chat/messages');
+      expect(init.method).toBe('POST');
+      expect(init.headers['Content-Type']).toBe('application/json');
+      expect(JSON.parse(init.body)).toEqual({ broadcaster_id: '123', sender_id: '123', message: 'ナイス!!' });
+    });
+
+    it('throws when the chat message is dropped', async () => {
+      const fetchFn = vi.fn();
+      const client = await authenticated(fetchFn);
+      fetchFn.mockResolvedValueOnce(json({ data: [{ message_id: '', is_sent: false, drop_reason: { code: 'msg_duplicate', message: 'duplicate' } }] }));
+
+      await expect(client.sendChatMessage('ナイス!!')).rejects.toThrow('duplicate');
+    });
+
     it('throws when a subscription is rejected', async () => {
       const fetchFn = vi.fn();
       const client = await authenticated(fetchFn);
@@ -518,6 +541,16 @@ describe('chatToSpeech', () => {
     ...overrides,
   });
 
+  it('does not read an own message that was muted, only once', () => {
+    const muted = new MutedOwnMessages();
+    muted.add('ナイス！！');
+    const ctx = { ...context(), mutedOwnMessages: muted };
+    const own = chat({ chatter_user_id: '123', message: { text: 'ナイス!!' } });
+
+    expect(chatToSpeech(own, ctx)).toBeNull();
+    expect(chatToSpeech(own, ctx)).toBe('ナイス!!');
+  });
+
   it('greets a viewer by name on their first message without reading the message', () => {
     expect(chatToSpeech(chat(), context())).toBe('ViewerAさん、いらっしゃい！');
   });
@@ -685,6 +718,10 @@ describe('scopes', () => {
   it('includes the scope to create clips', () => {
     expect(SCOPES).toContain('clips:edit');
   });
+
+  it('includes the scope to post chat messages', () => {
+    expect(SCOPES).toContain('user:write:chat');
+  });
 });
 
 describe('createClipProcessor', () => {
@@ -760,6 +797,129 @@ describe('createClipProcessor', () => {
 
   it('throws when the pending requests cannot be fetched', async () => {
     const { fetchFn, process } = setup([], async () => clip);
+    fetchFn.mockResolvedValueOnce(json({}, 500));
+
+    await expect(process()).rejects.toThrow('500');
+  });
+});
+
+describe('MutedOwnMessages', () => {
+  it('forgets messages after a while and can be undone', () => {
+    let now = 0;
+    const muted = new MutedOwnMessages(() => now);
+    const undo = muted.add('おしい');
+    muted.add('満潮きた');
+
+    undo();
+    expect(muted.consume('おしい')).toBe(false);
+    now = 30_000;
+    expect(muted.consume('満潮きた')).toBe(false);
+  });
+});
+
+describe('createChatPostProcessor', () => {
+  const telopUrl = 'http://localhost:3000/api/telop';
+  type Post = { id: number; text: string; speak?: boolean; picked: boolean };
+
+  const setup = (posts: Post[], sendChatMessage: (text: string) => Promise<void>, patchStatus = 200, mutedOwnMessages?: MutedOwnMessages) => {
+    const fetchFn = vi.fn(async (_url: string, init?: RequestInit) => (init?.method === 'PATCH' ? json({}, patchStatus) : json({ chatPosts: posts.map((p) => ({ speak: true, ...p })) })));
+    const process = createChatPostProcessor({ telopUrl, sendChatMessage, mutedOwnMessages, fetchFn: fetchFn as unknown as typeof fetch, log: silent });
+    const patches = () => fetchFn.mock.calls.filter(([, init]) => init?.method === 'PATCH').map(([, init]) => JSON.parse(String(init!.body)));
+    return { fetchFn, process, patches };
+  };
+
+  it('picks each post, writes it to chat and reports it as sent', async () => {
+    const send = vi.fn(async () => {});
+    const { fetchFn, process, patches } = setup([{ id: 1, text: 'ナイス!!', picked: false }, { id: 2, text: 'おしい', picked: false }], send);
+
+    await process();
+
+    expect(fetchFn.mock.calls[0][0]).toBe(`${telopUrl}?view=chat`);
+    expect(send.mock.calls).toEqual([['ナイス!!'], ['おしい']]);
+    expect(patches()).toEqual([
+      { chatId: 1, status: 'picked' },
+      { chatId: 1, status: 'sent' },
+      { chatId: 2, status: 'picked' },
+      { chatId: 2, status: 'sent' },
+    ]);
+  });
+
+  it('mutes the own message of a telop that is not read aloud before writing it', async () => {
+    const muted = new MutedOwnMessages();
+    const mutedWhileSending: boolean[] = [];
+    const send = vi.fn(async (text: string) => {
+      mutedWhileSending.push(muted.consume(text));
+    });
+    const { process } = setup([{ id: 1, text: 'おしい', speak: false, picked: false }, { id: 2, text: 'ナイス!!', speak: true, picked: false }], send, 200, muted);
+
+    await process();
+
+    expect(mutedWhileSending).toEqual([true, false]);
+  });
+
+  it('unmutes the message when it cannot be written', async () => {
+    const muted = new MutedOwnMessages();
+    const { process } = setup([{ id: 1, text: 'おしい', speak: false, picked: false }], async () => {
+      throw new Error('dropped');
+    }, 200, muted);
+
+    await process();
+
+    expect(muted.consume('おしい')).toBe(false);
+  });
+
+  it('reports a failure so that the app reads the telop aloud', async () => {
+    const { process, patches } = setup([{ id: 1, text: 'ナイス!!', picked: false }], async () => {
+      throw new Error('dropped');
+    });
+
+    await process();
+
+    expect(patches()).toEqual([{ chatId: 1, status: 'picked' }, { chatId: 1, status: 'failed' }]);
+  });
+
+  it('does not write a post that expired before it was picked', async () => {
+    const send = vi.fn(async () => {});
+    const { process, patches } = setup([{ id: 1, text: 'ナイス!!', picked: false }], send, 404);
+
+    await process();
+
+    expect(send).not.toHaveBeenCalled();
+    expect(patches()).toEqual([{ chatId: 1, status: 'picked' }]);
+  });
+
+  it('skips posts already picked and does not retry a post it tried', async () => {
+    const send = vi.fn(async () => {});
+    const { fetchFn, process } = setup([{ id: 1, text: 'ナイス!!', picked: false }, { id: 2, text: 'おしい', picked: true }], send);
+    fetchFn.mockImplementation(async (_url: string, init?: RequestInit) => {
+      if (init?.method !== 'PATCH') return json({ chatPosts: [{ id: 1, text: 'ナイス!!', picked: false }, { id: 2, text: 'おしい', picked: true }] });
+      return JSON.parse(String(init.body)).status === 'sent' ? json({}, 503) : json({});
+    });
+
+    await expect(process()).rejects.toThrow('503');
+    await process();
+
+    expect(send.mock.calls).toEqual([['ナイス!!']]);
+  });
+
+  it('does not run while the previous run is in progress', async () => {
+    let finish: () => void = () => {};
+    const send = vi.fn(() => new Promise<void>((resolve) => {
+      finish = resolve;
+    }));
+    const { process } = setup([{ id: 1, text: 'ナイス!!', picked: false }], send);
+
+    const first = process();
+    await vi.waitFor(() => expect(send).toHaveBeenCalled());
+    await process();
+    finish();
+    await first;
+
+    expect(send).toHaveBeenCalledTimes(1);
+  });
+
+  it('throws when the posts cannot be fetched', async () => {
+    const { fetchFn, process } = setup([], async () => {});
     fetchFn.mockResolvedValueOnce(json({}, 500));
 
     await expect(process()).rejects.toThrow('500');
