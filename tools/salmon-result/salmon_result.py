@@ -125,6 +125,29 @@ def parse_played_at(boxes: list[Box]) -> str | None:
 
 WAVE_PATTERN = re.compile(r"WAVE(\d)")
 MAX_WAVE = 3
+TEAM_CONTEST_MAX_WAVE = 5  # バイトチームコンテストは WAVE 5 まで（オカシラは出ない）
+
+# 詳細画面のいちばん上のタイトル（バイトの種類）。値は lib/salmonTypes.ts の SalmonJobKind
+JOB_KIND_TITLES = {"いつものバイト": "regular", "ビッグラン": "bigRun", "バイトチームコンテスト": "teamContest"}
+JOB_KIND_TITLE_Y = (0.11, 0.16)
+JOB_KIND_MATCH_CUTOFF = 0.6
+
+
+def max_wave_for(kind: str | None) -> int:
+    """クリアしたときの WAVE 数（種類がわからなければ通常の 3）"""
+    return TEAM_CONTEST_MAX_WAVE if kind == "teamContest" else MAX_WAVE
+
+
+def parse_job_kind(boxes: list[Box]) -> str | None:
+    """タイトルからバイトの種類を読む。読めなくても WAVE 4・5 の見出しがあればバイトチームコンテスト。わからなければ None"""
+    for box in boxes:
+        if JOB_KIND_TITLE_Y[0] < box.cy < JOB_KIND_TITLE_Y[1] and 0.25 < box.cx < 0.75:
+            title = closest(box.text, tuple(JOB_KIND_TITLES), JOB_KIND_MATCH_CUTOFF)
+            if title:
+                return JOB_KIND_TITLES[title]
+    if any(MAX_WAVE < wave <= TEAM_CONTEST_MAX_WAVE for wave, _ in wave_headers(boxes)):
+        return "teamContest"
+    return None
 
 
 # 見出しの「Clear!!」/「Failure」は装飾された文字で読み間違えやすい（Cear!、Failnre など）ので、似ているほうで判定する
@@ -141,8 +164,8 @@ def classify_outcome(text: str) -> bool | None:
     return cleared if score >= OUTCOME_MATCH_CUTOFF else None
 
 
-def parse_outcome(boxes: list[Box]) -> tuple[bool, int] | None:
-    """クリアしたか、と到達した WAVE。クリアなら (True, 3)。
+def parse_outcome(boxes: list[Box], max_wave: int = MAX_WAVE) -> tuple[bool, int] | None:
+    """クリアしたか、と到達した WAVE。クリアなら (True, max_wave)（バイトチームコンテストは 5）。
 
     見出しの「Clear!!」/「Failure」で判定する（「クリアボーナス」があるので日本語の「クリア」では判定しない）。
     明るいステージでは倍率によって Failure に似た文字（FiLcaP）に読むことがあるので、読めたものの多数決にする。
@@ -153,21 +176,24 @@ def parse_outcome(boxes: list[Box]) -> tuple[bool, int] | None:
         return None
     cleared = votes.count(True) > votes.count(False)
     if cleared:
-        return True, MAX_WAVE
+        return True, max_wave
     texts = [normalize(b.text) for b in boxes]
-    waves = [int(m.group(1)) for t in texts for m in WAVE_PATTERN.finditer(t.upper()) if 1 <= int(m.group(1)) <= MAX_WAVE]
+    waves = [int(m.group(1)) for t in texts for m in WAVE_PATTERN.finditer(t.upper()) if 1 <= int(m.group(1)) <= max_wave]
     if not waves:
         return None
     return False, max(waves)
 
 
-# サーモンランの通常のステージ。OCR の読み間違い（アラマ午砦 など）を直すのに使う。
-# ビッグランはバトルのステージで行われるので、ここに無いステージは読めたままの文字で記録する
+# サーモンランのステージ。OCR の読み間違い（アラマ午砦 など）を直すのに使う。
+# ビッグランはバトルのステージで行われる（これまでに開催されたものを並べている）。ここに無いステージは読めたままの文字で記録する
 KNOWN_STAGES = (
     "シェケナダム", "難破船ドン・ブラコ", "ムニ・エール海洋発電所", "トキシラズいぶし工房",
     "アラマキ砦", "すじこジャンクション跡", "どんぴこ闘技場",
+    "海女美術大学", "マテガイ放水路", "タラポートショッピングパーク", "スメーシーワールド", "ゴンズイ地区",
 )
 STAGE_MATCH_CUTOFF = 0.6
+# ステージ名は小さい文字なので、何通りかの倍率で読んだ結果の多数決にする
+STAGE_OCR_SCALES = (2, 3, 4, 6)
 JAPANESE_PATTERN = re.compile(r"[\u3040-\u30ff\u4e00-\u9fff]")
 
 
@@ -177,13 +203,25 @@ def find_stage_box(boxes: list[Box], played_at_box: Box) -> Box | None:
     return candidates[0] if candidates else None
 
 
+def _without_voicing(text: str) -> str:
+    """濁点・半濁点を除く（小さい文字では「ぴ」を「び」、「ポ」を「ボ」と読み違えやすいので、比べるときは区別しない）"""
+    return "".join(c for c in unicodedata.normalize("NFD", text) if c not in "\u3099\u309a")
+
+
 def canonical_stage(text: str) -> str:
     """読めたステージ名を、似ている既知のステージ名に直す（似ていなければそのまま）"""
     text = normalize(text)
     if not text:
         return ""
-    match = get_close_matches(text, KNOWN_STAGES, n=1, cutoff=STAGE_MATCH_CUTOFF)
-    return match[0] if match else text
+    keys = {_without_voicing(stage): stage for stage in KNOWN_STAGES}
+    match = get_close_matches(_without_voicing(text), list(keys), n=1, cutoff=STAGE_MATCH_CUTOFF)
+    return keys[match[0]] if match else text
+
+
+def vote_stage(texts: list[str]) -> str:
+    """いくつかの読み方で読んだステージ名。既知のステージに直せたものの多数決、直せなければ最初に読めたもの"""
+    stages = [canonical_stage(t) for t in texts if normalize(t)]
+    return majority([st for st in stages if st in KNOWN_STAGES]) or (stages[0] if stages else "")
 
 
 def find_self_row(boxes: list[Box]) -> Box | None:
@@ -669,6 +707,23 @@ def read_played_at(image, boxes: list[Box], ocr_fn=None) -> str | None:
     return max(values, key=lambda v: (values.count(v), -values.index(v)))
 
 
+# 見出しの「Clear!!」/「Failure」は黄緑の文字。明るいステージの上では背景とまざって読めないので、黄緑の部分だけを取り出して読む
+TITLE_GREEN_MIN = 180  # 緑の明るさ
+TITLE_GREEN_MARGIN = (60, 80)  # 緑が赤・青よりどれだけ明るいか
+
+
+def title_mask(image, scale: int):
+    """黄緑の文字だけを、白地に黒い文字にする"""
+    import numpy as np
+    from PIL import Image, ImageOps
+
+    r, g, b = (np.asarray(image.convert("RGB"), dtype=np.int32)[..., i] for i in range(3))
+    is_title = (g > TITLE_GREEN_MIN) & (g - r > TITLE_GREEN_MARGIN[0]) & (g - b > TITLE_GREEN_MARGIN[1])
+    mask = Image.fromarray(np.where(is_title, 0, 255).astype(np.uint8), "L")
+    mask = mask.resize((image.width * scale, image.height * scale), Image.LANCZOS)
+    return ImageOps.expand(mask, border=20, fill=255).convert("RGB")
+
+
 def read_job(image, refs: dict, cells: SelfRowCells = SelfRowCells(), ocr_fn=ocr, boxes: list[Box] | None = None) -> tuple[dict, str]:
     """詳細画面の画像から、記録するバイト（NewSalmonJob）と日時を読む。読めない項目があれば ImportError_"""
     if boxes is None:
@@ -688,7 +743,9 @@ def read_job(image, refs: dict, cells: SelfRowCells = SelfRowCells(), ocr_fn=ocr
     # プレイヤー名（Clare など）で判定しないよう、プレイヤーの一覧より上の文字だけを使う
     header = crop_relative(image, (0.3, played_at_box.y, 0.7, min(1.0, played_at_box.y + 0.06)))
     header_boxes = [Box(b.text, 0, 0, 0, 0) for scale in HEADER_OCR_SCALES for b in ocr_fn(header, scale)]
-    outcome = parse_outcome([b for b in boxes if b.y < row.y - 0.05] + header_boxes)
+    header_boxes += [Box(b.text, 0, 0, 0, 0) for scale in HEADER_OCR_SCALES for b in ocr_fn(title_mask(header, scale), 1)]
+    job_kind = parse_job_kind(boxes)
+    outcome = parse_outcome([b for b in boxes if b.y < row.y - 0.05] + header_boxes, max_wave_for(job_kind))
     if outcome is None:
         raise ImportError_("クリア / 失敗を読み取れませんでした")
 
@@ -719,7 +776,7 @@ def read_job(image, refs: dict, cells: SelfRowCells = SelfRowCells(), ocr_fn=ocr
         # 小さい文字なので、ステージ名だけを切り出して拡大して読み直す
         pad = 0.01
         crop = crop_relative(image, (stage_box.x - pad, stage_box.y - pad, min(1.0, stage_box.x + stage_box.w + pad), stage_box.y + stage_box.h + pad))
-        stage = canonical_stage("".join(b.text for b in ocr_fn(crop, CELL_OCR_SCALE)) or stage_box.text)
+        stage = vote_stage(["".join(b.text for b in ocr_fn(crop, scale)) for scale in STAGE_OCR_SCALES] + [stage_box.text])
     cleared, wave = outcome
     job = {
         "goldenEggs": golden_eggs,
@@ -729,6 +786,7 @@ def read_job(image, refs: dict, cells: SelfRowCells = SelfRowCells(), ocr_fn=ocr
         "waveReached": wave,
         "stage": stage,
         "weapons": weapons,
+        "jobKind": job_kind,
     }
     return job, played_at
 
@@ -838,6 +896,11 @@ def read_hazard_level(image, boxes: list[Box], ocr_fn=ocr) -> int | None:
     return majority([parse_hazard_level(t) for t in read_cell_texts(cell, ocr_fn)])
 
 
+EGGS_ROW_TOLERANCE = 0.01  # 同じ行とみなす高さの差
+SCALES_BELOW_EGGS = 0.017  # イクラの行の中心から、ウロコの行の上端まで（評価の行が無いとき）
+EGGS_RAISED_BELOW_LABEL = 0.03  # イクラの行がラベルからこれより近ければ、評価の行が無い（バイトチームコンテスト）
+
+
 def read_header(image, boxes: list[Box], ocr_fn=ocr) -> dict:
     """詳細画面の上部（キケン度・評価・ポイント・チームのイクラ・ウロコ）"""
     hazard_level = read_hazard_level(image, boxes, ocr_fn)
@@ -864,13 +927,18 @@ def read_header(image, boxes: list[Box], ocr_fn=ocr) -> dict:
             # 「+ 0」は「+」と同じ Box に入ることがある
             plus = re.search(r"\+\s*(\d{1,4})\s*$", normalize(" ".join(b.text for b in line)))
             clear_bonus = int(plus.group(1)) if plus else None
-        # チームの金イクラ・赤イクラは左側、ラベルの 0.045 下
-        eggs = [parse_count(b.text) for b in boxes_in(boxes, 0.0, point_label.cy + 0.03, 0.45, point_label.cy + 0.06)]
-        eggs = [e for e in eggs if e is not None]
+        # チームの金イクラ・赤イクラは左側の「x114 x3281」の行。評価の行があればラベルの 0.04 下、
+        # バイトチームコンテスト（評価が無い）ではラベルの 0.02 下に上がるので、左側の数のうちいちばん上の行を使う
+        counted = [(b, parse_count(b.text)) for b in boxes_in(boxes, 0.0, point_label.cy - 0.01, 0.45, point_label.cy + 0.06)]
+        counted = [(b, n) for b, n in counted if n is not None]
+        eggs_cy = min((b.cy for b, _ in counted), default=None)
+        eggs = [n for b, n in counted if eggs_cy is not None and abs(b.cy - eggs_cy) < EGGS_ROW_TOLERANCE]
         if len(eggs) == 2:
             team_golden, team_power = eggs
         # ウロコ（銅・銀・金）はその下に 3 つ並ぶ。取れなかった「-」は None のまま
-        top = point_label.cy + 0.055
+        # 評価の行がある画面は、ウロコの位置もラベルからの距離で決める（イクラの行の読み取り位置の揺れで、ウロコの切り出しがずれないように）
+        raised = eggs_cy is not None and eggs_cy < point_label.cy + EGGS_RAISED_BELOW_LABEL
+        top = eggs_cy + SCALES_BELOW_EGGS if raised else point_label.cy + 0.055
         for i, (left, right) in enumerate(((0.04, 0.17), (0.16, 0.28), (0.26, 0.4))):
             scales[i] = vote_count(crop_relative(image, (left, top, right, top + 0.022)), ocr_fn)
     return {
@@ -890,7 +958,14 @@ def read_header(image, boxes: list[Box], ocr_fn=ocr) -> dict:
 
 
 WAVE_HEADER_PATTERN = re.compile(r"^(EX-?WAVE|WAVE(\d))$")
-EX_WAVE = 4
+# EX-WAVE は WAVE 6 として送る（バイトチームコンテストの WAVE 4・5 と重ならないように。lib/salmonBosses.ts の EX_WAVE）
+EX_WAVE = 6
+# WAVE の見出しの高さの範囲（バイトチームコンテストは WAVE 4・5 が 2 段目に並ぶ）
+WAVE_HEADER_Y = (0.3, 0.7)
+# 同じ段とみなす見出しの高さの差
+WAVE_ROW_TOLERANCE = 0.03
+# 次の段の見出しの、どれだけ上までをスペシャルの段とするか（次の段の GJ! をスペシャルとして数えないように）
+NEXT_WAVE_ROW_MARGIN = 0.028
 # WAVE が 1 つだけ（WAVE 1 で失敗）のときの列の幅
 DEFAULT_WAVE_COLUMN_WIDTH = 0.24
 # 列の中の各段の位置（WAVE の見出しの中心からの、画像の高さに対する比）
@@ -905,15 +980,35 @@ MIN_SPECIAL_ICON_FILL = 0.85
 
 
 def wave_headers(boxes: list[Box]) -> list[tuple[int, Box]]:
-    """WAVE の見出し（WAVE 1〜3、EX-WAVE は 4）。左から"""
+    """WAVE の見出し（WAVE 1〜5、EX-WAVE は EX_WAVE）。上の段から、左から"""
     headers = []
     for b in boxes:
         match = WAVE_HEADER_PATTERN.match(normalize(b.text).upper().replace("ー", "-"))
-        if match and 0.3 < b.cy < 0.55:
+        if match and WAVE_HEADER_Y[0] < b.cy < WAVE_HEADER_Y[1]:
             wave = EX_WAVE if match.group(2) is None else int(match.group(2))
-            if 1 <= wave <= EX_WAVE:
+            if 1 <= wave <= TEAM_CONTEST_MAX_WAVE or wave == EX_WAVE:
                 headers.append((wave, b))
-    return sorted(headers, key=lambda h: h[1].x)
+    return sorted(headers, key=lambda h: (h[0] if h[0] != EX_WAVE else TEAM_CONTEST_MAX_WAVE + 1))
+
+
+def wave_rows(headers: list[tuple[int, Box]]) -> list[list[tuple[int, Box]]]:
+    """見出しを段ごとに分ける（上の段から、各段は左から）"""
+    rows: list[list[tuple[int, Box]]] = []
+    for header in sorted(headers, key=lambda h: h[1].cy):
+        if rows and abs(rows[-1][0][1].cy - header[1].cy) < WAVE_ROW_TOLERANCE:
+            rows[-1].append(header)
+        else:
+            rows.append([header])
+    return [sorted(row, key=lambda h: h[1].x) for row in rows]
+
+
+def wave_column_width(row: list[tuple[int, Box]]) -> float | None:
+    """段の列の幅。見出しを 1 つ読み落としてもずれないよう、列の数ではなく WAVE の番号の差で割る（EX-WAVE は WAVE 3 の隣）"""
+    def column(wave: int) -> int:
+        return MAX_WAVE + 1 if wave == EX_WAVE else wave
+
+    span = column(row[-1][0]) - column(row[0][0])
+    return (row[-1][1].cx - row[0][1].cx) / span if span > 0 else None
 
 
 def read_wave_result(image, left: float, right: float, header: Box, ocr_fn=ocr) -> bool | None:
@@ -930,49 +1025,59 @@ def count_special_icons(region) -> int:
 
 def read_waves(image, boxes: list[Box], ocr_fn=ocr) -> tuple[list[dict], str | None, bool | None]:
     """WAVE ごとの結果と、オカシラ（EX-WAVE）の名前・撃破したか"""
-    headers = wave_headers(boxes)
-    if not headers:
+    rows = wave_rows(wave_headers(boxes))
+    if not rows:
         return [], None, None
-    centers = [h.cx for _, h in headers]
-    # 見出しを 1 つ読み落としても列の幅がずれないよう、列の数ではなく WAVE の番号の差で割る（EX-WAVE は 4 列目）
-    span = headers[-1][0] - headers[0][0]
-    width = (centers[-1] - centers[0]) / span if span > 0 else DEFAULT_WAVE_COLUMN_WIDTH
+    widths = [w for row in rows if (w := wave_column_width(row)) is not None]
     waves = []
     king_name = king_defeated = None
-    for wave, header in headers:
-        left, right = header.cx - width / 2, header.cx + width / 2
-
-        def band(row: tuple[float, float]) -> tuple[float, float, float, float]:
-            return left, header.cy + row[0], right, header.cy + row[1]
-
-        def texts(row: tuple[float, float]) -> list[str]:
-            # 全体の OCR で読めた文字と、切り出して読み直した文字
-            l, t, r, b = band(row)
-            return [" ".join(x.text for x in boxes_in(boxes, l, t, r, b)), *read_cell_texts(crop_relative(image, (l + 0.01, t, r - 0.01, b)), ocr_fn)]
-
-        quota = majority([parse_quota(t) for t in texts(WAVE_QUOTA_ROW)])
-        water = majority([closest(t, WATER_LEVELS) for t in texts(WAVE_WATER_ROW)])
-        event_texts = [normalize(t).translate(SIMPLIFIED_KANJI) for t in texts(WAVE_EVENT_ROW)]
-        # イベントが無い WAVE は「-」で、OCR では何も読めないことが多い。日本語が読めたときだけイベントとする
-        event = majority([t for t in event_texts if JAPANESE_PATTERN.search(t)]) or ""
-        golden = majority([parse_count(t) for t in texts(WAVE_GOLDEN_ROW)])
-        specials_region = crop_relative(image, band(WAVE_SPECIALS_ROW))
-        specials_region.info["full_width"] = image.width
-        detail = {
-            "wave": wave,
-            "delivered": quota[0] if quota and wave != EX_WAVE else None,
-            "quota": quota[1] if quota and wave != EX_WAVE else None,
-            "waterLevel": water,
-            "event": event,
-            "goldenAppearances": golden,
-            "specialsUsed": count_special_icons(specials_region),
-        }
-        if wave == EX_WAVE:
-            # EX-WAVE は納品数の段にオカシラの名前が出る
-            king_name = majority([closest(t, KNOWN_KINGS) for t in texts(WAVE_QUOTA_ROW)])
-            king_defeated = read_wave_result(image, left, right, header, ocr_fn)
-        waves.append(detail)
+    for i, row in enumerate(rows):
+        # 見出しが 1 つだけの段は、ほかの段の列の幅を使う
+        width = wave_column_width(row) or (widths[0] if widths else DEFAULT_WAVE_COLUMN_WIDTH)
+        specials_bottom = rows[i + 1][0][1].cy - NEXT_WAVE_ROW_MARGIN if i + 1 < len(rows) else None
+        for wave, header in row:
+            detail, king = read_wave(image, boxes, wave, header, width, specials_bottom, ocr_fn)
+            waves.append(detail)
+            if king is not None:
+                king_name, king_defeated = king
+    waves.sort(key=lambda w: w["wave"])
     return waves, king_name, king_defeated
+
+
+def read_wave(image, boxes: list[Box], wave: int, header: Box, width: float, specials_bottom: float | None, ocr_fn=ocr) -> tuple[dict, tuple | None]:
+    """WAVE 1 列の結果と、EX-WAVE ならオカシラの（名前, 撃破したか）。specials_bottom は次の段の見出しより上で切るための下端"""
+    left, right = header.cx - width / 2, header.cx + width / 2
+
+    def band(row: tuple[float, float]) -> tuple[float, float, float, float]:
+        return left, header.cy + row[0], right, header.cy + row[1]
+
+    def texts(row: tuple[float, float]) -> list[str]:
+        # 全体の OCR で読めた文字と、切り出して読み直した文字
+        l, t, r, b = band(row)
+        return [" ".join(x.text for x in boxes_in(boxes, l, t, r, b)), *read_cell_texts(crop_relative(image, (l + 0.01, t, r - 0.01, b)), ocr_fn)]
+
+    quota = majority([parse_quota(t) for t in texts(WAVE_QUOTA_ROW)])
+    water = majority([closest(t, WATER_LEVELS) for t in texts(WAVE_WATER_ROW)])
+    event_texts = [normalize(t).translate(SIMPLIFIED_KANJI) for t in texts(WAVE_EVENT_ROW)]
+    # イベントが無い WAVE は「-」で、OCR では何も読めないことが多い。日本語が読めたときだけイベントとする
+    event = majority([t for t in event_texts if JAPANESE_PATTERN.search(t)]) or ""
+    golden = majority([parse_count(t) for t in texts(WAVE_GOLDEN_ROW)])
+    l, t, r, b = band(WAVE_SPECIALS_ROW)
+    specials_region = crop_relative(image, (l, t, r, b if specials_bottom is None else min(b, specials_bottom)))
+    specials_region.info["full_width"] = image.width
+    detail = {
+        "wave": wave,
+        "delivered": quota[0] if quota and wave != EX_WAVE else None,
+        "quota": quota[1] if quota and wave != EX_WAVE else None,
+        "waterLevel": water,
+        "event": event,
+        "goldenAppearances": golden,
+        "specialsUsed": count_special_icons(specials_region),
+    }
+    if wave != EX_WAVE:
+        return detail, None
+    # EX-WAVE は納品数の段にオカシラの名前が出る
+    return detail, (majority([closest(t, KNOWN_KINGS) for t in texts(WAVE_QUOTA_ROW)]), read_wave_result(image, left, right, header, ocr_fn))
 
 
 @dataclass(frozen=True)

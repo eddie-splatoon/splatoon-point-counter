@@ -5,7 +5,7 @@ import { __TEST_ONLY_setDb, getDb, openDb } from './db';
 import { addJob, deleteJob, getSummary, listSessions, parseId, parseJob, parseJobDetails, startSession } from './salmon';
 import { MAX_COUNT, MAX_STAGE_LENGTH, SalmonJobDetails } from './salmonTypes';
 
-const job = { goldenEggs: 30, bossKills: 12, deaths: 1, cleared: true, waveReached: 3, stage: 'アラマキ砦', weapons: ['sshooter', 'kuma_blaster'] };
+const job = { goldenEggs: 30, bossKills: 12, deaths: 1, cleared: true, waveReached: 3, stage: 'アラマキ砦', weapons: ['sshooter', 'kuma_blaster'], jobKind: null };
 
 beforeEach(() => {
   __TEST_ONLY_setDb(openDb(':memory:'));
@@ -85,13 +85,24 @@ describe('parseJob', () => {
   const body = { goldenEggs: 30, bossKills: 12, deaths: 1, cleared: false, waveReached: 2, stage: '  シェケナダム ' };
 
   it('accepts a failed job and trims the stage', () => {
-    expect(parseJob(body)).toEqual({ ...body, stage: 'シェケナダム', weapons: [] });
+    expect(parseJob(body)).toEqual({ ...body, stage: 'シェケナダム', weapons: [], jobKind: null });
   });
 
   it('defaults waveReached to the last wave when cleared', () => {
     expect(parseJob({ goldenEggs: 0, bossKills: 0, deaths: 0, cleared: true })).toEqual({
-      goldenEggs: 0, bossKills: 0, deaths: 0, cleared: true, waveReached: 3, stage: '', weapons: [],
+      goldenEggs: 0, bossKills: 0, deaths: 0, cleared: true, waveReached: 3, stage: '', weapons: [], jobKind: null,
     });
+  });
+
+  it('allows five waves and five weapons in a team contest', () => {
+    const weapons = ['bold', 'bold', 'bold', 'bold', 'bold'];
+    expect(parseJob({ goldenEggs: 0, bossKills: 0, deaths: 0, cleared: true, weapons, jobKind: 'teamContest' }))
+      .toMatchObject({ waveReached: 5, weapons, jobKind: 'teamContest' });
+    expect(parseJob({ ...body, waveReached: 4, jobKind: 'teamContest' })).toMatchObject({ waveReached: 4, cleared: false });
+  });
+
+  it('keeps three waves for a big run', () => {
+    expect(parseJob({ ...body, cleared: true, waveReached: undefined, jobKind: 'bigRun' })).toMatchObject({ waveReached: 3, jobKind: 'bigRun' });
   });
 
   it('accepts up to four weapons including the same weapon twice', () => {
@@ -123,7 +134,10 @@ describe('parseJob', () => {
     ['non-string stage', { ...body, stage: 1 }],
     ['non-array weapons', { ...body, weapons: 'sshooter' }],
     ['an unknown weapon', { ...body, weapons: ['sshooter', 'splatscope'] }],
-    ['five weapons', { ...body, weapons: ['bold', 'bold', 'bold', 'bold', 'bold'] }],
+    ['six weapons', { ...body, weapons: ['bold', 'bold', 'bold', 'bold', 'bold', 'bold'] }],
+    ['an unknown jobKind', { ...body, jobKind: 'privateJob' }],
+    ['a team contest cleared before WAVE 5', { ...body, cleared: true, waveReached: 3, jobKind: 'teamContest' }],
+    ['waveReached 6 in a team contest', { ...body, waveReached: 6, jobKind: 'teamContest' }],
   ])('rejects %s', (_, input) => {
     expect(typeof parseJob(input)).toBe('string');
   });
@@ -232,7 +246,7 @@ describe('job details', () => {
     [{ jobRate: 'x' }, /jobRate/],
     [{ kingDefeated: 'yes' }, /kingDefeated/],
     [{ teamGoldenEggs: -1 }, /counts/],
-    [{ waves: [{ wave: 5 }] }, /wave/],
+    [{ waves: [{ wave: 7 }] }, /wave/],
     [{ waves: [{ wave: 1 }, { wave: 1 }] }, /duplicates/],
     [{ waves: [{ wave: 1, waterLevel: '大潮' }] }, /waterLevel/],
     [{ players: [{ position: 4 }] }, /position/],

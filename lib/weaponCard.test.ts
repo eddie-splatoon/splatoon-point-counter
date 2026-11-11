@@ -5,7 +5,7 @@ import { __TEST_ONLY_setDb, openDb, setAppState } from './db';
 import { addJob, deleteJob } from './salmon';
 import { getWeaponCard, parseManualWeapon, setManualWeapon, startWeaponCard } from './weaponCard';
 
-const job = (weapons: string[]) => ({ goldenEggs: 30, bossKills: 12, deaths: 1, cleared: true, waveReached: 3, stage: '', weapons });
+const job = (weapons: string[]) => ({ goldenEggs: 30, bossKills: 12, deaths: 1, cleared: true, waveReached: 3, stage: '', weapons, jobKind: null });
 
 beforeEach(() => {
   __TEST_ONLY_setDb(openDb(':memory:'));

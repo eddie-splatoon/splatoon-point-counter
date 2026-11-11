@@ -72,6 +72,39 @@ describe('migration', () => {
     }
   });
 
+  it('adds the job_kind column and moves the EX-WAVE from wave 4 to 6', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'overlay-db-'));
+    try {
+      const path = join(dir, 'overlay.db');
+      const old = new DatabaseSync(path);
+      old.exec(`
+        CREATE TABLE salmon_sessions (id INTEGER PRIMARY KEY AUTOINCREMENT, started_at INTEGER NOT NULL, title TEXT NOT NULL DEFAULT '');
+        CREATE TABLE salmon_jobs (
+          id INTEGER PRIMARY KEY AUTOINCREMENT, session_id INTEGER NOT NULL, created_at INTEGER NOT NULL,
+          golden_eggs INTEGER NOT NULL, boss_kills INTEGER NOT NULL, deaths INTEGER NOT NULL,
+          cleared INTEGER NOT NULL, wave_reached INTEGER NOT NULL, stage TEXT NOT NULL DEFAULT '');
+        CREATE TABLE salmon_job_waves (job_id INTEGER NOT NULL, wave INTEGER NOT NULL, delivered INTEGER, quota INTEGER,
+          water_level TEXT, event TEXT, golden_appearances INTEGER, specials_used INTEGER, PRIMARY KEY (job_id, wave));
+        INSERT INTO salmon_sessions (started_at) VALUES (1);
+        INSERT INTO salmon_jobs (session_id, created_at, golden_eggs, boss_kills, deaths, cleared, wave_reached) VALUES (1, 1, 30, 10, 0, 1, 3);
+        INSERT INTO salmon_job_waves (job_id, wave) VALUES (1, 3), (1, 4);
+      `);
+      old.close();
+
+      const db = openDb(path);
+      expect(db.prepare('SELECT job_kind FROM salmon_jobs').get()).toEqual({ job_kind: null });
+      expect(db.prepare('SELECT wave FROM salmon_job_waves ORDER BY wave').all()).toEqual([{ wave: 3 }, { wave: 6 }]);
+      // バイトチームコンテストの WAVE 4 を記録したあとに開き直しても動かさない
+      db.prepare('INSERT INTO salmon_job_waves (job_id, wave) VALUES (1, 4)').run();
+      db.close();
+      const reopened = openDb(path);
+      expect(reopened.prepare('SELECT wave FROM salmon_job_waves ORDER BY wave').all()).toEqual([{ wave: 3 }, { wave: 4 }, { wave: 6 }]);
+      reopened.close();
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
   it('adds the recorded_count column to salmon_imports created before it existed', async () => {
     const dir = await mkdtemp(join(tmpdir(), 'overlay-db-'));
     try {

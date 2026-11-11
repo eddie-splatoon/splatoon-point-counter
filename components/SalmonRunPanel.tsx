@@ -21,7 +21,16 @@ import React, {useCallback, useEffect, useRef, useState} from 'react';
 
 import {SalmonImportRequest} from '../lib/salmonImportTypes';
 import {SalmonScheduleData, pickCurrentSchedule} from '../lib/salmonSchedule';
-import {MAX_COUNT, MAX_WAVE, SalmonJob, SalmonSessionWithTotals, SalmonSummary} from '../lib/salmonTypes';
+import {
+    MAX_COUNT,
+    SALMON_JOB_KINDS,
+    SALMON_JOB_KIND_LABELS,
+    SalmonJob,
+    SalmonJobKind,
+    SalmonSessionWithTotals,
+    SalmonSummary,
+    maxWaveFor,
+} from '../lib/salmonTypes';
 import {MAX_JOB_WEAPONS, findSalmonWeapon} from '../lib/salmonWeapons';
 
 import SalmonReviewDownload from './SalmonReviewDownload';
@@ -147,6 +156,7 @@ const SalmonRunPanel: React.FC = () => {
     const [numbers, setNumbers] = useState(EMPTY_NUMBERS);
     const [cleared, setCleared] = useState(true);
     const [waveReached, setWaveReached] = useState(1);
+    const [jobKind, setJobKind] = useState<SalmonJobKind>('regular');
     const [stage, setStage] = useState('');
     const [weapons, setWeapons] = useState<string[]>([]);
     const [newSessionTitle, setNewSessionTitle] = useState('');
@@ -177,12 +187,15 @@ const SalmonRunPanel: React.FC = () => {
         }
     }, [loadSessions]);
 
-    // ステージ欄が空なら、いま開催中のスケジュールのステージ名を入れる（手入力した値は上書きしない）
+    // ステージ欄が空なら、いま開催中のスケジュールのステージ名を入れる（手入力した値は上書きしない）。バイトの種類も開催中のものにする
     const fillStageFromSchedule = useCallback(async () => {
         try {
             const res = await axios.get<SalmonScheduleData>('/api/salmon-schedule');
             const current = pickCurrentSchedule(res.data.entries, Date.now());
-            if (current) setStage((prev) => prev || current.stage.name);
+            if (current) {
+                setStage((prev) => prev || current.stage.name);
+                setJobKind(current.kind);
+            }
         } catch (e) {
             // スケジュールは入力の補助なので、取れなくても手入力で記録できる
             console.error('Failed to load the salmon run schedule', e);
@@ -208,9 +221,10 @@ const SalmonRunPanel: React.FC = () => {
                 bossKills: Number(numbers.bossKills),
                 deaths: Number(numbers.deaths),
                 cleared,
-                waveReached: cleared ? MAX_WAVE : waveReached,
+                waveReached: cleared ? maxWaveFor(jobKind) : Math.min(waveReached, maxWaveFor(jobKind)),
                 stage,
                 weapons,
+                jobKind,
             });
             setSummary(res.data);
             setNumbers(EMPTY_NUMBERS);
@@ -289,6 +303,14 @@ const SalmonRunPanel: React.FC = () => {
                     ))}
                 </Box>
                 <Box sx={{display: 'flex', gap: 2, alignItems: 'center', flexWrap: 'wrap', mt: 1}}>
+                    <FormControl sx={{minWidth: 200}}>
+                        <InputLabel id="salmon-kind-label">バイトの種類</InputLabel>
+                        <Select labelId="salmon-kind-label" label="バイトの種類" value={jobKind} onChange={(e) => setJobKind(e.target.value as SalmonJobKind)}>
+                            {SALMON_JOB_KINDS.map((kind) => (
+                                <MenuItem key={kind} value={kind}>{SALMON_JOB_KIND_LABELS[kind]}</MenuItem>
+                            ))}
+                        </Select>
+                    </FormControl>
                     <ToggleButtonGroup value={cleared} exclusive onChange={(e, value) => value !== null && setCleared(value)} aria-label="結果">
                         <ToggleButton value={true} color="success">クリア</ToggleButton>
                         <ToggleButton value={false} color="error">失敗</ToggleButton>
@@ -296,8 +318,13 @@ const SalmonRunPanel: React.FC = () => {
                     {!cleared && (
                         <FormControl sx={{minWidth: 140}}>
                             <InputLabel id="salmon-wave-label">失敗した WAVE</InputLabel>
-                            <Select labelId="salmon-wave-label" label="失敗した WAVE" value={waveReached} onChange={(e) => setWaveReached(Number(e.target.value))}>
-                                {Array.from({length: MAX_WAVE}, (_, i) => i + 1).map((wave) => (
+                            <Select
+                                labelId="salmon-wave-label"
+                                label="失敗した WAVE"
+                                value={Math.min(waveReached, maxWaveFor(jobKind))}
+                                onChange={(e) => setWaveReached(Number(e.target.value))}
+                            >
+                                {Array.from({length: maxWaveFor(jobKind)}, (_, i) => i + 1).map((wave) => (
                                     <MenuItem key={wave} value={wave}>WAVE{wave}</MenuItem>
                                 ))}
                             </Select>

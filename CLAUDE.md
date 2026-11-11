@@ -18,7 +18,7 @@
 8. **読み上げ（音声専用）オーバーレイ** (`/voice-overlay`) - 読み上げキューの文を VOICEVOX で音声にして順に再生（画面には何も出さない）
 9. **ブキ埋めカードオーバーレイ** (`/weapon-card-overlay`) - サーモンランのオールランダムで支給された全ブキ種（71 種）を埋めていくカード
 10. **サーモンランの振り返りオーバーレイ** (`/salmon-review-overlay`) - 配信の最後に、その日（セッション）のサーモンランの記録をグラフで大きく出す（1920x1080）。縦型配信用（1080x1920）は `/salmon-review-overlay/vertical`。コントロールパネルから SNS 用の PNG でダウンロードできる
-11. **バックエンドAPI** (`/api/stream-data`, `/api/caption`, `/api/twitch`, `/api/salmon`, `/api/side-panel`, `/api/salmon-schedule`, `/api/telop`, `/api/speech`, `/api/voice`, `/api/weapon-card`, `/api/clip`, `/api/salmon/import`, `/api/salmon/review`) - データ管理とクライアント間の同期
+11. **バックエンドAPI** (`/api/stream-data`, `/api/score-display`, `/api/caption`, `/api/twitch`, `/api/salmon`, `/api/side-panel`, `/api/salmon-schedule`, `/api/telop`, `/api/speech`, `/api/voice`, `/api/weapon-card`, `/api/clip`, `/api/salmon/import`, `/api/salmon/review`) - データ管理とクライアント間の同期
 12. **文字起こしスクリプト** (`tools/caption-stt/`) - マイク音声を文字起こしして `/api/caption` へ送信。「クリップ撮って」などで `/api/clip` にクリップを依頼（Python, Mac ネイティブ実行）
 13. **リザルト取り込みスクリプト** (`tools/salmon-result/`) - iPhone ミラーリングのイカリング3を操作し、サーモンランの最新のリザルトを OCR で読み取って `/api/salmon/import` へ送信（Python, Mac ネイティブ実行）
 14. **Twitch連携スクリプト** (`tools/twitch-eventsub/`) - フォロワー数・フォロワー目標を EventSub で受信して `/api/twitch` へ送信。チャットの初コメの挨拶・配信者のコメントを `/api/speech` へ送信。`/api/clip` の依頼で Twitch のクリップを作成（Node, 依存なし）
@@ -75,6 +75,8 @@
 │   └── api/
 │       ├── stream-data/
 │       │   └── route.ts          # データ管理API
+│       ├── score-display/
+│       │   └── route.ts          # スコア表示（ラベル・値・取り込みでの自動更新）API
 │       ├── caption/
 │       │   └── route.ts          # 字幕API
 │       ├── twitch/
@@ -123,6 +125,7 @@
 │   ├── InkTankGauge.tsx          # インクタンク型フォロワーゲージ
 │   ├── ChallengeList.tsx         # 本日のお題（サイドパネルのスロット）
 │   ├── SalmonSchedule.tsx        # サーモンランのスケジュール（サイドパネルのスロット）
+│   ├── ScoreDisplayPanel.tsx     # コントロールパネルのスコア表示タブ
 │   ├── TelopBar.tsx              # コントロールパネル上部のテロップのボタン（どのタブでも表示）
 │   ├── TelopPanel.tsx            # コントロールパネルのテロップタブ
 │   ├── VoiceSettingsPanel.tsx    # 読み上げ（VOICEVOX）の設定（テロップタブ内）
@@ -141,6 +144,9 @@
 │   ├── salmonTypes.ts            # サーモンラン記録の型・定数（クライアントからも使う）
 │   ├── sidePanelTypes.ts         # サイドパネルのスロット定義・設定の検証（クライアントからも使う）
 │   ├── salmonSchedule.ts         # サーモンランのスケジュールの型・変換（クライアントからも使う）
+│   ├── salmonScheduleFetch.ts    # サーモンランのスケジュールの取得・キャッシュ（サーバー専用）
+│   ├── scoreDisplayTypes.ts      # スコア表示の型・評価の表記・入力検証（クライアントからも使う）
+│   ├── scoreDisplay.ts           # スコア表示の保存と、リザルトの取り込みからの自動更新（サーバー専用）
 │   ├── telopTypes.ts             # 実況テロップの型・プリセットの検証（クライアントからも使う）
 │   ├── voiceTypes.ts             # 読み上げの型・設定の検証（クライアントからも使う）
 │   ├── speech.ts                 # 読み上げキュー・設定・VOICEVOX との通信（サーバー専用）
@@ -194,7 +200,7 @@ export interface MessagePreset {
 }
 
 export interface StreamData {
-  scoreLabel: string;
+  scoreLabel: string;                 // lib/scoreDisplay.ts に別に保存（GET で合わせて返す）
   scoreValue: string;
   transitionEffect: string;          // 'slide' | 'fade' | 'scale' | 'none'
   transitionDuration: number;
@@ -218,7 +224,7 @@ export interface StreamData {
 - オーバーレイが定期的にポーリング
 
 **`POST /api/stream-data`**
-- `StreamData` を更新
+- `StreamData` を更新（`scoreLabel` / `scoreValue` は省略可。コントロールパネルは送らない）
 - コントロールパネルから呼び出される
 - `revision` が自動的にインクリメントされる
 
@@ -230,7 +236,7 @@ export interface StreamData {
 
 ### `/app/api/stream-data/route.ts`
 
-- インメモリで `StreamData` を管理
+- インメモリで `StreamData` を管理。ただしスコア表示（`scoreLabel` / `scoreValue`）は `lib/scoreDisplay.ts` が SQLite の `app_state`（キー `scoreDisplay`）に別に保存し、`GET` で合わせて返す（リザルトの取り込みで書き換えた値を、コントロールパネルの保存で上書きしないため）
 - `GET` と `POST` ハンドラーを提供
 - `getInitialStreamData()` - 初期データを返す（テストでも使用）
 - `__TEST_ONLY_setStreamData()` - テスト用のデータセッター
@@ -239,7 +245,7 @@ export interface StreamData {
 
 タブ形式のコントロールパネル。以下の機能を提供：
 
-1. **スコア表示タブ** - `scoreLabel`, `scoreValue`, トランジション設定
+1. **スコア表示タブ** - `components/ScoreDisplayPanel.tsx`。`/api/score-display` に「反映」でその場で保存する（`formData`・localStorage・「OBSに反映」には含めない）。取り込みでの自動更新の ON/OFF
 2. **バーンダウンタブ** - バーンダウンチャートの管理
 3. **メッセージタブ** - メッセージプリセットの管理
 4. **共通設定タブ** - フォント設定、エフェクトのボタン
@@ -314,16 +320,19 @@ Twitch のフォロワー数とフォロワー目標を受け取る機能と、�
 - 取りこぼし: 最新のバイトから「前のバイト」で、記録済みのバイト・今のセッションの開始より前のバイト・`MAX_BACKFILL_JOBS`（20）件のどれかに着くまで遡る（`should_stop_backfill`。セッションが無ければ遡らない）。読めないバイトがあればそこでやめ、読めた分を記録する。「前回」が最新のバイトになるよう古い順に送る
 - 依頼は SQLite の `salmon_imports`（`pending` / `processing` / `succeeded` / `failed`）。処理待ち・取り込み中の依頼があれば新しく作らずにそれを返す。拾われない依頼は `SALMON_IMPORT_REQUEST_TTL_MS`（30 秒）、取り込み中のまま止まった依頼は `SALMON_IMPORT_PROCESSING_TTL_MS`（6 分）で失敗にする（`expireStaleImports`）
 - 二重記録の防止: 取り込んだバイトは `salmon_jobs.played_at`（画面の日時。手入力は NULL）を持ち、同じ日時のバイトは記録しない。送ったバイトがすべて記録済みなら 409。最新のバイトが記録済みなら、スクリプトはイカリング3にまだ反映されていないとみなし、15 秒ごとに最大 4 分読み直す。記録を削除したバイトは取り込み直せる。依頼には記録した数（`recorded_count`）と最新のバイト（`job_id` / `played_at`）を残す
-- 読み取り（`salmon_result.py`）: 自分の行（プレイヤー一覧のいちばん上）の「オオモノシャケ x24」を OCR で見つけ、それを基準にした相対位置（`SelfRowCells`）の金イクラ・被救助数（= デス）を切り出して読む（全体を読むと隣の数字とつながるため）。数字のセルは倍率・白黒化を変えて何度か読んだ多数決（`vote_count`）。日時はステージの画像の上に白い文字で出るので、明るいステージでは全体の OCR で読めない。日時の部分を切り出して白黒化した結果との多数決（`read_played_at`）。クリア / 失敗は見出しの「Clear!!」/「Failure」を切り出して読み、似ているほうで判定する（装飾文字で Cear! などと読むため。「クリアボーナス」があるので日本語の「クリア」では判定しない）。失敗した WAVE は表示されている WAVE の最大（失敗したバイトはそこまでしか表示されない）。オカシラ（EX-WAVE）に負けても WAVE 3 までクリアならクリア。ステージ名は切り出して読み直し、`KNOWN_STAGES` の似た名前に直す。読めない項目があれば推測で記録せず失敗にする
+- 読み取り（`salmon_result.py`）: 自分の行（プレイヤー一覧のいちばん上）の「オオモノシャケ x24」を OCR で見つけ、それを基準にした相対位置（`SelfRowCells`）の金イクラ・被救助数（= デス）を切り出して読む（全体を読むと隣の数字とつながるため）。数字のセルは倍率・白黒化を変えて何度か読んだ多数決（`vote_count`）。日時はステージの画像の上に白い文字で出るので、明るいステージでは全体の OCR で読めない。日時の部分を切り出して白黒化した結果との多数決（`read_played_at`）。クリア / 失敗は見出しの「Clear!!」/「Failure」を切り出して読み、似ているほうで判定する（装飾文字で Cear! などと読むため。「クリアボーナス」があるので日本語の「クリア」では判定しない）。見出しは黄緑の文字なので、明るいステージ（ビッグランのショッピングパークなど）では黄緑の部分だけを取り出した画像（`title_mask`）も読む。失敗した WAVE は表示されている WAVE の最大（失敗したバイトはそこまでしか表示されない）。オカシラ（EX-WAVE）に負けても WAVE 3 までクリアならクリア。ステージ名は何通りかの倍率で切り出して読み直し、`KNOWN_STAGES`（サーモンランのステージと、これまでのビッグランのステージ）の似た名前に直した多数決（`vote_stage`。濁点・半濁点の読み違いは区別しない）。読めない項目があれば推測で記録せず失敗にする
 - 支給ブキ: アイコンの数（WAVE 数とスペシャル）で並び方が 1 行 / 2 行と変わるので、位置は決め打ちせず、行の背景と色の違うまとまりを探す（`find_icon_blobs`）。外接矩形を埋める割合で、丸いブキ（0.77〜0.85）と四角いスペシャル（0.94〜0.96）を見分ける。ブキは Leanny/splat3 の画像（`lib/salmonWeapons.ts` を Node の型除去で読み、`data/salmon-weapon-refs/` にキャッシュ）と照合し、似ていなければ記録しない（`match_weapon`）。照合は丸の中の画素だけで、参照画像は黒い丸の中に 0.95 倍で置いて少しぼかし、小さなアイコンに見た目を合わせる（そのまま縮めると正解の類似度が 0.3 程度まで下がる）
 - 画面の操作は `CGEventPost`。起動したアプリ（ターミナル）に「デバイスの制御とデータへのアクセス」（macOS 26 までは「アクセシビリティ」）の権限が無いとクリックが黙って無視されるので、`AXIsProcessTrusted` で確かめて知らせる。ミラーリングはアクセシビリティの API で前面にしてからクリックする。クリック・スクロールのたびにカーソルの位置と前面のアプリを元に戻す。ミラーリングの「接続が一時停止されました」は「再開」を押してつなぎ直す。撮影は `screencapture -l<ウインドウ ID>`（隠れていても撮れる）
+- バイトの種類（`jobKind`: `regular` / `bigRun` / `teamContest`。`lib/salmonTypes.ts` の `SalmonJobKind`、`salmon_jobs.job_kind`）: 詳細画面のいちばん上のタイトル（いつものバイト / ビッグラン / バイトチームコンテスト）で見分ける（`parse_job_kind`。読めなくても WAVE 4・5 があればチームコンテスト。わからなければ null）。手入力ではコントロールパネルで選ぶ（開催中のスケジュールの種類が初期値）
+- バイトチームコンテスト: WAVE は 5 まで（`TEAM_CONTEST_MAX_WAVE`。クリアの到達 WAVE も 5。`maxWaveFor`）、オカシラ・評価は無い、ブキは固定で WAVE ごとに同じブキが 5 つ並ぶ（`MAX_JOB_WEAPONS` = 5）。WAVE 4・5 は 2 段目に並ぶので、見出しを段ごとにまとめて列の幅を出し（`wave_rows`）、1 段目のスペシャルの段は次の段の見出しの上で切る（2 段目の GJ! を数えない）。評価の行が無いので、チームのイクラ・ウロコの行が上に詰まる（`read_header` は左側の数のいちばん上の行を読む）
+- EX-WAVE は `salmon_job_waves.wave` = 6（`EX_WAVE`。チームコンテストの WAVE 4・5 と重ならないように）。`job_kind` を足す前は 4 だったので、`migrate` が列を足すときに一度だけ 4 → 6 に移す
 - キャプチャは `data/salmon-results/`（ヒストリーとして残す）。PATCH の `captures` はファイル名のみ（`CAPTURE_FILE_PATTERN`。パスを含めさせない）。POST / PATCH は `Content-Type: application/json` 必須
 - 詳細: 必須項目とは別に `read_details` でバイトの詳細（`SalmonJobDetails`。キケン度・評価・ポイント・チームのイクラ・ウロコ・オカシラ、WAVE ごとの納品数 / ノルマ・潮位・イベント・金イクラ出現数・スペシャルの数、4 人の成績・ブキ・スペシャル）を読み、PATCH の `jobs[].details` で送る。読めない項目は null、詳細の読み取りで例外が起きても `read_result` が詳細を null にして記録は続ける。WAVE の列は「WAVE n」/「EX-WAVE」の見出しを基準に、プレイヤーは各行の「オオモノシャケ」を基準に読む。キケン度は「キケン度」を「約」と読んだり「285%」の 2 が抜けたりするので、「%」の付いた文字の右端から数字の部分を切り出して多数決で読む（`read_hazard_level`）。スペシャルは Leanny/splat3 の画像と形（参照は不透明度、アイコンは明るさ）で照合する（`match_special`）。クリア / 失敗の見出しは、明るいステージでは倍率によって Failure に似た文字に読むので、倍率を変えた読み取りの多数決にする
 - 詳細の保存: `salmon_jobs` の詳細の列（後から追加したので `migrate` で足す。手入力・以前の記録は NULL）と、子テーブル `salmon_job_waves` / `salmon_job_players` / `salmon_job_bosses`（`ON DELETE CASCADE`）。検証は `lib/salmon.ts` の `parseJobDetails`。オオモノの定義は `lib/salmonBosses.ts`（key は stat.ink、`image` は Leanny/splat3 の `coopEnemy`）、スペシャルは `lib/salmonWeapons.ts` の `SALMON_SPECIALS`
 - オオモノの欄: 詳細画面を読んだ後、`BOSS_SCROLL_PIXELS` ずつ下にスクロールして撮影し（`*-bosses.png`）、「※カッコ内の数字は…」が見えるまで読む（`read_bosses`。オカシラが出たバイトは一覧が 1 画面に収まらない）。行はオオモノの名前（`lib/salmonBosses.ts` の `name`。短い「ヘビ」は名前だけ切り出して読み直す）で見つけ、同じオオモノを何度か読んだら多数決。数（「4(3) / 出現数x4」）は等倍の小さな文字で Vision では 7・1 を読み間違えるので、`digit_glyphs.py` の数字・カッコの形（fixtures から切り出したもの）と照合し、カッコの位置はすべての並び方から形がいちばん合うものにする（`read_kills`）。自分の討伐数の合計が自分の行の「オオモノシャケ xN」と合わなければ、スクロールした画面に 4 人の行が見えていれば自分の行を読み直し、そちらと合えば詳細画面の読み間違い（x33 を 35 など）とみなしてその数で記録する（バイトの `bossKills` と自分の行も直す）。どちらとも合わなければ記録しない。読み終えて先頭に戻したら日時を読み直し、別のバイトに切り替わっていたら（イカリング3の読み込みが遅れたとき）捨てる。読み終えたら先頭に戻す（最新のバイトで「最新のバイトへ」を押してもスクロールの位置は戻らない。「前のバイト」で移ると先頭に戻る。下のボタンはスクロールしても出ている）
 - **味方の名前**（`salmon_job_players.name`）は DB に残すだけで、API・配信画面・ログ・`--read` の出力には出さない
 - オオモノ討伐: `getSummary` の `bossRanking` で、前回のバイトとセッション合計の、オオモノごとの自分の討伐数（多い順・同数は `SALMON_BOSSES` の順・0 体は除く）を返す。サイドパネルの `bossRanking` スロット（`components/BossRanking.tsx`）は、前回と本日の TOP3 を左右に並べ、オオモノは画像（Leanny/splat3 の `coopEnemy`。読み込めなければ名前）で表す（スケジュールと並べても下段に収まる高さにするため）。本日のセッションにオオモノの数が 1 体も無い（手入力だけ・取り込み前）うちは表示しない
-- Python 側のテストは `tools/salmon-result/` で `pytest`（CI 対象外。Vision を使うので Mac で実行）。`fixtures/` に実際の詳細画面（クリア・失敗・オカシラあり）と、オオモノの欄までスクロールした画面（`bosses-*.png`）を置いている。**プレイヤー名は塗りつぶしてから置く**
+- Python 側のテストは `tools/salmon-result/` で `pytest`（CI 対象外。Vision を使うので Mac で実行）。`fixtures/` に実際の詳細画面（クリア・失敗・オカシラあり）と、オオモノの欄までスクロールした画面（`bosses-*.png`）、ビッグラン・バイトチームコンテストの詳細画面（`bigrun-*.png` / `teamcontest-*.png`。iPhone のスクリーンショットを、ミラーリングの撮影と同じ 407x897 の配置に縮めたもの。ブキ・スペシャルの照合は確かめていない。チームコンテストの失敗の画面はまだ無い）を置いている。**プレイヤー名は塗りつぶしてから置く**
 
 ### `/app/weapon-card-overlay/page.tsx` と `/app/api/weapon-card/route.ts`
 
@@ -331,7 +340,7 @@ Twitch のフォロワー数とフォロワー目標を受け取る機能と、�
 
 - ブキの定義は `lib/salmonWeapons.ts` の `SALMON_WEAPONS`（71 種 = 通常 63 + クマサン印 8。サーモンランで支給されないスプラスコープ・4Kスコープは除く）。key は stat.ink の `/api/v3/salmon/weapon` の key、`image` はゲーム内部のブキ名。並び順（カテゴリ順）がカード・パレットの並び。ブキが追加されたらここに足す
 - 画像は Nintendo の画像を同梱しないよう Leanny/splat3 の `images/weapon_flat/Path_Wst_<内部名>.png` を参照する（`weaponImageUrl`）。リンク切れに備え、`WeaponIcon` は読み込めなければブキ名を文字で出す
-- 戦績の記録（`SalmonJob`）に `weapons`（支給されたブキの key、最大 `MAX_JOB_WEAPONS` = 4 = 3 WAVE + EX、重複可、省略可）を追加した。`salmon_jobs.weapons` は後から追加した列なので、`openDb` の `migrate` で既存の DB に `ALTER TABLE` で足す（列を足すときは同じようにする）。保存値の壊れた JSON・未知の key は読み込み時に捨てる
+- 戦績の記録（`SalmonJob`）に `weapons`（支給されたブキの key、最大 `MAX_JOB_WEAPONS` = 5 = バイトチームコンテストの 5 WAVE（通常は 3 WAVE + EX の 4）、重複可、省略可）を追加した。`salmon_jobs.weapons` は後から追加した列なので、`openDb` の `migrate` で既存の DB に `ALTER TABLE` で足す（列を足すときは同じようにする）。保存値の壊れた JSON・未知の key は読み込み時に捨てる
 - カードの状態は `app_state`（キー `weaponCard`）の `{startedAt, manual}`。埋まっているブキは「`startedAt` 以降に記録したバイトのブキ」と「手動で埋めたブキ」を合わせたもの（`getWeaponCard`）。記録から導出するので、記録を取り消すとマスも戻る。カードの区切りはサーモンランのセッションとは独立（セッションをまたいで続けられる）。両方で埋まったものは記録由来（`source: 'job'`）として扱い、手動では外せない
 - `GET /api/weapon-card`（`{startedAt, total, obtained: {key, at, source}[]}`、埋まった順）、`PATCH {weapon, obtained}`（手動で埋める / 外す）、`POST`（新しいカードを始める）。PATCH / POST は `Content-Type: application/json` 必須
 - コントロールパネルの「サーモンラン」タブでは記録フォームの `WeaponPicker` で支給ブキを選ぶ（押すたびに追加。外すときは選んだブキを押す）。「ブキ埋め」タブ（`components/WeaponCardPanel.tsx`）は進捗・手動の埋める / 外す・新しいカード（確認ダイアログ付き）。どちらもその場で保存
@@ -371,6 +380,16 @@ Twitch のフォロワー数とフォロワー目標を受け取る機能と、�
 - 本日のお題（`challenges: {id, text, done}[]`、最大8個・各3行・改行を除いて40文字）はサイドパネル設定に含めて保存し、コントロールパネルで追加・削除・達成チェックする。`components/ChallengeList.tsx` は `done` が false → true に変わった瞬間だけスタンプを押す演出をする（前回の状態と比べてレンダー中に state を調整する。表示時点で達成済みのものやポーリングでは再生しない）。お題が0個なら何も表示しない
 - お題の改行は配信者が折り返したい位置なので、`normalizeChallengeText` で各行の前後の空白と空行だけを除いて残し、オーバーレイ・コントロールパネルとも `white-space: pre-line` で表示する。入力欄は複数行（Enter は改行、Ctrl / ⌘ + Enter で追加）
 
+### `/app/api/score-display/route.ts` と `lib/scoreDisplay.ts`
+
+スコア表示（`/obs-overlay` の `scoreLabel` / `scoreValue`）を、サーモンランのリザルトの取り込みのたびに自動で入れる機能。
+
+- 値と設定 `{scoreLabel, scoreValue, autoUpdate}` は SQLite の `app_state`（キー `scoreDisplay`）。`GET /api/stream-data` は `StreamData` に合わせて返す。以前はコントロールパネルが `StreamData` を丸ごと POST していたので、サーバーで書き換えても次の保存で戻っていた。いまはパネルの POST に含めず、スコア表示タブ（`components/ScoreDisplayPanel.tsx`）が `PATCH /api/score-display`（送った項目だけ書き換える。`Content-Type: application/json` 必須）で「反映」したときだけ保存する。編集中は 3 秒ごとの読み込み直しで入力を上書きしない
+- 自動更新（`updateScoreDisplayFromImport`）: `PATCH /api/salmon/import` が succeeded で記録したあと、最新のバイト（`jobs` の最後）で決める。`autoUpdate` が false・値を決められないときは変えない。失敗しても取り込みは成功として返す
+  - いつものバイト: 「現在のバイト評価」と評価（`formatGrade`。でんせつは `720` のように数字だけ、それ以外は `たつじん+3 450`）
+  - ビッグラン / バイトチームコンテスト: 「ハイスコア」と、そのバイトの日時を含むスケジュールの枠（同じ種類）で記録したバイトのチームの金イクラの最大（`getShiftHighScore`。ビッグランは失敗も数え、チームコンテストはクリアだけ。ゲーム内のハイスコアに合わせた）。日時はイカリング3の表示（日本時間）なので `parsePlayedAt` でエポックミリ秒に直す。スケジュール（非公式 API）が取れない・過去の枠で見つからないときは変えない
+- 型・検証・既定値は `lib/scoreDisplayTypes.ts`（クライアントからも使う）
+
 ### `/app/api/salmon-schedule/route.ts` と `lib/salmonSchedule.ts`
 
 サーモンランのスケジュール（ステージ・支給ブキ・残り時間）を表示する機能。
@@ -381,6 +400,7 @@ Twitch のフォロワー数とフォロワー目標を受け取る機能と、�
 - 非公式 API の仕様変更に備え、`parseScheduleResults` は形が想定と違う要素を捨てる。開催中のものは `pickCurrentSchedule` で選び、同じ時間帯ならバイトチームコンテスト > ビッグラン > 通常の順に優先する
 - サイドパネルの `schedule` スロット（`components/SalmonSchedule.tsx`）で表示する。画像は外部の署名付き URL なので `next/image` を通さず `<img>` で表示する
 - コントロールパネルの「サーモンラン」タブは、ステージ欄が空なら開催中のステージ名を入れる（手入力した値は上書きしない。取れなくても記録はできる）
+- 取得・キャッシュは `lib/salmonScheduleFetch.ts` の `getSalmonSchedule()`（サーバー専用。スコア表示の自動更新でシフトの区切りにも使う）。ルートはこれを返すだけ
 - テストでは `fetch` を `vi.stubGlobal` で差し替え、`__TEST_ONLY_resetSalmonScheduleCache()` でキャッシュを消す
 
 ### `/app/telop-overlay/page.tsx` と `/app/api/telop/route.ts`

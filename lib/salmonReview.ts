@@ -4,7 +4,7 @@
 import {getAppState, getDb} from './db';
 import {getCurrentSession, getSession, getSummary} from './salmon';
 import {salmonBossOrder} from './salmonBosses';
-import {BossCount, MAX_WAVE, SalmonGrade, SalmonSession, SalmonSessionReview} from './salmonTypes';
+import {BossCount, MAX_WAVE, SalmonGrade, SalmonSession, SalmonSessionReview, TEAM_CONTEST_MAX_WAVE} from './salmonTypes';
 import {SIDE_PANEL_STATE_KEY, parseSidePanelSettings} from './sidePanelTypes';
 import {getWeaponCard} from './weaponCard';
 
@@ -25,6 +25,7 @@ interface ReviewJobRow {
     grade_name: string | null;
     grade_point: number | null;
     team_golden_eggs: number | null;
+    job_kind: string | null;
 }
 
 const EMPTY_REVIEW: Omit<SalmonSessionReview, 'session' | 'totals'> = {
@@ -73,7 +74,7 @@ export function getSessionReview(sessionId?: number): SalmonSessionReview | null
 
     const db = getDb();
     const rows = db.prepare(`
-        SELECT id, golden_eggs, boss_kills, deaths, cleared, wave_reached, stage, hazard_level, grade_name, grade_point, team_golden_eggs
+        SELECT id, golden_eggs, boss_kills, deaths, cleared, wave_reached, stage, hazard_level, grade_name, grade_point, team_golden_eggs, job_kind
         FROM salmon_jobs WHERE session_id = ? ORDER BY id`).all(session.id) as unknown as ReviewJobRow[];
     const jobs = rows.map((row) => ({
         id: row.id,
@@ -110,7 +111,9 @@ export function getSessionReview(sessionId?: number): SalmonSessionReview | null
         .sort((a, b) => b.selfKills - a.selfKills || salmonBossOrder(a.boss) - salmonBossOrder(b.boss));
 
     const graded = rows.filter((row) => row.grade_name !== null && row.grade_point !== null);
-    const waveFailures = Array.from({length: MAX_WAVE}, (_, i) => jobs.filter((j) => !j.cleared && j.waveReached === i + 1).length);
+    // バイトチームコンテストのバイトがあれば WAVE 5 まで並べる
+    const waveCount = rows.some((row) => row.job_kind === 'teamContest') ? TEAM_CONTEST_MAX_WAVE : MAX_WAVE;
+    const waveFailures = Array.from({length: waveCount}, (_, i) => jobs.filter((j) => !j.cleared && j.waveReached === i + 1).length);
     const best = jobs.reduce<(typeof jobs)[number] | null>((top, job) => (top === null || job.goldenEggs > top.goldenEggs ? job : top), null);
 
     // 同じ納品数なら先に遊んだバイトを上にする

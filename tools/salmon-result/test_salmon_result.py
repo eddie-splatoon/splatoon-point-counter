@@ -64,6 +64,23 @@ def test_classify_outcome(text, expected):
     assert s.classify_outcome(text) is expected
 
 
+def test_parse_job_kind():
+    assert s.parse_job_kind(DETAIL_BOXES) == "regular"
+    assert s.parse_job_kind([Box("ビッグラン", 0.4, 0.127, 0.2, 0.019)]) == "bigRun"
+    assert s.parse_job_kind([Box("バイトチームコンテスト", 0.3, 0.127, 0.4, 0.019)]) == "teamContest"
+    # タイトルが読めなくても、WAVE 4・5 があればバイトチームコンテスト
+    assert s.parse_job_kind([Box("WAVE 4", 0.33, 0.58, 0.1, 0.015)]) == "teamContest"
+    assert s.parse_job_kind([Box("WAVE 1", 0.2, 0.4, 0.1, 0.015)]) is None
+
+
+def test_parse_outcome_of_a_team_contest():
+    assert s.parse_outcome([Box("Clear!!", 0, 0, 0, 0)], s.max_wave_for("teamContest")) == (True, 5)
+    failed = [Box("Failure", 0, 0, 0, 0)] + [Box(f"WAVE {n}", 0, 0, 0, 0) for n in (1, 2, 3, 4)]
+    assert s.parse_outcome(failed, s.max_wave_for("teamContest")) == (False, 4)
+    # 通常のバイトでは WAVE 4 は無い
+    assert s.parse_outcome(failed) == (False, 3)
+
+
 def test_parse_outcome():
     assert s.parse_outcome(DETAIL_BOXES) == (True, 3)
     failed = [Box("Failure", 0, 0, 0, 0), Box("クリアボーナス", 0, 0, 0, 0)] + [b for b in DETAIL_BOXES if b.text.startswith("WAVE") and b.text != "WAVE 3"]
@@ -82,6 +99,11 @@ def test_stage():
     assert s.canonical_stage("ムニ・エール海洋発電新") == "ムニ・エール海洋発電所"
     # ビッグランなど、知らないステージは読めたまま
     assert s.canonical_stage("ユノハナ大渓谷") == "ユノハナ大渓谷"
+    # 小さい文字の濁点・半濁点の読み違いは区別しない
+    assert s.canonical_stage("どんびご関検場") == "どんぴこ闘技場"
+    assert s.canonical_stage("タラボートショッビングパーク") == "タラポートショッピングパーク"
+    assert s.vote_stage(["雷料目こ243", "どんびこ関検場", "どんぶこ関検場"]) == "どんぴこ闘技場"
+    assert s.vote_stage(["ユノハナ大渓谷"]) == "ユノハナ大渓谷"
 
 
 def test_find_self_row_and_history_row():
@@ -123,7 +145,68 @@ def test_read_job_from_captures(fixture, played_at, expected, weapon_icons, weap
         if REFS_DIR.exists():
             assert s.read_job(image, s.ensure_weapon_refs(REFS_DIR))[0]["weapons"] == weapons
     assert read_played_at == played_at
-    assert job == {**expected, "stage": "アラマキ砦", "weapons": []}
+    assert job == {**expected, "stage": "アラマキ砦", "weapons": [], "jobKind": "regular"}
+
+
+# ビッグラン・バイトチームコンテストの詳細画面（iPhone のスクリーンショットをミラーリングの撮影と同じ大きさ・配置にしたもの。
+# プレイヤー名は塗りつぶしている）。小さく縮めたので、ブキ・スペシャルの照合は確かめない
+@pytest.mark.parametrize(
+    ("fixture", "played_at", "expected", "weapon_icons"),
+    [
+        # バイトチームコンテストは WAVE 5 まで。ブキは固定で、WAVE ごとに同じブキが 5 つ並ぶ
+        ("teamcontest-clear.png", "2026/02/14 16:36",
+         {"goldenEggs": 80, "bossKills": 21, "deaths": 2, "cleared": True, "waveReached": 5, "stage": "どんぴこ闘技場", "jobKind": "teamContest"}, 5),
+        ("teamcontest-clear-2.png", "2026/08/30 20:41",
+         {"goldenEggs": 63, "bossKills": 16, "deaths": 0, "cleared": True, "waveReached": 5, "stage": "ムニ・エール海洋発電所", "jobKind": "teamContest"}, 5),
+        # ビッグランはバトルのステージ。明るいステージの上の「Clear!!」は、黄緑の文字だけを取り出して読む
+        ("bigrun-kingpin.png", "2026/06/21 15:47",
+         {"goldenEggs": 59, "bossKills": 20, "deaths": 3, "cleared": True, "waveReached": 3, "stage": "タラポートショッピングパーク", "jobKind": "bigRun"}, 4),
+        ("bigrun-kingpin-ng.png", "2026/06/20 23:19",
+         {"goldenEggs": 35, "bossKills": 29, "deaths": 3, "cleared": True, "waveReached": 3, "stage": "ゴンズイ地区", "jobKind": "bigRun"}, 4),
+    ],
+)
+def test_read_job_from_big_run_and_team_contest(fixture, played_at, expected, weapon_icons):
+    with Image.open(FIXTURES / fixture) as image:
+        image = image.convert("RGB")
+        boxes = s.ocr(image, s.FULL_OCR_SCALE)
+        job, read_played_at = s.read_job(image, {}, boxes=boxes)
+        assert len(s.weapon_icons(image, s.find_self_row(boxes), s.SelfRowCells())) == weapon_icons
+    assert read_played_at == played_at
+    assert job == {**expected, "weapons": []}
+
+
+TEAM_CONTEST_WAVES = {
+    "teamcontest-clear.png": [(1, 21, 10), (2, 55, 18), (3, 82, 26), (4, 69, 30), (5, 57, 32)],
+    "teamcontest-clear-2.png": [(1, 21, 10), (2, 62, 18), (3, 50, 26), (4, 46, 29), (5, 54, 30)],
+}
+
+
+@pytest.mark.parametrize(("fixture", "team_eggs"), [("teamcontest-clear.png", (284, 6942)), ("teamcontest-clear-2.png", (233, 7197))])
+def test_read_team_contest_details(fixture, team_eggs):
+    """評価の行が無いので、チームのイクラは上に詰まって出る。WAVE 4・5 は 2 段目"""
+    with Image.open(FIXTURES / fixture) as image:
+        image = image.convert("RGB")
+        details = s.read_details(image, s.ocr(image, s.FULL_OCR_SCALE), {}, {})
+    assert (details["teamGoldenEggs"], details["teamPowerEggs"]) == team_eggs
+    assert (details["gradeName"], details["gradePoint"], details["kingName"]) == (None, None, None)
+    assert [(w["wave"], w["delivered"], w["quota"]) for w in details["waves"]] == TEAM_CONTEST_WAVES[fixture]
+    # 1 段目の WAVE のスペシャルの段に、2 段目の GJ! を数えない
+    assert [w["specialsUsed"] for w in details["waves"][:2]] == [0, 0 if fixture == "teamcontest-clear.png" else 2]
+
+
+@pytest.mark.parametrize(
+    ("fixture", "header"),
+    [
+        ("bigrun-kingpin.png", {"gradeName": "でんせつ", "gradePoint": 999, "teamGoldenEggs": 234, "kingName": "オカシラ連合", "kingDefeated": True}),
+        ("bigrun-kingpin-ng.png", {"gradeName": "でんせつ", "gradePoint": 590, "teamGoldenEggs": 162, "kingName": "オカシラ連合", "kingDefeated": False}),
+    ],
+)
+def test_read_big_run_details(fixture, header):
+    with Image.open(FIXTURES / fixture) as image:
+        image = image.convert("RGB")
+        details = s.read_details(image, s.ocr(image, s.FULL_OCR_SCALE), {}, {})
+    assert {k: details[k] for k in header} == header
+    assert [w["wave"] for w in details["waves"]] == [1, 2, 3, s.EX_WAVE]
 
 
 HEADERS = {
@@ -155,7 +238,7 @@ WAVES = {
     "failure.png": [wave(1, 42, 29, "満潮", 84, 0), wave(2, 20, 31, "満潮", 63, 8)],
     "kingpin.png": [
         wave(1, 38, 29, "普通", 63, 1, "霧"), wave(2, 31, 31, "満潮", 72, 1), wave(3, 45, 33, "普通", 81, 6),
-        wave(4, None, None, "普通", 66, 3),
+        wave(6, None, None, "普通", 66, 3),
     ],
 }
 

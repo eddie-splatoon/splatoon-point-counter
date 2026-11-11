@@ -1,10 +1,14 @@
 import { NextRequest } from 'next/server';
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 
-import { GET, PATCH, POST, getInitialStreamData, __TEST_ONLY_setStreamData } from './route';
+import { __TEST_ONLY_setDb, openDb } from '../../../lib/db';
+import { updateScoreDisplay } from '../../../lib/scoreDisplay';
+
+import { GET, PATCH, POST, StreamData, getInitialStreamData, __TEST_ONLY_setStreamData } from './route';
 
 // Reset the stream data before each test
 beforeEach(() => {
+  __TEST_ONLY_setDb(openDb(':memory:'));
   __TEST_ONLY_setStreamData(getInitialStreamData());
 });
 
@@ -63,6 +67,22 @@ describe('Stream Data API', () => {
 
       const response = await POST(request);
       expect(response.status).toBe(400);
+    });
+
+    it('keeps the score display when the payload has no score', async () => {
+      updateScoreDisplay({ scoreLabel: 'ハイスコア', scoreValue: '264' });
+      const withoutScore: Partial<StreamData> = { ...getInitialStreamData(), fontSize: 60 };
+      delete withoutScore.scoreLabel;
+      delete withoutScore.scoreValue;
+      const response = await POST(new NextRequest('http://localhost/api/stream-data', {
+        method: 'POST',
+        body: JSON.stringify(withoutScore),
+      }));
+      const body = await response.json();
+
+      expect(response.status).toBe(200);
+      expect(body).toMatchObject({ scoreLabel: 'ハイスコア', scoreValue: '264', fontSize: 60 });
+      expect(await (await GET()).json()).toMatchObject({ scoreValue: '264' });
     });
 
     it('should update lastEvent when it is in the payload', async () => {

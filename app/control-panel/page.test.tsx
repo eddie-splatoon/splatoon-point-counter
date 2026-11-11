@@ -19,6 +19,10 @@ const mockedAxios = vi.mocked(axios);
 vi.mock('../../components/SalmonRunPanel', () => ({
     default: () => <div>SalmonRunPanel</div>,
 }));
+// スコア表示タブも独自に API を呼ぶ（中身は ScoreDisplayPanel.test.tsx）
+vi.mock('../../components/ScoreDisplayPanel', () => ({
+    default: () => <div>ScoreDisplayPanel</div>,
+}));
 vi.mock('../../components/SidePanelSettingsPanel', () => ({
     default: () => <div>SidePanelSettingsPanel</div>,
 }));
@@ -72,14 +76,13 @@ describe('ControlPanelPage', () => {
         render(<ControlPanelPage />);
         await waitFor(() => {
             expect(mockedAxios.get).toHaveBeenCalledWith('/api/stream-data');
-            expect(screen.getByLabelText('フィールド名')).toHaveValue(mockData.scoreLabel);
-            expect(screen.getByLabelText('値')).toHaveValue(mockData.scoreValue);
+            expect(screen.getByText('ScoreDisplayPanel')).toBeInTheDocument();
         });
     });
     
     it('allows switching between tabs', async () => {
         render(<ControlPanelPage />);
-        await waitFor(() => expect(screen.getByText('スコア設定')).toBeInTheDocument());
+        await waitFor(() => expect(screen.getByText('ScoreDisplayPanel')).toBeInTheDocument());
 
         fireEvent.click(screen.getByRole('tab', { name: 'バーンダウン' }));
         await waitFor(() => expect(screen.getByText('バーンダウンチャート設定')).toBeInTheDocument());
@@ -109,7 +112,7 @@ describe('ControlPanelPage', () => {
 
     it('shows dropdown menus on an opaque background', async () => {
         render(<ControlPanelPage />);
-        await waitFor(() => expect(screen.getByText('スコア設定')).toBeInTheDocument());
+        await waitFor(() => expect(screen.getByText('ScoreDisplayPanel')).toBeInTheDocument());
 
         fireEvent.click(screen.getByRole('tab', { name: 'メッセージ' }));
         fireEvent.mouseDown(await screen.findByRole('combobox'));
@@ -119,32 +122,24 @@ describe('ControlPanelPage', () => {
         expect(menuPaper).toHaveStyle({ backgroundColor: '#2A2A2A' });
     });
 
-    it('updates score fields and sends correct payload on submit', async () => {
+    it('sends the payload without the score on submit', async () => {
         render(<ControlPanelPage />);
-        await waitFor(() => expect(screen.getByLabelText('値')).toHaveValue(mockData.scoreValue));
-
-        const scoreLabelInput = screen.getByLabelText('フィールド名');
-        const scoreValueInput = screen.getByLabelText('値');
+        await waitFor(() => expect(screen.getByText('ScoreDisplayPanel')).toBeInTheDocument());
 
         await act(async () => {
-            fireEvent.change(scoreLabelInput, { target: { value: 'New Score' } });
-            fireEvent.change(scoreValueInput, { target: { value: '9999' } });
             fireEvent.click(screen.getByRole('button', { name: /OBSに反映/ }));
         });
-        
-        await waitFor(() => {
-            expect(mockedAxios.post).toHaveBeenCalledWith('/api/stream-data', 
-                expect.objectContaining({
-                    scoreLabel: 'New Score',
-                    scoreValue: '9999',
-                })
-            );
-        });
+
+        // スコアはリザルトの取り込みで自動で書き換えるので、ほかの設定の保存で上書きしない
+        await waitFor(() => expect(mockedAxios.post).toHaveBeenCalledWith('/api/stream-data', expect.objectContaining({ fontFamily: mockData.fontFamily })));
+        const payload = mockedAxios.post.mock.calls[0][1] as Record<string, unknown>;
+        expect(payload).not.toHaveProperty('scoreLabel');
+        expect(payload).not.toHaveProperty('scoreValue');
     });
 
     it('adds and removes a burndown entry', async () => {
         render(<ControlPanelPage />);
-        await waitFor(() => expect(screen.getByText('スコア設定')).toBeInTheDocument());
+        await waitFor(() => expect(screen.getByText('ScoreDisplayPanel')).toBeInTheDocument());
 
         fireEvent.click(screen.getByRole('tab', { name: 'バーンダウン' }));
         await waitFor(() => expect(screen.getByText('バーンダウンチャート設定')).toBeInTheDocument());
@@ -215,17 +210,17 @@ describe('ControlPanelPage', () => {
             const setItemSpy = vi.spyOn(Storage.prototype, 'setItem');
             
             render(<ControlPanelPage />);
-            await waitFor(() => expect(screen.getByLabelText('値')).toHaveValue(mockData.scoreValue));
-            
-            const scoreLabelInput = screen.getByLabelText('フィールド名');
+            await waitFor(() => expect(screen.getByText('ScoreDisplayPanel')).toBeInTheDocument());
+            fireEvent.click(screen.getByRole('tab', { name: 'バーンダウン' }));
+
             await act(async () => {
-                fireEvent.change(scoreLabelInput, { target: { value: 'A New Value' } });
+                fireEvent.change(screen.getByLabelText('フィールド名'), { target: { value: 'A New Value' } });
             });
             
             await waitFor(() => {
                 expect(setItemSpy).toHaveBeenCalledWith(
                     localStorageKey,
-                    expect.stringContaining('"scoreLabel":"A New Value"')
+                    expect.stringContaining('"label":"A New Value"')
                 );
             });
         });
@@ -234,7 +229,7 @@ describe('ControlPanelPage', () => {
             const setItemSpy = vi.spyOn(Storage.prototype, 'setItem');
             
             render(<ControlPanelPage />);
-            await waitFor(() => expect(screen.getByText('スコア設定')).toBeInTheDocument());
+            await waitFor(() => expect(screen.getByText('ScoreDisplayPanel')).toBeInTheDocument());
 
             await act(async () => {
                 fireEvent.click(screen.getByRole('tab', { name: 'メッセージ' }));
@@ -302,7 +297,7 @@ describe('ControlPanelPage', () => {
 
         const renderCommonTab = async () => {
             render(<ControlPanelPage />);
-            await waitFor(() => expect(screen.getByLabelText('値')).toBeInTheDocument());
+            await waitFor(() => expect(screen.getByText('ScoreDisplayPanel')).toBeInTheDocument());
             fireEvent.click(screen.getByRole('tab', { name: '共通設定' }));
             await screen.findByText('🎆 演出効果');
         };

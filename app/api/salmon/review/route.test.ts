@@ -8,7 +8,7 @@ import { addJob, startSession } from '../../../../lib/salmon';
 import { GET } from './route';
 
 const url = (query = '') => `http://localhost/api/salmon/review${query}`;
-const job = { goldenEggs: 30, bossKills: 12, deaths: 1, cleared: true, waveReached: 3, stage: 'アラマキ砦', weapons: [] };
+const job = { goldenEggs: 30, bossKills: 12, deaths: 1, cleared: true, waveReached: 3, stage: 'アラマキ砦', weapons: [], jobKind: null };
 
 beforeEach(() => {
   __TEST_ONLY_setDb(openDb(':memory:'));

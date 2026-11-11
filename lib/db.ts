@@ -23,6 +23,8 @@ CREATE TABLE IF NOT EXISTS salmon_jobs (
     weapons TEXT NOT NULL DEFAULT '[]',
     -- イカリング3から取り込んだバイトの日時（同じバイトを二重に記録しないため）。手入力の記録は NULL
     played_at TEXT,
+    -- バイトの種類（lib/salmonTypes.ts の SalmonJobKind）。以前の記録・読めなかったバイトは NULL
+    job_kind TEXT,
     -- 以下はイカリング3から取り込んだバイトの詳細（lib/salmonTypes.ts の SalmonJobDetails）。手入力・読めなかった項目は NULL
     hazard_level INTEGER,
     grade_name TEXT,
@@ -40,7 +42,7 @@ CREATE TABLE IF NOT EXISTS salmon_jobs (
     king_defeated INTEGER
 );
 CREATE INDEX IF NOT EXISTS salmon_jobs_session_id ON salmon_jobs(session_id);
--- 取り込んだバイトの WAVE ごとの結果（EX-WAVE は wave = 4）
+-- 取り込んだバイトの WAVE ごとの結果（EX-WAVE は wave = 6）
 CREATE TABLE IF NOT EXISTS salmon_job_waves (
     job_id INTEGER NOT NULL REFERENCES salmon_jobs(id) ON DELETE CASCADE,
     wave INTEGER NOT NULL,
@@ -121,6 +123,12 @@ function migrate(db: DatabaseSync): void {
     const jobColumns = columnsOf('salmon_jobs');
     if (!jobColumns.includes('weapons')) db.exec("ALTER TABLE salmon_jobs ADD COLUMN weapons TEXT NOT NULL DEFAULT '[]'");
     if (!jobColumns.includes('played_at')) db.exec('ALTER TABLE salmon_jobs ADD COLUMN played_at TEXT');
+    if (!jobColumns.includes('job_kind')) {
+        db.exec('ALTER TABLE salmon_jobs ADD COLUMN job_kind TEXT');
+        // job_kind を足す前は EX-WAVE を wave = 4 で保存していた（バイトチームコンテストの WAVE 4 と重なるので 6 に移す）。
+        // この時点ではバイトチームコンテストの記録は無いので、wave = 4 はすべて EX-WAVE
+        db.exec('UPDATE salmon_job_waves SET wave = 6 WHERE wave = 4');
+    }
     for (const [column, type] of JOB_DETAIL_COLUMNS) {
         if (!jobColumns.includes(column)) db.exec(`ALTER TABLE salmon_jobs ADD COLUMN ${column} ${type}`);
     }

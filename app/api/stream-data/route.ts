@@ -1,5 +1,8 @@
 import {NextResponse} from 'next/server';
 
+import {getScoreDisplay, updateScoreDisplay} from '../../../lib/scoreDisplay';
+import {DEFAULT_SCORE_DISPLAY, MAX_SCORE_LABEL_LENGTH, MAX_SCORE_VALUE_LENGTH} from '../../../lib/scoreDisplayTypes';
+
 // プリセットごとのメッセージリストの型
 export interface MessagePreset {
     name: string;
@@ -14,6 +17,7 @@ export interface BurndownData {
 }
 
 export interface StreamData {
+    // スコア表示は lib/scoreDisplay.ts で SQLite に別に保存している（リザルトの取り込みで自動で書き換えるため）。GET で合わせて返す
     scoreLabel: string;
     scoreValue: string;
     transitionEffect: 'fade' | 'slide';
@@ -36,8 +40,8 @@ export const EFFECT_NAMES = ['LOVE', 'STAR', 'SPARKLE', 'BUBBLE'] as const;
 
 // データを一時的にインメモリで保持するストア (本番ではDBが必要です)
 export const getInitialStreamData = (): StreamData => ({
-    scoreLabel: '現在の評価',
-    scoreValue: '400+',
+    scoreLabel: DEFAULT_SCORE_DISPLAY.scoreLabel,
+    scoreValue: DEFAULT_SCORE_DISPLAY.scoreValue,
     transitionEffect: 'fade',
     transitionDuration: 2,
     fontFamily: 'FOT-Kurokane Std',
@@ -84,10 +88,16 @@ let streamData: StreamData = getInitialStreamData();
  */
 export function __TEST_ONLY_setStreamData(data: StreamData) {
     streamData = data;
+    updateScoreDisplay({scoreLabel: data.scoreLabel, scoreValue: data.scoreValue});
 }
 
+const withScore = (data: StreamData): StreamData => {
+    const {scoreLabel, scoreValue} = getScoreDisplay();
+    return {...data, scoreLabel, scoreValue};
+};
+
 export async function GET() {
-    return NextResponse.json(streamData);
+    return NextResponse.json(withScore(streamData));
 }
 
 export async function POST(request: Request) {
@@ -106,8 +116,9 @@ export async function POST(request: Request) {
             burndown, // burndownを受け取る
         } = body;
 
-        // データ検証（簡易版）
-        if (typeof scoreLabel !== 'string' || typeof scoreValue !== 'string' || typeof transitionDuration !== 'number' || typeof fontFamily !== 'string' || typeof fontSize !== 'number' || typeof activePresetName !== 'string' || !Array.isArray(messagePresets)) {
+        // データ検証（簡易版）。スコア表示はコントロールパネルのスコア表示タブが /api/score-display で別に保存するので省略可
+        const isOptionalText = (value: unknown, maxLength: number) => value === undefined || (typeof value === 'string' && value.length <= maxLength);
+        if (!isOptionalText(scoreLabel, MAX_SCORE_LABEL_LENGTH) || !isOptionalText(scoreValue, MAX_SCORE_VALUE_LENGTH) || typeof transitionDuration !== 'number' || typeof fontFamily !== 'string' || typeof fontSize !== 'number' || typeof activePresetName !== 'string' || !Array.isArray(messagePresets)) {
             return NextResponse.json({message: 'Invalid data format for core data.'}, {status: 400});
         }
         if (burndown) {
@@ -123,9 +134,10 @@ export async function POST(request: Request) {
 
 
         // データを更新
+        if (scoreLabel !== undefined || scoreValue !== undefined) updateScoreDisplay({scoreLabel, scoreValue});
         streamData = {
-            scoreLabel: scoreLabel ?? streamData.scoreLabel,
-            scoreValue: scoreValue ?? streamData.scoreValue,
+            scoreLabel: streamData.scoreLabel,
+            scoreValue: streamData.scoreValue,
             transitionEffect: transitionEffect ?? streamData.transitionEffect,
             transitionDuration: transitionDuration ?? streamData.transitionDuration,
             fontFamily: fontFamily ?? streamData.fontFamily,
@@ -138,7 +150,7 @@ export async function POST(request: Request) {
             revision: streamData.revision + 1, // Increment revision on every update
         };
 
-        return NextResponse.json(streamData);
+        return NextResponse.json(withScore(streamData));
     } catch {
         return NextResponse.json({message: 'Internal Server Error'}, {status: 500});
     }
@@ -165,5 +177,5 @@ export async function PATCH(request: Request) {
     }
 
     streamData = {...streamData, lastEvent: {name: event as string, timestamp: Date.now()}, revision: streamData.revision + 1};
-    return NextResponse.json(streamData);
+    return NextResponse.json(withScore(streamData));
 }

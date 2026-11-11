@@ -94,8 +94,8 @@ export const SALMON_WEAPONS: readonly SalmonWeapon[] = [
 
 export const SALMON_WEAPON_COUNT = SALMON_WEAPONS.length;
 
-// 1回のバイトで支給されるブキの最大数（3 WAVE + EX WAVE）
-export const MAX_JOB_WEAPONS = 4;
+// 1回のバイトで支給されるブキの最大数（バイトチームコンテストの 5 WAVE。通常は 3 WAVE + EX-WAVE の 4）
+export const MAX_JOB_WEAPONS = 5;
 
 const WEAPONS_BY_KEY = new Map(SALMON_WEAPONS.map((weapon) => [weapon.key, weapon]));
 
