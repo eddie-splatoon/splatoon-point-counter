@@ -169,6 +169,32 @@ function insertDetailRows(jobId: number, details: SalmonJobDetails): void {
     for (const b of details.bosses) boss.run(jobId, b.boss, b.appearances, b.teamKills, b.selfKills);
 }
 
+/**
+ * 記録の値を直す（取り込みの読み間違いなど）。日時（played_at）・詳細はそのまま残すので、次の取り込みで同じバイトを二重に記録しない。
+ * 詳細を取り込んだバイトは、自分の行（position 0）の数も合わせる（振り返りの集計とずれないように）
+ * @returns 直せたら true
+ */
+export function updateJob(id: number, job: NewSalmonJob): boolean {
+    const db = getDb();
+    db.exec('BEGIN');
+    try {
+        const changes = Number(db.prepare(`
+            UPDATE salmon_jobs SET golden_eggs = ?, boss_kills = ?, deaths = ?, cleared = ?, wave_reached = ?, stage = ?, weapons = ?, job_kind = ?
+            WHERE id = ?`).run(
+            job.goldenEggs, job.bossKills, job.deaths, job.cleared ? 1 : 0, job.waveReached, job.stage, JSON.stringify(job.weapons), job.jobKind, id,
+        ).changes);
+        if (changes > 0) {
+            db.prepare('UPDATE salmon_job_players SET golden_eggs = ?, boss_kills = ?, rescued = ? WHERE job_id = ? AND position = 0')
+                .run(job.goldenEggs, job.bossKills, job.deaths, id);
+        }
+        db.exec('COMMIT');
+        return changes > 0;
+    } catch (error) {
+        db.exec('ROLLBACK');
+        throw error;
+    }
+}
+
 /** @returns 削除できたら true */
 export function deleteJob(id: number): boolean {
     return Number(getDb().prepare('DELETE FROM salmon_jobs WHERE id = ?').run(id).changes) > 0;

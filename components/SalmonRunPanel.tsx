@@ -1,5 +1,6 @@
 'use client';
 
+import EditIcon from '@mui/icons-material/Edit';
 import RemoveCircleIcon from '@mui/icons-material/RemoveCircle';
 import {
     Alert,
@@ -59,7 +60,7 @@ const formatDateTime = (timestamp: number) =>
 const sessionLabel = (session: {id: number; startedAt: number; title: string}) =>
     `#${session.id} ${formatDateTime(session.startedAt)}${session.title ? ` ${session.title}` : ''}`;
 
-const JobRow: React.FC<{job: SalmonJob; index: number; onDelete?: (id: number) => void}> = ({job, index, onDelete}) => (
+const JobRow: React.FC<{job: SalmonJob; index: number; onEdit?: (job: SalmonJob, index: number) => void; onDelete?: (id: number) => void}> = ({job, index, onEdit, onDelete}) => (
     <Box sx={{display: 'flex', justifyContent: 'space-between', alignItems: 'center', p: 0.5, borderBottom: '1px dotted rgba(255,255,255,0.2)'}}>
         <Typography variant="body2">
             {index} | {job.cleared ? 'クリア' : `WAVE${job.waveReached} 失敗`} | 金イクラ {job.goldenEggs} / オオモノ {job.bossKills} / デス {job.deaths}
@@ -71,6 +72,11 @@ const JobRow: React.FC<{job: SalmonJob; index: number; onDelete?: (id: number) =
                 return weapon && <WeaponIcon key={i} weapon={weapon} size={24}/>;
             })}
         </Box>
+        {onEdit && (
+            <IconButton size="small" onClick={() => onEdit(job, index)} aria-label={`記録 ${index} を修正`}>
+                <EditIcon fontSize="small"/>
+            </IconButton>
+        )}
         {onDelete && (
             <IconButton size="small" color="error" onClick={() => onDelete(job.id)} aria-label={`記録 ${index} を削除`}>
                 <RemoveCircleIcon fontSize="small"/>
@@ -164,6 +170,8 @@ const SalmonRunPanel: React.FC = () => {
     const [pastSummary, setPastSummary] = useState<SalmonSummary | null>(null);
     const [error, setError] = useState('');
     const [saving, setSaving] = useState(false);
+    // 修正中の記録（取り込みの読み間違いを直すとき）。null なら新しく記録する
+    const [editing, setEditing] = useState<{id: number; index: number} | null>(null);
     // 過去セッションを素早く切り替えたとき、古い応答で表示を上書きしないための最新の選択
     const latestPastSessionId = useRef<number | ''>('');
 
@@ -211,12 +219,37 @@ const SalmonRunPanel: React.FC = () => {
 
     const canSubmit = !saving && NUMBER_FIELDS.every(({key}) => isCount(numbers[key]));
 
+    /** 入力欄を新しい記録用に戻す（ステージ・種類は開催中のものにする） */
+    const resetForm = () => {
+        setNumbers(EMPTY_NUMBERS);
+        setWeapons([]);
+        setCleared(true);
+        setEditing(null);
+    };
+
+    const handleEdit = (job: SalmonJob, index: number) => {
+        setError('');
+        setEditing({id: job.id, index});
+        setNumbers({goldenEggs: String(job.goldenEggs), bossKills: String(job.bossKills), deaths: String(job.deaths)});
+        setCleared(job.cleared);
+        setWaveReached(job.waveReached);
+        if (job.jobKind) setJobKind(job.jobKind);
+        setStage(job.stage);
+        setWeapons(job.weapons);
+    };
+
+    const handleCancelEdit = () => {
+        resetForm();
+        setStage('');
+        void fillStageFromSchedule();
+    };
+
     const handleSubmit = async () => {
         if (!canSubmit) return;
         setSaving(true);
         setError('');
         try {
-            const res = await axios.post<SalmonSummary>('/api/salmon', {
+            const job = {
                 goldenEggs: Number(numbers.goldenEggs),
                 bossKills: Number(numbers.bossKills),
                 deaths: Number(numbers.deaths),
@@ -225,14 +258,20 @@ const SalmonRunPanel: React.FC = () => {
                 stage,
                 weapons,
                 jobKind,
-            });
+            };
+            // 修正は日時（取り込んだバイトの played_at）を残すので、次の取り込みで同じバイトを二重に記録しない
+            const res = editing
+                ? await axios.patch<SalmonSummary>('/api/salmon', {...job, id: editing.id})
+                : await axios.post<SalmonSummary>('/api/salmon', job);
             setSummary(res.data);
-            setNumbers(EMPTY_NUMBERS);
-            setWeapons([]);
-            setCleared(true);
+            resetForm();
+            if (editing) {
+                setStage('');
+                void fillStageFromSchedule();
+            }
             await loadSessions();
         } catch {
-            setError('記録に失敗しました。入力内容とサーバーを確認してください。');
+            setError(editing ? '記録の修正に失敗しました。入力内容とサーバーを確認してください。' : '記録に失敗しました。入力内容とサーバーを確認してください。');
         } finally {
             setSaving(false);
         }
@@ -243,6 +282,7 @@ const SalmonRunPanel: React.FC = () => {
         try {
             const res = await axios.delete<SalmonSummary>(`/api/salmon?id=${id}`);
             setSummary(res.data);
+            if (editing?.id === id) handleCancelEdit();
             await loadSessions();
         } catch {
             setError('記録の削除に失敗しました。');
@@ -287,6 +327,11 @@ const SalmonRunPanel: React.FC = () => {
             <Paper elevation={12} sx={paperSx}>
                 <Typography variant="h6" gutterBottom>🐟 バイトの記録</Typography>
                 <SalmonImportButton onImported={load}/>
+                {editing && (
+                    <Alert severity="info" sx={{mb: 1}} action={<Button color="inherit" size="small" onClick={handleCancelEdit}>キャンセル</Button>}>
+                        記録 {editing.index} を修正しています
+                    </Alert>
+                )}
                 <Box sx={{display: 'flex', gap: 1}}>
                     {NUMBER_FIELDS.map(({key, label}) => (
                         <TextField
@@ -360,10 +405,10 @@ const SalmonRunPanel: React.FC = () => {
                     />
                 </Box>
                 <Button variant="contained" onClick={handleSubmit} disabled={!canSubmit} fullWidth sx={{mt: 2}}>
-                    {saving ? '記録中...' : '記録'}
+                    {saving ? '保存中...' : editing ? '修正を保存' : '記録'}
                 </Button>
                 <Typography variant="caption" sx={{display: 'block', mt: 1, color: 'text.secondary'}}>
-                    記録はすぐに保存され、オーバーレイに反映されます（「OBSに反映」ボタンは不要です）。ステージは次の記録にも引き継がれます。支給ブキを選ぶと、ブキ埋めカードも埋まります。
+                    記録はすぐに保存され、オーバーレイに反映されます（「OBSに反映」ボタンは不要です）。ステージは次の記録にも引き継がれます。支給ブキを選ぶと、ブキ埋めカードも埋まります。取り込みの読み間違いは、削除して手入力し直すのではなく ✏️ で修正してください（削除すると次の取り込みで同じバイトがもう一度記録されます）。
                 </Typography>
             </Paper>
 
@@ -378,7 +423,7 @@ const SalmonRunPanel: React.FC = () => {
                             <Typography variant="body2" sx={{color: 'text.secondary', p: 1}}>記録がありません</Typography>
                         ) : (
                             summary.jobs.map((job, i) => (
-                                <JobRow key={job.id} job={job} index={summary.jobs.length - i} onDelete={handleDelete}/>
+                                <JobRow key={job.id} job={job} index={summary.jobs.length - i} onEdit={handleEdit} onDelete={handleDelete}/>
                             ))
                         )}
                     </Box>

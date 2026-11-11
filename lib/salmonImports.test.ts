@@ -2,7 +2,7 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 
 import { __TEST_ONLY_setDb, openDb } from './db';
-import { deleteJob, getSummary, startSession } from './salmon';
+import { deleteJob, getSummary, startSession, updateJob } from './salmon';
 import {
   SalmonImportResult,
   getRecordedJobs,
@@ -100,6 +100,16 @@ describe('salmon result imports', () => {
     deleteJob(getSummary().lastJob!.id);
     expect(updateImport(second, succeeded('2026/11/10 21:05'), 2500)).toMatchObject({ status: 'succeeded' });
     expect(getSummary().jobs).toHaveLength(1);
+  });
+
+  it('does not record a corrected job again when going back for missed jobs', () => {
+    updateImport(startImport(), succeeded('2026/11/10 20:58'), 1000);
+    // 読み間違い（3142）を修正で直す。削除→手入力だと日時が消えて、次の取り込みで遡ったときに二重に記録される
+    updateJob(getSummary().lastJob!.id, job(31));
+
+    const id = startImport(2000);
+    expect(updateImport(id, succeeded('2026/11/10 20:58', '2026/11/10 21:05'), 2000)).toMatchObject({ recordedCount: 1 });
+    expect(getSummary().jobs.map((j) => j.goldenEggs)).toEqual([81, 31]);
   });
 
   it('records failures with the captures', () => {
