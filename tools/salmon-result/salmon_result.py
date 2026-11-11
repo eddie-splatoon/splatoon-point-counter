@@ -882,11 +882,18 @@ def boxes_in(boxes: list[Box], left: float, top: float, right: float, bottom: fl
 
 # 「290%」の右端から左へ切り出す幅（「キケン度」の文字は入っても入らなくてもよい）
 HAZARD_CELL_WIDTH = 0.15
+# 「キケン度333%」の位置（ブキの数・バイトの種類によらず同じ。保存したキャプチャ 73 件で確かめた）
+HAZARD_REGION = (0.5, 0.228, 0.78, 0.258)
 
 
 def read_hazard_level(image, boxes: list[Box], ocr_fn=ocr) -> int | None:
     """キケン度（%）。全体の OCR では「キケン度」を「約」と読んで見つからなかったり、「285%」の 2 が抜けたりするので、
-    「%」の付いた文字の右端から数字の部分を切り出し、何度か読んだ多数決にする"""
+    いつもの位置を切り出して何度か読んだ多数決にする"""
+    level = majority([parse_hazard_level(t) for t in read_cell_texts(crop_relative(image, HAZARD_REGION), ocr_fn)])
+    if level is not None:
+        return level
+    # いつもの位置で読めなければ、「%」の付いた文字の右端から数字の部分を切り出して読む
+    #（右端からの切り出しは「316%」の 3 が切れて 16 と読むことがあるので、こちらは後にする）
     # 「キケン度290%」のように 1 つに読めたものを優先し、無ければ「%」の付いた文字が 1 つだけのときに使う（ほかの「%」と取り違えない）
     percents = [b for b in boxes if b.cy < 0.3 and HAZARD_PATTERN.search(normalize(b.text))]
     labeled = [b for b in percents if "ケン" in normalize(b.text)]
@@ -901,26 +908,44 @@ def read_hazard_level(image, boxes: list[Box], ocr_fn=ocr) -> int | None:
 EGGS_ROW_TOLERANCE = 0.01  # 同じ行とみなす高さの差
 SCALES_BELOW_EGGS = 0.017  # イクラの行の中心から、ウロコの行の上端まで（評価の行が無いとき）
 EGGS_RAISED_BELOW_LABEL = 0.03  # イクラの行がラベルからこれより近ければ、評価の行が無い（バイトチームコンテスト）
+# 「獲得ポイント」は背景の上の細い文字で、読めない画面がある。そのときはスコアの行の下の
+# 「バイトスコア / 評価レート / クリアボーナス」（「パイトスコア」「詳価レート」と読むが、どの画面でも読める）の、この差だけ上を基準にする
+POINT_LABEL_ABOVE_SCORE_LABELS = 0.064
+
+
+def point_label_cy(boxes: list[Box]) -> float | None:
+    """「獲得ポイント」の行の高さ（読めなければスコアの下のラベルの行から決める）"""
+    label = find_box(boxes, "獲得", "ポイント", "ホイント", max_y=0.35)
+    if label is not None:
+        return label.cy
+    below = find_box(boxes, "スコア", "スコァ", "レート", "ボーナス", "ポーナス", min_y=0.3, max_y=0.45)
+    return below.cy - POINT_LABEL_ABOVE_SCORE_LABELS if below is not None else None
+
+
+def job_point_of(score: int | None, rate: float | None, bonus: int | None) -> int | None:
+    """獲得ポイント = バイトスコア × 評価レート（切り捨て）+ クリアボーナス"""
+    if score is None or rate is None or bonus is None:
+        return None
+    return score * round(rate * 100) // 100 + bonus  # 2.70 などを浮動小数のまま掛けると誤差が出るので整数で
 
 
 def read_header(image, boxes: list[Box], ocr_fn=ocr) -> dict:
     """詳細画面の上部（キケン度・評価・ポイント・チームのイクラ・ウロコ）"""
     hazard_level = read_hazard_level(image, boxes, ocr_fn)
 
-    point_label = find_box(boxes, "獲得", "ポイント", "ホイント", max_y=0.35)
+    label_cy = point_label_cy(boxes)
     grade_name = grade_point = job_point = job_score = job_rate = clear_bonus = None
     team_golden = team_power = None
     scales = [None, None, None]
-    if point_label is not None:
+    if label_cy is not None:
         # 評価（左上）とポイント（右上）は「獲得ポイント」と同じ高さ
-        for b in boxes_in(boxes, 0.0, point_label.cy - 0.02, 0.45, point_label.cy + 0.02):
+        for b in boxes_in(boxes, 0.0, label_cy - 0.02, 0.45, label_cy + 0.02):
             name, point = parse_grade(b.text)
             if name is not None:
                 grade_name, grade_point = name, point
                 break
-        job_point = majority([parse_points(b.text) for b in boxes_in(boxes, 0.7, point_label.cy - 0.02, 1.0, point_label.cy + 0.02)])
         # 「130 x 3.25 + 50」はラベルの 0.045 下
-        line = boxes_in(boxes, 0.5, point_label.cy + 0.03, 1.0, point_label.cy + 0.06)
+        line = boxes_in(boxes, 0.5, label_cy + 0.03, 1.0, label_cy + 0.06)
         job_score, job_rate = parse_score_line(" ".join(b.text for b in line))
         after_plus = [b for b in line if b.x > 0.8 and re.fullmatch(r"\+?\s*\d{1,4}", normalize(b.text))]
         if after_plus:
@@ -929,9 +954,13 @@ def read_header(image, boxes: list[Box], ocr_fn=ocr) -> dict:
             # 「+ 0」は「+」と同じ Box に入ることがある
             plus = re.search(r"\+\s*(\d{1,4})\s*$", normalize(" ".join(b.text for b in line)))
             clear_bonus = int(plus.group(1)) if plus else None
+        # 「452p」は装飾文字で「dSh」「513p」（573p）などと読み違えるので、スコアの行から計算できればそちらを使う
+        job_point = job_point_of(job_score, job_rate, clear_bonus)
+        if job_point is None:
+            job_point = majority([parse_points(b.text) for b in boxes_in(boxes, 0.7, label_cy - 0.02, 1.0, label_cy + 0.02)])
         # チームの金イクラ・赤イクラは左側の「x114 x3281」の行。評価の行があればラベルの 0.04 下、
         # バイトチームコンテスト（評価が無い）ではラベルの 0.02 下に上がるので、左側の数のうちいちばん上の行を使う
-        counted = [(b, parse_count(b.text)) for b in boxes_in(boxes, 0.0, point_label.cy - 0.01, 0.45, point_label.cy + 0.06)]
+        counted = [(b, parse_count(b.text)) for b in boxes_in(boxes, 0.0, label_cy - 0.01, 0.45, label_cy + 0.06)]
         counted = [(b, n) for b, n in counted if n is not None]
         eggs_cy = min((b.cy for b, _ in counted), default=None)
         eggs = [n for b, n in counted if eggs_cy is not None and abs(b.cy - eggs_cy) < EGGS_ROW_TOLERANCE]
@@ -939,8 +968,8 @@ def read_header(image, boxes: list[Box], ocr_fn=ocr) -> dict:
             team_golden, team_power = eggs
         # ウロコ（銅・銀・金）はその下に 3 つ並ぶ。取れなかった「-」は None のまま
         # 評価の行がある画面は、ウロコの位置もラベルからの距離で決める（イクラの行の読み取り位置の揺れで、ウロコの切り出しがずれないように）
-        raised = eggs_cy is not None and eggs_cy < point_label.cy + EGGS_RAISED_BELOW_LABEL
-        top = eggs_cy + SCALES_BELOW_EGGS if raised else point_label.cy + 0.055
+        raised = eggs_cy is not None and eggs_cy < label_cy + EGGS_RAISED_BELOW_LABEL
+        top = eggs_cy + SCALES_BELOW_EGGS if raised else label_cy + 0.055
         for i, (left, right) in enumerate(((0.04, 0.17), (0.16, 0.28), (0.26, 0.4))):
             scales[i] = vote_count(crop_relative(image, (left, top, right, top + 0.022)), ocr_fn)
     return {
