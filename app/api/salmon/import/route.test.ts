@@ -1,10 +1,13 @@
 // @vitest-environment node
 import { NextRequest } from 'next/server';
-import { beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { __TEST_ONLY_setDb, openDb } from '../../../../lib/db';
 import { getSummary } from '../../../../lib/salmon';
+import * as celebration from '../../../../lib/salmonCelebration';
+import { __TEST_ONLY_resetTelop } from '../../../../lib/telop';
 import { GET as getScoreDisplay } from '../../score-display/route';
+import { GET as getTelop } from '../../telop/route';
 
 import { GET, PATCH, POST } from './route';
 
@@ -27,6 +30,11 @@ const importJobs = async (jobs: unknown[]) => {
 
 beforeEach(() => {
   __TEST_ONLY_setDb(openDb(':memory:'));
+  __TEST_ONLY_resetTelop();
+});
+
+afterEach(() => {
+  vi.restoreAllMocks();
 });
 
 describe('Salmon import API', () => {
@@ -72,5 +80,39 @@ describe('Salmon import API', () => {
   it('keeps the score display when the kind of the job is unknown', async () => {
     expect((await importJobs([{ job, playedAt: '2026/11/10 21:05', details: { gradeName: 'でんせつ', gradePoint: 720 } }])).status).toBe(200);
     expect(await (await getScoreDisplay()).json()).toMatchObject({ scoreValue: '400+' });
+  });
+
+  describe('celebrating records of the day', () => {
+    const allBosses = { bosses: [{ boss: 'tower', appearances: 3, teamKills: 3, selfKills: 2 }] };
+
+    it('shows the celebration telop for the latest job and tells the script', async () => {
+      const response = await importJobs([
+        { job: { ...job, goldenEggs: 20, bossKills: 10 }, playedAt: '2026/11/10 21:05' },
+        { job: { ...job, goldenEggs: 40, bossKills: 10 }, playedAt: '2026/11/10 21:15', details: allBosses },
+      ]);
+
+      expect(await response.json()).toMatchObject({ import: { status: 'succeeded' }, celebrated: true });
+      expect((await (await getTelop()).json()).current).toMatchObject({
+        text: '🎉 本日の最高記録を更新！\n金イクラ 40個 / 全処理',
+        effect: 'record',
+      });
+    });
+
+    it('does not celebrate when nothing is a record', async () => {
+      const response = await importJobs([{ job: { ...job, goldenEggs: 40 }, playedAt: '2026/11/10 21:05' }]);
+
+      expect(await response.json()).toMatchObject({ celebrated: false });
+      expect((await (await getTelop()).json()).current).toBeNull();
+    });
+
+    it('still records the job when celebrating fails', async () => {
+      vi.spyOn(console, 'error').mockImplementation(() => {});
+      vi.spyOn(celebration, 'detectAchievements').mockImplementation(() => { throw new Error('boom'); });
+      const response = await importJobs([{ job, playedAt: '2026/11/10 21:05', details: allBosses }]);
+
+      expect(response.status).toBe(200);
+      expect(await response.json()).toMatchObject({ import: { status: 'succeeded' }, celebrated: false });
+      expect(getSummary().jobs).toHaveLength(1);
+    });
   });
 });

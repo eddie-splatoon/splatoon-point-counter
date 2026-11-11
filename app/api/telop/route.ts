@@ -1,75 +1,32 @@
 import {NextResponse} from 'next/server';
 
-import {getAppState, setAppState} from '../../../lib/db';
+import {setAppState} from '../../../lib/db';
 import {enqueueSpeech} from '../../../lib/speech';
 import {
-    FOLLOW_SPEECH_TEXT,
-    FOLLOW_TELOP_COOLDOWN_MS,
-    FOLLOW_TELOP_TEXT,
+    TELOP_STATE_KEY,
+    expireChatPosts,
+    getTelopData,
+    loadPresets,
+    queueChatPost,
+    removeChatPost,
+    showFollowTelop,
+    showTelop,
+} from '../../../lib/telop';
+import {
     MAX_TELOP_LENGTH,
     TELOP_CHAT_STATUSES,
-    Telop,
-    TelopChatPost,
     TelopChatStatus,
-    TelopData,
-    getDefaultTelopSettings,
     normalizeTelopText,
     parseTelopSettings,
 } from '../../../lib/telopTypes';
 
-const STATE_KEY = 'telop';
-// Twitch 連携スクリプトが拾わなければ（未起動）、この時間でコメントをあきらめてテロップ側で読み上げる
-export const CHAT_PICKUP_TTL_MS = 3000;
-// 拾った後に結果が届かなければ、この時間で読み上げずに捨てる（書き込めたかわからないので、二重に読まない）
-export const CHAT_RESULT_TTL_MS = 30000;
-const MAX_CHAT_POSTS = 20;
-
-// いま出ているテロップはインメモリで持つ（字幕と同じく、再起動したら消えてよい）。プリセットは SQLite に保存する
-let current: Telop | null = null;
-let revision = 0;
-// Twitch のチャットへの書き込み待ち。ID は起動時刻から振る（再起動後に、スクリプトが試した ID と重ならないように）
-let chatPosts: TelopChatPost[] = [];
-let nextChatId = Date.now();
-// 最後にフォローのお礼を出した時刻（続いたフォローを 1 回にまとめるため）
-let lastFollowTelopAt: number | null = null;
-
-/**
- * **FOR TESTING PURPOSES ONLY**
- * Resets the in-memory telop.
- */
-export function __TEST_ONLY_resetTelop() {
-    current = null;
-    revision = 0;
-    chatPosts = [];
-    nextChatId = 1;
-    lastFollowTelopAt = null;
-}
-
-/** 期限を過ぎた書き込み待ちを外す。拾われなかったものは、読み上げる設定ならテロップ側で読み上げる */
-function expireChatPosts(now = Date.now()) {
-    chatPosts = chatPosts.filter((post) => {
-        if (post.picked) return now - post.createdAt < CHAT_RESULT_TTL_MS;
-        if (now - post.createdAt < CHAT_PICKUP_TTL_MS) return true;
-        if (post.speak) enqueueSpeech(post.text);
-        return false;
-    });
-}
-
-/** 保存済みのプリセット。未保存、または不正なら既定値 */
-const loadPresets = () => {
-    const saved = parseTelopSettings(getAppState(STATE_KEY));
-    return (typeof saved === 'string' ? getDefaultTelopSettings() : saved).presets;
-};
-
-const toData = (): TelopData => ({presets: loadPresets(), current, revision, serverTime: Date.now()});
-
 /** `?view=chat` なら Twitch のチャットへの書き込み待ち（Twitch 連携スクリプト用）、それ以外はテロップの状態 */
 export async function GET(request?: Request) {
-    expireChatPosts();
+    const chatPosts = expireChatPosts();
     if (request && new URL(request.url).searchParams.get('view') === 'chat') {
         return NextResponse.json({chatPosts});
     }
-    return NextResponse.json(toData());
+    return NextResponse.json(getTelopData());
 }
 
 // 他サイトからプリフライトなしで送れる text/plain などの「単純リクエスト」を拒否する
@@ -101,7 +58,8 @@ export async function POST(request: Request) {
         if (event !== 'follow' || presetId !== undefined || text !== undefined) {
             return NextResponse.json({message: "event must be 'follow' and cannot be combined with presetId or text."}, {status: 400});
         }
-        return showFollowTelop();
+        showFollowTelop();
+        return NextResponse.json(getTelopData());
     }
     if (speak !== undefined && typeof speak !== 'boolean') {
         return NextResponse.json({message: 'speak must be a boolean.'}, {status: 400});
@@ -129,30 +87,15 @@ export async function POST(request: Request) {
 
     const now = Date.now();
     // テロップに出さない（コメントだけの）プリセットは、オーバーレイの表示を変えない
-    if (display) {
-        revision += 1;
-        current = {id: revision, ...telop, effect: null, timestamp: now};
-    }
+    if (display) showTelop({...telop, effect: null}, now);
     if (postToChat) {
         // 書き込んだコメントは配信者のコメントとして読み上げられるので、ここでは読まない（二重にならないように）。
         // 書き込めなかったときだけ、読み上げる設定ならテロップ側で読む
-        expireChatPosts(now);
-        chatPosts = [...chatPosts, {id: nextChatId++, text: telop.text, speak: shouldSpeak, picked: false, createdAt: now}].slice(-MAX_CHAT_POSTS);
+        queueChatPost(telop.text, shouldSpeak, now);
     } else if (shouldSpeak) {
         enqueueSpeech(telop.text);
     }
-    return NextResponse.json(toData());
-}
-
-/** フォローのお礼を出す。チャットには書き込まない */
-function showFollowTelop() {
-    const now = Date.now();
-    if (lastFollowTelopAt !== null && now - lastFollowTelopAt < FOLLOW_TELOP_COOLDOWN_MS) return NextResponse.json(toData());
-    lastFollowTelopAt = now;
-    revision += 1;
-    current = {id: revision, text: FOLLOW_TELOP_TEXT, followFont: true, effect: 'follow', timestamp: now};
-    enqueueSpeech(FOLLOW_SPEECH_TEXT);
-    return NextResponse.json(toData());
+    return NextResponse.json(getTelopData());
 }
 
 /**
@@ -166,8 +109,7 @@ export async function PATCH(request: Request) {
     if (typeof chatId !== 'number' || !(TELOP_CHAT_STATUSES as readonly unknown[]).includes(status)) {
         return NextResponse.json({message: `chatId (number) and status (${TELOP_CHAT_STATUSES.join(' | ')}) are required.`}, {status: 400});
     }
-    expireChatPosts();
-    const post = chatPosts.find((p) => p.id === chatId);
+    const post = expireChatPosts().find((p) => p.id === chatId);
     if (!post) return NextResponse.json({message: 'Chat post not found.'}, {status: 404});
 
     if ((status as TelopChatStatus) === 'picked') {
@@ -176,10 +118,10 @@ export async function PATCH(request: Request) {
         // 結果は拾ったものにだけ受け付ける（拾う前に sent で消されて書き込まれない、などを防ぐ）
         return NextResponse.json({message: 'Chat post has not been picked.'}, {status: 409});
     } else {
-        chatPosts = chatPosts.filter((p) => p.id !== chatId);
+        removeChatPost(chatId);
         if (status === 'failed' && post.speak) enqueueSpeech(post.text);
     }
-    return NextResponse.json({chatPosts});
+    return NextResponse.json({chatPosts: expireChatPosts()});
 }
 
 /** プリセットを保存する */
@@ -190,6 +132,6 @@ export async function PUT(request: Request) {
     const settings = parseTelopSettings(json.body);
     if (typeof settings === 'string') return NextResponse.json({message: settings}, {status: 400});
 
-    setAppState(STATE_KEY, settings);
-    return NextResponse.json(toData());
+    setAppState(TELOP_STATE_KEY, settings);
+    return NextResponse.json(getTelopData());
 }

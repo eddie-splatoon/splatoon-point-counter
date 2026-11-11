@@ -613,19 +613,21 @@ def test_read_waves_keeps_the_column_width_when_a_header_is_missing(monkeypatch)
 
 
 class FakeApi:
-    def __init__(self, recorded):
+    def __init__(self, recorded, celebrated=False):
         self.recorded_played_at = recorded
+        self.celebrated = celebrated
         self.updates = []
+        self.telops = []
 
     def update(self, body):
         self.updates.append(body)
-        return 200
+        return 200, {"celebrated": self.celebrated} if body["status"] == "succeeded" else {}
 
     def recorded(self):
         return set(self.recorded_played_at), 0.0
 
     def telop(self, text):
-        pass
+        self.telops.append(text)
 
 
 def test_process_request_reads_the_bosses_of_new_jobs_only(monkeypatch, tmp_path):
@@ -684,6 +686,21 @@ def test_process_request_keeps_the_details_when_reading_the_bosses_fails(monkeyp
     assert api.updates[-1]["status"] == "succeeded"
     assert api.updates[-1]["jobs"][0]["details"] == {"waves": []}
     assert any("オオモノの欄を読み取れませんでした" in m for m in logs)
+
+
+@pytest.mark.parametrize("celebrated, telops", [(False, [s.TELOP_SUCCEEDED]), (True, [])])
+def test_process_request_leaves_the_telop_to_the_celebration(monkeypatch, tmp_path, celebrated, telops):
+    """本日の最高記録などでサーバーがお祝いのテロップを出したら、「リザルトを記録しました」で上書きしない"""
+    monkeypatch.setattr(s, "find_mirroring_window", lambda: FakeWindow())
+    monkeypatch.setattr(s, "ensure_connected", lambda window, log: None)
+    monkeypatch.setattr(s, "open_latest_job", lambda window: None)
+    monkeypatch.setattr(s, "open_previous_job", lambda window, played_at: False)
+    monkeypatch.setattr(s, "capture", lambda window, path: blank_detail_image())
+    monkeypatch.setattr(s, "read_result", lambda image, refs, special_refs, log: ({"bossKills": 26}, "2026/11/10 10:51", None))
+    api = FakeApi(set(), celebrated=celebrated)
+    s.process_request(1, api, {}, tmp_path, log=lambda m: None)
+    assert api.updates[-1]["status"] == "succeeded"
+    assert api.telops == telops
 
 
 def test_read_hazard_level_from_the_number_even_when_the_label_is_misread():

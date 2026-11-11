@@ -1600,8 +1600,14 @@ class Api:
         body = response.json()
         return set(body["playedAt"]), body["sessionStartedAt"]
 
-    def update(self, body: dict) -> int:
-        return self.session.patch(self.import_url, json=body, timeout=10).status_code
+    def update(self, body: dict) -> tuple[int, dict]:
+        """依頼の状態・結果を送り、HTTP のステータスと応答の本文（JSON でなければ空）を返す"""
+        response = self.session.patch(self.import_url, json=body, timeout=10)
+        try:
+            payload = response.json()
+        except ValueError:
+            payload = {}
+        return response.status_code, payload if isinstance(payload, dict) else {}
 
     def telop(self, text: str) -> None:
         try:
@@ -1615,7 +1621,7 @@ def capture_name(now: datetime, label: str) -> str:
 
 
 def process_request(request_id: int, api: Api, refs: dict, capture_dir: Path, log=print, special_refs: dict | None = None) -> None:
-    if api.update({"id": request_id, "status": "processing"}) != 200:
+    if api.update({"id": request_id, "status": "processing"})[0] != 200:
         log(f"依頼 {request_id} はもう処理できません（期限切れなど）")
         return
     log(f"依頼 {request_id}: 最新のリザルトを取り込みます")
@@ -1681,10 +1687,12 @@ def process_request(request_id: int, api: Api, refs: dict, capture_dir: Path, lo
                 jobs.append({"job": previous_job, "playedAt": previous_played_at, "details": previous_details})
                 played_at = previous_played_at
 
-            status = api.update({"id": request_id, "status": "succeeded", "jobs": jobs[::-1], "captures": captures})
+            status, body = api.update({"id": request_id, "status": "succeeded", "jobs": jobs[::-1], "captures": captures})
             if status == 200:
                 log(f"依頼 {request_id}: {len(jobs)} 件記録しました")
-                api.telop(TELOP_SUCCEEDED)
+                # 本日の最高記録などが出たら、サーバーがお祝いのテロップを出している（上書きしないように知らせない）
+                if not body.get("celebrated"):
+                    api.telop(TELOP_SUCCEEDED)
                 return
             if status != 409:
                 raise ImportError_(f"結果を記録できませんでした（HTTP {status}）")

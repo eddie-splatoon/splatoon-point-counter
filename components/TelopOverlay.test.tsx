@@ -2,7 +2,7 @@ import { act, render, screen, waitFor } from '@testing-library/react';
 import axios from 'axios';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { FOLLOW_TELOP_DISPLAY_DURATION, TELOP_DISPLAY_DURATION, TelopData, TelopEffect } from '../lib/telopTypes';
+import { FOLLOW_TELOP_DISPLAY_DURATION, RECORD_TELOP_DISPLAY_DURATION, TELOP_DISPLAY_DURATION, TelopData, TelopEffect } from '../lib/telopTypes';
 
 import TelopOverlay from './TelopOverlay';
 
@@ -123,6 +123,43 @@ describe('TelopOverlay', () => {
     mockApis(makeData({ text: 'フォローありがとうございます！🥳', ageMs: TELOP_DISPLAY_DURATION, effect: 'follow' }));
     render(<TelopOverlayPage />);
     expect(await screen.findByTestId('telop')).toBeInTheDocument();
+  });
+
+  const RECORD_TELOP = '🎉 本日の最高記録を更新！\n金イクラ 38個 / 全処理';
+
+  it('celebrates a new salmon run record with fireworks and shows it on two lines', async () => {
+    mockApis(makeData(null));
+    const { container } = render(<TelopOverlayPage />);
+    await waitFor(() => expect(mockedAxios.get).toHaveBeenCalledWith('/api/telop', expect.anything()));
+
+    mockApis(makeData({ text: RECORD_TELOP, ageMs: 500, effect: 'record' }));
+    await pollTelop();
+    const telop = screen.getByTestId('telop');
+    expect(telop.textContent).toBe(RECORD_TELOP);
+    expect(telop).toHaveStyle({ whiteSpace: 'pre-line' });
+    expect(container.querySelector('.fireworks')).toBeInTheDocument();
+  });
+
+  it('does not celebrate a record that was already shown when the overlay opened', async () => {
+    mockApis(makeData({ text: RECORD_TELOP, ageMs: 500, effect: 'record' }));
+    const { container } = render(<TelopOverlayPage />);
+
+    expect(await screen.findByTestId('telop')).toBeInTheDocument();
+    await pollTelop();
+    expect(container.querySelector('.fireworks')).not.toBeInTheDocument();
+  });
+
+  it('keeps the record telop until its own display duration', async () => {
+    mockApis(makeData({ text: RECORD_TELOP, ageMs: RECORD_TELOP_DISPLAY_DURATION - 1, effect: 'record' }));
+    const { unmount } = render(<TelopOverlayPage />);
+    expect(await screen.findByTestId('telop')).toBeInTheDocument();
+    unmount();
+    mockedAxios.get.mockClear();
+
+    mockApis(makeData({ text: RECORD_TELOP, ageMs: RECORD_TELOP_DISPLAY_DURATION, effect: 'record' }));
+    render(<TelopOverlayPage />);
+    await waitFor(() => expect(mockedAxios.get).toHaveBeenCalled());
+    expect(screen.queryByTestId('telop')).not.toBeInTheDocument();
   });
 
   it('does not show the follow telop after its display duration', async () => {
