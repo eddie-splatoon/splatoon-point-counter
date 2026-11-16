@@ -5,6 +5,7 @@ import {
   JoinRating,
   estimateRoomHazard,
   formatCancelReply,
+  formatHazardWithRating,
   formatJoinAnnouncement,
   formatFullReply,
   formatJoinRating,
@@ -14,6 +15,7 @@ import {
   normalizeJoinText,
   parseJoinRating,
   ratingAxis,
+  ratingOfHazard,
   recommendHazards,
   roundHazard,
   sanitizeDisplayName,
@@ -157,6 +159,23 @@ describe('roundHazard', () => {
   });
 });
 
+describe('ratingOfHazard / formatHazardWithRating', () => {
+  it('turns a hazard level back into the equivalent grade', () => {
+    expect(formatHazardWithRating(230)).toBe('230%（でんせつ 350 相当）');
+    expect(formatHazardWithRating(333)).toBe('333%（でんせつ 865 相当）');
+    expect(formatHazardWithRating(160)).toBe('160%（でんせつ 0 相当）');
+    expect(formatHazardWithRating(88)).toBe('88%（たつじん 40 相当）');
+    expect(formatHazardWithRating(155)).toBe('155%（たつじん+3 75 相当）');
+    expect(ratingOfHazard(0)).toEqual({ tier: 0, points: 0, note: null });
+  });
+
+  it('round-trips with ratingAxis', () => {
+    for (const axis of [0, 99, 440, 799, 800, 1150, 1665]) {
+      expect(ratingAxis(ratingOfHazard(axis / 5))).toBe(axis);
+    }
+  });
+});
+
 describe('estimateRoomHazard', () => {
   it('reaches 333% when everyone is でんせつ 865 or more', () => {
     const room = estimateRoomHazard(person(r(8, 865)), [person(r(8, 900)), person(r(8, 999)), person(r(8, 865))], null);
@@ -216,9 +235,9 @@ describe('recommendHazards', () => {
 
 describe('formatRoomHazard', () => {
   it('shows the estimate with the unknown and wild people, without names', () => {
-    expect(formatRoomHazard({ value: 210, unknown: 0, wild: 0 })).toBe('この部屋の推定キケン度 約 210%（自己申告からの目安）');
+    expect(formatRoomHazard({ value: 210, unknown: 0, wild: 0 })).toBe('この部屋の推定キケン度 約 210%（でんせつ 250 相当・自己申告からの目安）');
     expect(formatRoomHazard({ value: 260, unknown: 1, wild: 2 }))
-      .toBe('この部屋の推定キケン度 約 260%（自己申告からの目安）。不明 1 人を除く・野良 2 人分は含まない');
+      .toBe('この部屋の推定キケン度 約 260%（でんせつ 500 相当・自己申告からの目安）。不明 1 人を除く・野良 2 人分は含まない');
   });
 });
 

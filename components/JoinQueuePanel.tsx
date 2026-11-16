@@ -27,6 +27,7 @@ import {
     JoinAnnouncementKind,
     JoinQueuePanelView,
     JoinRating,
+    formatHazardWithRating,
     formatJoinRating,
     isStaleRating,
     roundHazard,
@@ -168,7 +169,7 @@ const JoinQueuePanel: React.FC = () => {
                     ) : (
                         <>
                             <Typography variant="h5" component="p" sx={{fontWeight: 'bold'}}>
-                                通常のバイトなら 約 {roundHazard(queue.room.estimate, 5)}%
+                                通常のバイトなら 約 {formatHazardWithRating(roundHazard(queue.room.estimate, 5))}
                             </Typography>
                             <Typography variant="body2" sx={{color: 'text.secondary'}}>
                                 {[
@@ -179,9 +180,11 @@ const JoinQueuePanel: React.FC = () => {
                                 ].filter((note) => note !== null).join('・')}
                             </Typography>
                             {queue.recommended && (
-                                <Typography variant="body1" sx={{mt: 1}}>
-                                    おすすめ: 練習 {queue.recommended.practice}% / 通常 {queue.recommended.normal}% / 腕試し {queue.recommended.challenge}%
-                                </Typography>
+                                <Box component="ul" aria-label="おすすめのキケン度" sx={{mt: 1, mb: 0, pl: 3}}>
+                                    <li>練習: {formatHazardWithRating(queue.recommended.practice)}</li>
+                                    <li>通常: {formatHazardWithRating(queue.recommended.normal)}</li>
+                                    <li>腕試し: {formatHazardWithRating(queue.recommended.challenge)}</li>
+                                </Box>
                             )}
                         </>
                     )}

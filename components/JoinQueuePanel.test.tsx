@@ -45,9 +45,10 @@ describe('JoinQueuePanel', () => {
   it('shows the room estimate, the recommendations and a warning about lower titles', async () => {
     render(<JoinQueuePanel />);
 
-    expect(await screen.findByText('通常のバイトなら 約 205%')).toBeInTheDocument();
+    expect(await screen.findByText('通常のバイトなら 約 205%（でんせつ 225 相当）')).toBeInTheDocument();
     expect(screen.getByText('3 人で計算・不明 1 人を除く・古い評価 1 人')).toBeInTheDocument();
-    expect(screen.getByText('おすすめ: 練習 90% / 通常 205% / 腕試し 333%')).toBeInTheDocument();
+    expect(screen.getByRole('list', { name: 'おすすめのキケン度' })).toHaveTextContent(
+      '練習: 90%（たつじん 50 相当）通常: 205%（でんせつ 225 相当）腕試し: 333%（でんせつ 865 相当）');
     expect(screen.getByText(/配信者より低い称号の人が 1 人います/)).toBeInTheDocument();
     expect(screen.getByText('取り込んだ記録')).toBeInTheDocument();
     // 配信者（ratedAt 0）と ViewerA（ratedAt 1）はシフトの開始（2）より前

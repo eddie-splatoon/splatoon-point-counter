@@ -170,6 +170,16 @@ export function ratingAxis(rating: JoinRating): number {
 /** 推定キケン度(%) = 累計評価値 ÷ 5、上限 333%（攻略 Wiki の解析値。公式は公表していない） */
 export const hazardOfAxis = (axis: number): number => Math.min(MAX_HAZARD, axis / 5);
 
+/** キケン度に相当する評価（230% → でんせつ 350、88% → たつじん 40）。hazardOfAxis の逆 */
+export function ratingOfHazard(hazard: number): JoinRating {
+    const axis = Math.max(0, Math.round(hazard * 5));
+    if (axis >= 800) return {tier: LEGEND_TIER, points: Math.min(LEGEND_MAX_POINTS, axis - 800), note: null};
+    return {tier: Math.floor(axis / 100), points: axis % 100, note: null};
+}
+
+/** 「230%（でんせつ 350 相当）」 */
+export const formatHazardWithRating = (hazard: number): string => `${hazard}%（${formatJoinRating(ratingOfHazard(hazard))} 相当）`;
+
 /** キケン度を step% ごとに丸める（333% は MAX なので丸めない。丸めて 333% を超えるときも 333%） */
 export function roundHazard(value: number, step: number): number {
     if (value >= MAX_HAZARD) return MAX_HAZARD;
@@ -236,7 +246,7 @@ export function formatRoomHazard(hazard: JoinQueuePublicHazard): string {
         hazard.unknown > 0 ? `不明 ${hazard.unknown} 人を除く` : null,
         hazard.wild > 0 ? `野良 ${hazard.wild} 人分は含まない` : null,
     ].filter((note) => note !== null);
-    const head = `この部屋の推定キケン度 約 ${hazard.value}%（自己申告からの目安）`;
+    const head = `この部屋の推定キケン度 約 ${hazard.value}%（${formatJoinRating(ratingOfHazard(hazard.value))} 相当・自己申告からの目安）`;
     return notes.length === 0 ? head : `${head}。${notes.join('・')}`;
 }
 

@@ -37,7 +37,7 @@ describe('JoinQueueOverlayPage', () => {
     respond({ open: true, current: null, entries: [{ position: 1, userName: 'ViewerA' }], hazard: { value: 260, unknown: 1, wild: 2 }, revision: 1 });
     render(<JoinQueueOverlayPage />);
 
-    expect(await screen.findByText('この部屋の推定キケン度 約 260%（自己申告からの目安）。不明 1 人を除く・野良 2 人分は含まない')).toBeInTheDocument();
+    expect(await screen.findByText('この部屋の推定キケン度 約 260%（でんせつ 500 相当・自己申告からの目安）。不明 1 人を除く・野良 2 人分は含まない')).toBeInTheDocument();
   });
 
   it('shows the first 10 people and how many more', async () => {
