@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { __TEST_ONLY_setDb, openDb } from './db';
 import {
@@ -206,10 +206,13 @@ describe('moderation', () => {
     expect(getPublicView()).toMatchObject({ current: null, entries: [] });
   });
 
-  it('shows and dismisses the reconnect notice', () => {
+  it('shows and dismisses the reconnect notice, and forgets it when a new window opens', () => {
     setReconnectedAt(123);
     expect(getPanelView().reconnectedAt).toBe(123);
     setReconnectedAt(null);
+    expect(getPanelView().reconnectedAt).toBeNull();
+    setReconnectedAt(456);
+    openQueue();
     expect(getPanelView().reconnectedAt).toBeNull();
   });
 });
@@ -245,6 +248,19 @@ describe('join stats', () => {
 
     expect(getJoinStats(31 * DAY + 1).map((w) => w.openedAt)).toEqual([31 * DAY, 30 * DAY]);
     expect(getPanelView().history.length).toBeLessThanOrEqual(2);
+  });
+
+  it('still closes the queue when the counts cannot be saved', () => {
+    openQueue(1_000);
+    join('1');
+    const db = openDb(':memory:');
+    db.exec('DROP TABLE app_state');
+    __TEST_ONLY_setDb(db);
+    const error = vi.spyOn(console, 'error').mockImplementation(() => {});
+    closeQueue(2_000);
+    expect(getPublicView()).toMatchObject({ open: false, entries: [] });
+    expect(error).toHaveBeenCalled();
+    error.mockRestore();
   });
 
   it('does not restart the window when opened twice', () => {

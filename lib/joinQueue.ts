@@ -142,7 +142,11 @@ export function removeFromQueue(userId: string): boolean {
 
 export function openQueue(now = Date.now()): void {
     const s = state();
-    if (!s.open) s.window = {openedAt: now, joined: new Set(), calls: new Map()};
+    if (!s.open) {
+        s.window = {openedAt: now, joined: new Set(), calls: new Map()};
+        // 前の枠の再接続の警告は、新しい枠には当てはまらない
+        s.reconnectedAt = null;
+    }
     s.open = true;
     changed();
 }
@@ -166,19 +170,24 @@ export function getJoinStats(now = Date.now()): JoinQueueWindowStats[] {
 /** 受付終了（ボタン・配信の終了）。列といまの人を消し、受付の枠の人数だけを残す（だれも並ばなかった枠も残す） */
 export function closeQueue(now = Date.now()): void {
     const s = state();
-    if (s.window) {
-        const counts = [...s.window.calls.values()];
-        const stats: JoinQueueWindowStats = {
-            openedAt: s.window.openedAt, closedAt: now, joined: s.window.joined.size, called: counts.length, repeated: counts.filter((n) => n >= 2).length,
-        };
-        // 期間を過ぎたものは消す
-        setAppState(JOIN_STATS_STATE_KEY, [...loadStats().filter((w) => w.closedAt >= now - JOIN_STATS_DAYS * DAY_MS), stats]);
-    }
+    const window = s.window;
+    // 列は先に消す（集計を保存できなくても受付は終わらせる）
     s.window = null;
     s.open = false;
     s.entries = [];
     s.current = null;
     changed();
+    if (!window) return;
+    const counts = [...window.calls.values()];
+    const stats: JoinQueueWindowStats = {
+        openedAt: window.openedAt, closedAt: now, joined: window.joined.size, called: counts.length, repeated: counts.filter((n) => n >= 2).length,
+    };
+    try {
+        // 期間を過ぎたものは消す
+        setAppState(JOIN_STATS_STATE_KEY, [...loadStats().filter((w) => w.closedAt >= now - JOIN_STATS_DAYS * DAY_MS), stats]);
+    } catch (error) {
+        console.error('Failed to save the join queue stats:', error);
+    }
 }
 
 /** Twitch 連携スクリプトが EventSub に新しく接続し直した（null で手元の表示を消す） */
