@@ -2,9 +2,8 @@
 // ルートごとにモジュールが別に読み込まれても同じ列を共有できるよう globalThis に置く（lib/telop.ts と同じ）
 import {getDb} from './db';
 import {
-    JOIN_TIER_NAMES,
-
     JOIN_QUEUE_MAX_ENTRIES,
+    JOIN_TIER_NAMES,
     JoinCommandResult,
     JoinQueueEntryView,
     JoinQueuePanelView,
