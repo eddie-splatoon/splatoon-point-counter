@@ -22,7 +22,7 @@
 12. **バックエンドAPI** (`/api/stream-data`, `/api/score-display`, `/api/caption`, `/api/twitch`, `/api/salmon`, `/api/side-panel`, `/api/salmon-schedule`, `/api/telop`, `/api/speech`, `/api/voice`, `/api/weapon-card`, `/api/clip`, `/api/salmon/import`, `/api/salmon/review`, `/api/join-queue`) - データ管理とクライアント間の同期
 13. **文字起こしスクリプト** (`tools/caption-stt/`) - マイク音声を文字起こしして `/api/caption` へ送信。「クリップ撮って」などで `/api/clip` にクリップを依頼（Python, Mac ネイティブ実行）
 14. **リザルト取り込みスクリプト** (`tools/salmon-result/`) - iPhone ミラーリングのイカリング3を操作し、サーモンランの最新のリザルトを OCR で読み取って `/api/salmon/import` へ送信（Python, Mac ネイティブ実行）
-15. **Twitch連携スクリプト** (`tools/twitch-eventsub/`) - フォロワー数・フォロワー目標を EventSub で受信して `/api/twitch` へ送信。チャットの初コメの挨拶・配信者のコメントを `/api/speech` へ送信。`/api/clip` の依頼で Twitch のクリップを作成。チャットの `!参加` / `!取消` を `/api/join-queue` へ送って返信（Node, 依存なし）
+15. **Twitch連携スクリプト** (`tools/twitch-eventsub/`) - フォロワー数・フォロワー目標を EventSub で受信して `/api/twitch` へ送信。チャットの初コメの挨拶・配信者のコメントを `/api/speech` へ送信。`/api/clip` の依頼で Twitch のクリップを作成。チャットの `!参加` / `!取消`・削除・BAN・配信の終了・再接続を `/api/join-queue` へ送る（Node, 依存なし）
 
 ## 技術スタック
 
@@ -307,7 +307,7 @@ Twitch のフォロワー数とフォロワー目標を受け取る機能と、�
 - 起動はリポジトリのルートで `pnpm twitch`（`.env.local` の `TWITCH_CLIENT_ID` が必須。初回はブラウザで承認）
 - `tools/twitch-eventsub/twitch_eventsub.ts` は Node 24 の型除去でそのまま実行するため、enum・コンストラクタ引数プロパティなど型除去できない構文は使わない（`tools/twitch-eventsub/package.json` で ESM 指定）
 - 認証は Device Code Flow（Public クライアント、スコープ `moderator:read:followers` / `channel:read:goals` / `user:read:chat` / `clips:edit` / `user:write:chat`。保存済みトークンにスコープが足りなければ承認し直す）。トークンは `data/twitch-token.json`（gitignore・dockerignore 済み）
-- EventSub WebSocket で `channel.follow` v2 と `channel.goal.*`、`channel.chat.message` v1 を購読。フォロー通知では総数を加算し、60秒ごとに Helix から再同期して `/api/twitch` に送り直す
+- EventSub WebSocket で `channel.follow` v2 と `channel.goal.*`、`channel.chat.message` / `channel.chat.message_delete` / `channel.chat.clear_user_messages` / `channel.chat.clear` v1（どれも `user:read:chat`）、`stream.offline` v1（スコープ不要）を購読。通知は `NotificationDeduper` でメタデータの `message_id` の重複と 10 分より古いものを捨てる。フォロー通知では総数を加算し、60秒ごとに Helix から再同期して `/api/twitch` に送り直す
 - フォロー通知のたびに `publishFollowTelop` で `POST /api/telop {event: 'follow'}` を送り、フォローのお礼のテロップ（演出・読み上げ付き）を出す（文言と、続いたフォローをまとめるのはアプリ側）
 - テロップの「コメント」（`/api/telop` の `chat`）を `createChatPostProcessor` でチャットに書き込む（スコープ `user:write:chat`）。書き込んだコメントは下の配信者のコメントとして読み上げられる
 - チャットは `chatToSpeech`（純粋関数）で読み上げる文を決め、`publishSpeech` で `/api/speech`（`TWITCH_SPEECH_API_URL`、既定は `TWITCH_API_URL` と同じホスト）へ送る。視聴者は起動中に初めてコメントしたときだけ「〇〇さん、いらっしゃい！」（**本文は読まない**。挨拶済みのユーザー ID はメモリの Set だけ。名前は表示名を文のようにして読ませる悪用を防ぐため `speakableName` で NFKC・制御文字の除去・同じ文字の連続の短縮・20 文字までに整え、空ならログイン名）、配信者自身は本文（NFKC で全角をそろえてから、`!` コマンド・URL を含むものを除く。コードポイント単位で 100 文字まで）。`TWITCH_SPEECH_IGNORE`（カンマ区切りのログイン名）のボットと、共有チャットでほかのチャンネルから届いたものは読まない。読み上げが無効（409）なら黙って捨てる。挨拶を送れなかったとき（無効・送信失敗）は `speakChatMessage` が挨拶済みから外し、次のコメントで挨拶し直す。**視聴者の名前やコメントはログに出さない**
@@ -457,19 +457,22 @@ Twitch のフォロワー数とフォロワー目標を受け取る機能と、�
 
 ### `/app/api/join-queue/route.ts` と `lib/joinQueue.ts`
 
-視聴者参加型（18:00 からのプライベートバイト中心）の受付。チャットの `!参加 でんせつ820` で列に入り、配信者がコントロールパネルの「参加」タブの「次の人」で呼ぶ（Issue #116。仕様はナレッジベースの `workspaces/personal/output/twitch/handoff/join-queue.md`。削除・BAN・再接続は #119）。
+視聴者参加型（18:00 からのプライベートバイト中心）の受付。チャットの `!参加 でんせつ820` で列に入り、配信者がコントロールパネルの「参加」タブの「次の人」で呼ぶ（Issue #116。仕様はナレッジベースの `workspaces/personal/output/twitch/handoff/join-queue.md`）。
 
 - 流れ: Twitch 連携スクリプトの `handleJoinCommand` が `channel.chat.message` の `message.fragments` の text だけを NFKC・ゼロ幅 / 方向制御文字の除去のうえ `parseJoinCommand` で `!参加` / `!取消` を見つけ、`POST /api/join-queue {action: 'join', userId, userName, messageId, args}` / `{action: 'cancel', userId}` → 応答の `reply` を `reply_parent_message_id` 付きで返信（`sendChatMessage(message, replyParentId)`）。`!参加でんせつ820` のように続けて書いてもよいが、続けて書いて評価として読めないもの（`!参加したい` など。`attached`）は雑談とみなして受け付けない（`ignored`）。配信者自身・`TWITCH_SPEECH_IGNORE` のボット・共有チャットのほかのチャンネルは除く
 - **本人だけに見える返信は Twitch の API ではできない**（Whisper は 1 日 40 人・黙って捨てられるなどで使わない）。返信は全員に見えるので評価はくり返さない。`ReplyThrottle` で同じ人へは 5 分・全体では 15 秒に 1 回まで（抑えている間は返さない。配信画面に書き方を出しておく。書き込めなかったら記録を戻す）。文面には表示名を入れる（同じ文面の連投は Twitch に捨てられることがあるため。仕様どおり）。返信は `MutedOwnMessages` に入れて読み上げない（返信は先頭に「@相手 」が付いて戻ることがあるので、`consume` は外したものとも比べる）。ログには user_id と結果だけ（本文・名前は出さない）
 - 評価の読み取り（`lib/joinQueueTypes.ts` の `parseJoinRating`）: `normalizeJoinText`（NFKC・ゼロ幅 / 方向制御文字の除去・小文字・カタカナ→ひらがな）のあと、ホワイトリストの文法（`称号? (+N|ぷらすN|plusN)? 評価値?`）と別名表（漢字・ローマ字・英語版。称号の照合では空白・中点・長音・ハイフンを除く）で読む。引数は 20 文字まで（英語版の長い正式名は入らない）。たつじん以下で 100 以上・1000 以上は読めない。数字だけは 100〜999 をでんせつとみなし、0〜99 は読めない（称号を聞き返す）。かんすと / counterstop / max → でんせつ 999、intern → かけだし 0。称号だけは `points: null`（近似）。`たつじん3` は評価値 3 と読み、注記を手元に出す。**読めなくても受け付ける**（評価は不明。返信に書き方を付ける）
-- 列（`lib/joinQueue.ts`）はメモリだけ（`globalThis`。ディスクに書かない）。1 人 1 枠（`chatter_user_id`。書き直したら評価を上書きし順番は保つ）、上限 `JOIN_QUEUE_MAX_ENTRIES`（20）。受付中（`open`。「受付開始」）のときだけ受け付け、それ以外の `!参加` は黙って捨てる（返信もしない）。「受付終了」で列といまの人を消す。`__TEST_ONLY_resetJoinQueue()` はテスト用
-- `GET /api/join-queue` は配信画面用（番号・表示名・いまの人だけ。**評価は出さない**）、`?view=panel` は手元用（評価・注記つき。`messageId` は出さない）。ほかの API と同じく localhost 前提で認証は無い（API では評価を隠していない。LAN などに公開しない）。`POST {action}`（`join` / `cancel` / `remove` / `next` / `open` / `close` / `streamer` / `announce`）。`Content-Type: application/json` 必須
+- 列（`lib/joinQueue.ts`）はメモリだけ（`globalThis`。ディスクに書かない。残すのは下の集計の人数だけ）。1 人 1 枠（`chatter_user_id`。書き直したら評価を上書きし順番は保つ）、上限 `JOIN_QUEUE_MAX_ENTRIES`（20）。受付中（`open`。「受付開始」）のときだけ受け付け、それ以外の `!参加` は黙って捨てる（返信もしない）。「受付終了」で列といまの人を消す。`__TEST_ONLY_resetJoinQueue()` はテスト用
+- `GET /api/join-queue` は配信画面用（番号・表示名・いまの人だけ。**評価は出さない**）、`?view=panel` は手元用（評価・注記つき。`messageId` は出さない）。ほかの API と同じく localhost 前提で認証は無い（API では評価を隠していない。LAN などに公開しない）。`POST {action}`（`join` / `cancel` / `remove` / `next` / `open` / `close` / `streamer` / `announce`、Twitch 連携スクリプトからの `removeMessage` / `removeUser` / `offline` / `reconnected`、手元の `dismissReconnect`）。`Content-Type: application/json` 必須
 - 表示名は `sanitizeDisplayName`（NFKC・制御 / 書式文字の除去・25 文字まで）で整え、React の描画（textContent 相当）で出す。`dangerouslySetInnerHTML` は使わない
 - オーバーレイ（`/join-queue-overlay`、420x600）は 1 秒ごとにポーリングし、受付中だけ書き方・部屋の推定キケン度・いまの人・列（10 人まで。残りは「ほか n 人」）を出す。フォントは `/api/stream-data` の `fontFamily`
 - 部屋の推定キケン度（#118。`lib/joinQueueTypes.ts` の `estimateRoomHazard`）: 累計評価値 = `tier*100 + 評価値`（でんせつは `800 + 評価値`。評価値が無ければ tier の中央 +50、でんせつは 400 で近似）の平均 ÷ 5、上限 333%（攻略 Wiki の解析値）。部屋は配信者と、いまの人・列の先頭から合わせて 4 人（`ROOM_SIZE`）。評価が不明の人は除き（`unknown`）、足りない分は野良として含まない（`wild`）。キケン度には相当する評価（`ratingOfHazard`。キケン度 × 5 を累計評価値に戻す。230% → でんせつ 350）を添える（`formatHazardWithRating`）。配信画面（`JoinQueuePublicView.hazard`）は 10% ごとに丸めた値と人数だけ（誰の評価かは出さない）。手元は推定値（5% ごと）・おすすめ（`recommendHazards`。練習: いちばん低い人、通常: 推定値、腕試し: 333%）・配信者より低い称号の参加者の注意（`lowerTier`）
 - 配信者の評価は、取り込んだ最新の記録（`salmon_jobs.grade_name` / `grade_point`、`getRecordedStreamerRating`）から取る。「参加」タブで入力すると（`POST {action: 'streamer', rating}`。null で記録に戻す）それを優先する（メモリだけ。受付終了でも消さない）。入力より後のバイトを取り込んだら記録のほうを使う
 - 評価は申告の時刻（`ratedAt`。書き直すと変わる。配信者の記録はバイトの日時）を持ち、いまのいつものバイトのシフトの開始（`loadHazardContext`）より前なら「古い」と手元に出す（シフトが替わると評価は「称号 40」に戻るため）。スケジュールが取れなければ古い扱いにしない。GET / POST の応答のたびに記録とスケジュールを読む。スケジュールは `peekSalmonSchedule`（`lib/salmonScheduleFetch.ts`）で待たずにキャッシュを使い、期限切れなら裏で取り直す（外部 API の応答を待って配信画面のポーリングを止めないため）
 - お知らせ（`POST {action: 'announce', kind: 'merge' | 'private'}`、`formatJoinAnnouncement`）: 通常のバイトへの合流・プライベートバイト（おすすめの通常の値と、相当する評価つき。読み上げるので括弧は使わない）の文を、テロップのコメントと同じ書き込み待ち（`queueChatPost(text, true)`）に入れる。チャットに書き込めれば配信者のコメントとして読み上げられ、書き込めなければテロップ側で読み上げる
+- 列から外す（#119）: 並んだメッセージの削除（`channel.chat.message_delete` → `POST {action: 'removeMessage', messageId}`。`removeByMessageId`。書き直した人は最後のメッセージで照合）・BAN / タイムアウト（`channel.chat.clear_user_messages` → `{action: 'removeUser', userId}`）で列といまの人から外す（いなくても `{removed: false}` でエラーにしない）。チャットの全消去（`channel.chat.clear`）はログだけ。配信の終了（`stream.offline` → `{action: 'offline'}`）は受付終了と同じ。スクリプト側は `moderationRequest`（純粋関数）/ `handleModerationEvent`。ログは user_id と結果だけ
+- 再接続（#119）: `EventSubConnection` は 2 回目以降に新しいセッションで購読し直したとき（keepalive の途切れ・切断。`session_reconnect` では購読が引き継がれるので呼ばない）`onResubscribed` を呼び、スクリプトが `{action: 'reconnected'}` を送る。手元に「再接続しました（その間の参加は受け付けられていない可能性あり）」を出し、「確認した」（`{action: 'dismissReconnect'}`）で消す
+- 集計（#119）: 受付の枠（受付開始〜終了・配信の終了）ごとに、並んだ人数・「次の人」で呼んだ人数・2 回以上呼んだ人数だけを `app_state`（キー `joinQueueStats`）に残す（誰が来たかは残さない。数えるための user_id はメモリだけで、受付終了で消す）。28 日（`JOIN_STATS_DAYS`）を過ぎたものは保存のたびに消し、手元の「これまでの受付」に出す（配信者が 4 週間で振り返る）
 - 参加用のパスワード（ゲーム内のチャンネル機能）はコード・設定・ログに書かない
 
 ### `/components/ScoreDisplay.tsx`

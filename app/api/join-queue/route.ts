@@ -9,7 +9,9 @@ import {
     joinQueue,
     loadHazardContext,
     openQueue,
+    removeByMessageId,
     removeFromQueue,
+    setReconnectedAt,
     setStreamerRating,
 } from '../../../lib/joinQueue';
 import {JOIN_ANNOUNCEMENT_KINDS, JOIN_ARGS_MAX_LENGTH, JoinAnnouncementKind, formatJoinAnnouncement} from '../../../lib/joinQueueTypes';
@@ -46,6 +48,10 @@ const badRequest = (message: string) => NextResponse.json({message}, {status: 40
  * - `{action: 'join', userId, userName, messageId, args}` / `{action: 'cancel', userId}`: Twitch 連携スクリプトから（チャットの !参加 / !取消）。
  *   応答の reply を返信する
  * - `{action: 'next' | 'open' | 'close'}` / `{action: 'remove', userId}`: コントロールパネルから
+ * - `{action: 'removeMessage', messageId}` / `{action: 'removeUser', userId}`: Twitch 連携スクリプトから（チャットのメッセージの削除・BAN・タイムアウト）。
+ *   列にいなくてもエラーにしない（`{removed}`）
+ * - `{action: 'offline'}`: Twitch 連携スクリプトから（配信の終了）。受付終了と同じ
+ * - `{action: 'reconnected'}`: Twitch 連携スクリプトから（EventSub に新しく接続し直した）。`{action: 'dismissReconnect'}` で手元の表示を消す
  * - `{action: 'streamer', rating: string | null}`: 配信者の評価を手元で入れる（null で取り込んだ記録に戻す）
  * - `{action: 'announce', kind: 'merge' | 'private'}`: 通常のバイトへの合流・プライベートバイトのお知らせを、
  *   テロップのコメントと同じ書き込み待ちに入れる（チャットに書き込んで読み上げる。書き込めなければ読み上げだけ）
@@ -70,6 +76,21 @@ export async function POST(request: Request) {
             if (!isId(body.userId, 64)) return badRequest('userId is required.');
             if (!removeFromQueue(body.userId)) return NextResponse.json({message: 'Not in the queue.'}, {status: 404});
             return panelView();
+        case 'removeMessage':
+            if (!isId(body.messageId, 100)) return badRequest('messageId is required.');
+            return NextResponse.json({removed: removeByMessageId(body.messageId)});
+        case 'removeUser':
+            if (!isId(body.userId, 64)) return badRequest('userId is required.');
+            return NextResponse.json({removed: removeFromQueue(body.userId)});
+        case 'offline':
+            closeQueue();
+            return NextResponse.json({ok: true});
+        case 'reconnected':
+            setReconnectedAt(Date.now());
+            return NextResponse.json({ok: true});
+        case 'dismissReconnect':
+            setReconnectedAt(null);
+            return panelView();
         case 'next':
             callNext();
             return panelView();
@@ -92,6 +113,6 @@ export async function POST(request: Request) {
             return NextResponse.json(view);
         }
         default:
-            return badRequest("action must be one of 'join', 'cancel', 'remove', 'next', 'open', 'close', 'streamer' or 'announce'.");
+            return badRequest('Unknown action.');
     }
 }

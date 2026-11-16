@@ -9,10 +9,13 @@ import {
   closeQueue,
   getPanelView,
   getPublicView,
+  getJoinStats,
   getRecordedStreamerRating,
   joinQueue,
   openQueue,
+  removeByMessageId,
   removeFromQueue,
+  setReconnectedAt,
   setStreamerRating,
 } from './joinQueue';
 import { JOIN_QUEUE_MAX_ENTRIES } from './joinQueueTypes';
@@ -188,5 +191,67 @@ describe('room hazard', () => {
     joinQueue({ userId: '1', userName: 'A', messageId: 'm', args: 'たつじん 40' }, 10);
     joinQueue({ userId: '1', userName: 'A', messageId: 'm', args: 'たつじん 50' }, 20);
     expect(getPanelView().entries[0]).toMatchObject({ joinedAt: 10, ratedAt: 20 });
+  });
+});
+
+describe('moderation', () => {
+  it('removes the person who joined with a deleted message, even after being called', () => {
+    openQueue();
+    join('1');
+    join('2');
+    expect(removeByMessageId('m-2')).toBe(true);
+    expect(removeByMessageId('m-2')).toBe(false);
+    callNext();
+    expect(removeByMessageId('m-1')).toBe(true);
+    expect(getPublicView()).toMatchObject({ current: null, entries: [] });
+  });
+
+  it('shows and dismisses the reconnect notice', () => {
+    setReconnectedAt(123);
+    expect(getPanelView().reconnectedAt).toBe(123);
+    setReconnectedAt(null);
+    expect(getPanelView().reconnectedAt).toBeNull();
+  });
+});
+
+describe('join stats', () => {
+  const DAY = 24 * 60 * 60_000;
+
+  it('keeps only the counts of each window when closed', () => {
+    openQueue(1_000);
+    join('1');
+    join('2');
+    join('3');
+    callNext();
+    join('1');
+    cancelJoin('3');
+    callNext();
+    callNext();
+    closeQueue(5_000);
+
+    expect(getJoinStats(5_000)).toEqual([{ openedAt: 1_000, closedAt: 5_000, joined: 3, called: 2, repeated: 1 }]);
+    expect(JSON.stringify(getJoinStats(5_000))).not.toContain('Viewer');
+  });
+
+  it('records nothing when closed without opening, and shows only the last 28 days, newest first', () => {
+    closeQueue(1_000);
+    expect(getJoinStats(1_000)).toEqual([]);
+    openQueue(0);
+    closeQueue(DAY);
+    openQueue(30 * DAY);
+    closeQueue(30 * DAY + 1);
+    openQueue(31 * DAY);
+    closeQueue(31 * DAY + 1);
+
+    expect(getJoinStats(31 * DAY + 1).map((w) => w.openedAt)).toEqual([31 * DAY, 30 * DAY]);
+    expect(getPanelView().history.length).toBeLessThanOrEqual(2);
+  });
+
+  it('does not restart the window when opened twice', () => {
+    openQueue(1_000);
+    join('1');
+    openQueue(2_000);
+    closeQueue(3_000);
+    expect(getJoinStats(3_000)).toEqual([{ openedAt: 1_000, closedAt: 3_000, joined: 1, called: 0, repeated: 0 }]);
   });
 });

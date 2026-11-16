@@ -15,6 +15,11 @@ import {
     List,
     ListItem,
     Paper,
+    Table,
+    TableBody,
+    TableCell,
+    TableHead,
+    TableRow,
     TextField,
     Typography,
 } from '@mui/material';
@@ -24,6 +29,7 @@ import React, {useCallback, useEffect, useState} from 'react';
 import {
     JOIN_ARGS_MAX_LENGTH,
     JOIN_HOW_TO,
+    JOIN_STATS_DAYS,
     JoinAnnouncementKind,
     JoinQueuePanelView,
     JoinRating,
@@ -39,6 +45,9 @@ const paperSx = {mb: 3, p: 3, bgcolor: 'background.paper', backdropFilter: 'blur
 const POLL_INTERVAL_MS = 2000;
 
 const STALE_TEXT = 'シフトが替わる前の評価（古い）';
+
+const formatTime = (at: number) => new Date(at).toLocaleTimeString('ja-JP', {hour: '2-digit', minute: '2-digit'});
+const formatDateTime = (at: number) => new Date(at).toLocaleString('ja-JP', {month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit'});
 
 /** 評価と注記（手元だけに出す） */
 function RatingText({rating, unreadable, stale = false}: {rating: JoinRating | null; unreadable: boolean; stale?: boolean}) {
@@ -107,6 +116,15 @@ const JoinQueuePanel: React.FC = () => {
     return (
         <>
             {error && <Alert severity="error" sx={{mb: 2}}>{error}</Alert>}
+            {queue?.reconnectedAt && (
+                <Alert
+                    severity="warning"
+                    sx={{mb: 2}}
+                    action={<Button color="inherit" size="small" onClick={() => send({action: 'dismissReconnect'}, '表示を消せませんでした。')}>確認した</Button>}
+                >
+                    {formatTime(queue.reconnectedAt)} に Twitch に再接続しました（その間の参加は受け付けられていない可能性あり）。チャットを見て、並びたい人がいないか確かめてください。
+                </Alert>
+            )}
 
             <Paper elevation={12} sx={paperSx}>
                 <Typography variant="h6" gutterBottom>🙋 視聴者参加の受付</Typography>
@@ -246,10 +264,43 @@ const JoinQueuePanel: React.FC = () => {
                 </Paper>
             )}
 
+            {queue && (
+                <Paper elevation={12} sx={paperSx}>
+                    <Typography variant="h6" gutterBottom>これまでの受付（{JOIN_STATS_DAYS} 日）</Typography>
+                    <Typography variant="body2" sx={{mb: 1, color: 'text.secondary'}}>
+                        受付終了（配信の終了でも）のたびに人数だけを残します（誰が来たかは残しません）。
+                    </Typography>
+                    {queue.history.length === 0 ? (
+                        <Typography variant="body2" sx={{color: 'text.secondary'}}>まだありません。</Typography>
+                    ) : (
+                        <Table size="small" aria-label="これまでの受付">
+                            <TableHead>
+                                <TableRow>
+                                    <TableCell>受付開始</TableCell>
+                                    <TableCell align="right">並んだ人</TableCell>
+                                    <TableCell align="right">呼んだ人</TableCell>
+                                    <TableCell align="right">2 回以上</TableCell>
+                                </TableRow>
+                            </TableHead>
+                            <TableBody>
+                                {queue.history.map((w) => (
+                                    <TableRow key={`${w.openedAt}-${w.closedAt}`}>
+                                        <TableCell>{formatDateTime(w.openedAt)}〜{formatTime(w.closedAt)}</TableCell>
+                                        <TableCell align="right">{w.joined}</TableCell>
+                                        <TableCell align="right">{w.called}</TableCell>
+                                        <TableCell align="right">{w.repeated}</TableCell>
+                                    </TableRow>
+                                ))}
+                            </TableBody>
+                        </Table>
+                    )}
+                </Paper>
+            )}
+
             <Dialog open={confirmingClose} onClose={() => setConfirmingClose(false)}>
                 <DialogTitle>受付を終了しますか？</DialogTitle>
                 <DialogContent>
-                    <DialogContentText>列といまの人が消えます（チャットの !参加 も受け付けなくなります）。</DialogContentText>
+                    <DialogContentText>列といまの人が消えます（チャットの !参加 も受け付けなくなります）。人数だけを「これまでの受付」に残します。</DialogContentText>
                 </DialogContent>
                 <DialogActions>
                     <Button onClick={() => setConfirmingClose(false)}>やめる</Button>

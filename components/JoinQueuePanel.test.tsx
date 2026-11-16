@@ -21,6 +21,8 @@ const view = (overrides: Partial<JoinQueuePanelView> = {}): JoinQueuePanelView =
   room: { estimate: 206, counted: 3, unknown: 1, wild: 0, stale: 1, lowest: 88, lowerTier: 1 },
   shiftStart: 2,
   recommended: { practice: 90, normal: 205, challenge: 333 },
+  reconnectedAt: null,
+  history: [],
   revision: 1,
   ...overrides,
 });
@@ -95,6 +97,27 @@ describe('JoinQueuePanel', () => {
 
     expect(await screen.findByText('評価がわかる人がいないので出せません。')).toBeInTheDocument();
     expect(screen.getByText('不明（取り込んだ記録に評価がありません）')).toBeInTheDocument();
+  });
+
+  it('shows the reconnect notice and dismisses it', async () => {
+    mockedAxios.get.mockResolvedValue({ data: view({ reconnectedAt: Date.parse('2026-11-17T09:05:00Z') }), status: 200 });
+    mockedAxios.post.mockResolvedValue({ data: view(), status: 200 });
+    render(<JoinQueuePanel />);
+
+    expect(await screen.findByText(/に Twitch に再接続しました（その間の参加は受け付けられていない可能性あり）/)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: '確認した' }));
+    await waitFor(() => expect(mockedAxios.post).toHaveBeenCalledWith('/api/join-queue', { action: 'dismissReconnect' }));
+  });
+
+  it('shows the counts of past windows', async () => {
+    mockedAxios.get.mockResolvedValue({
+      data: view({ history: [{ openedAt: Date.parse('2026-11-16T09:00:00Z'), closedAt: Date.parse('2026-11-16T10:00:00Z'), joined: 4, called: 3, repeated: 1 }] }),
+      status: 200,
+    });
+    render(<JoinQueuePanel />);
+
+    const table = await screen.findByRole('table', { name: 'これまでの受付' });
+    expect(within(table).getAllByRole('row')[1]).toHaveTextContent(/431$/);
   });
 
   it('calls the next person', async () => {
