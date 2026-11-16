@@ -153,7 +153,7 @@ flowchart LR
     SCR -- "POST /chat/messages（テロップのコメント）" --> TW
     SCR -- "POST {action: join / cancel}（!参加・!取消）" --> JOIN["/api/join-queue"]
     SCR -- "POST /chat/messages（受付の返信）" --> TW
-    JOIN -- "合流・プライベートのお知らせ（書き込み待ち）" --> TELOP
+    JOIN -- "合流・プライベートバイトのお知らせ（書き込み待ち）" --> TELOP
 ```
 
 

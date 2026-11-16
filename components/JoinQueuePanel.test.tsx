@@ -81,7 +81,7 @@ describe('JoinQueuePanel', () => {
     mockedAxios.post.mockResolvedValue({ data: view(), status: 200 });
     render(<JoinQueuePanel />);
 
-    fireEvent.click(await screen.findByRole('button', { name: 'プライベートのお知らせを流す' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'プライベートバイトのお知らせを流す' }));
     await waitFor(() => expect(mockedAxios.post).toHaveBeenCalledWith('/api/join-queue', { action: 'announce', kind: 'private' }));
     expect(await screen.findByText(/チャットに書き込んで読み上げます/)).toBeInTheDocument();
   });

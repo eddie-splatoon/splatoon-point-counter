@@ -196,7 +196,7 @@ const JoinQueuePanel: React.FC = () => {
 
                     <Box sx={{display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 1, mt: 2}}>
                         <Button variant="outlined" onClick={() => announce('merge')}>合流のお知らせを流す</Button>
-                        <Button variant="outlined" onClick={() => announce('private')}>プライベートのお知らせを流す</Button>
+                        <Button variant="outlined" onClick={() => announce('private')}>プライベートバイトのお知らせを流す</Button>
                     </Box>
                     {notice && <Alert severity="success" sx={{mt: 2}} onClose={() => setNotice('')}>{notice}</Alert>}
                 </Paper>
