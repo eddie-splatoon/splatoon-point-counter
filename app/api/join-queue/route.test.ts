@@ -89,7 +89,7 @@ describe('Join queue API', () => {
   it('queues an announcement to the chat, read aloud', async () => {
     await post({ action: 'streamer', rating: 'でんせつ820' });
     expect((await post({ action: 'announce', kind: 'private' })).status).toBe(200);
-    expect(expireChatPosts()).toEqual([expect.objectContaining({ text: expect.stringContaining('今日のおすすめは 325% です'), speak: true })]);
+    expect(expireChatPosts()).toEqual([expect.objectContaining({ text: expect.stringContaining('今日のおすすめは 325%、でんせつ 825 相当です'), speak: true })]);
     expect((await post({ action: 'announce', kind: 'other' })).status).toBe(400);
   });
 

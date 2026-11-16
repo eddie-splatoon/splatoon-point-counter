@@ -257,7 +257,8 @@ export type JoinAnnouncementKind = typeof JOIN_ANNOUNCEMENT_KINDS[number];
 export function formatJoinAnnouncement(kind: JoinAnnouncementKind, recommended: number | null): string {
     if (kind === 'merge') return 'ここからは通常のバイトに合流します。配信者の評価は気にしなくて大丈夫です。一緒に楽しみましょう';
     const head = 'プライベートバイトの枠です。評価は減らないので、誰でも気軽にどうぞ。';
-    return recommended === null ? head : `${head}今日のおすすめは ${recommended}% です`;
+    // 読み上げるので括弧は使わない
+    return recommended === null ? head : `${head}今日のおすすめは ${recommended}%、${formatJoinRating(ratingOfHazard(recommended))} 相当です`;
 }
 
 // ---- API の型 ----

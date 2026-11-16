@@ -469,7 +469,7 @@ Twitch のフォロワー数とフォロワー目標を受け取る機能と、�
 - 部屋の推定キケン度（#118。`lib/joinQueueTypes.ts` の `estimateRoomHazard`）: 累計評価値 = `tier*100 + 評価値`（でんせつは `800 + 評価値`。評価値が無ければ tier の中央 +50、でんせつは 400 で近似）の平均 ÷ 5、上限 333%（攻略 Wiki の解析値）。部屋は配信者と、いまの人・列の先頭から合わせて 4 人（`ROOM_SIZE`）。評価が不明の人は除き（`unknown`）、足りない分は野良として含まない（`wild`）。キケン度には相当する評価（`ratingOfHazard`。キケン度 × 5 を累計評価値に戻す。230% → でんせつ 350）を添える（`formatHazardWithRating`）。配信画面（`JoinQueuePublicView.hazard`）は 10% ごとに丸めた値と人数だけ（誰の評価かは出さない）。手元は推定値（5% ごと）・おすすめ（`recommendHazards`。練習: いちばん低い人、通常: 推定値、腕試し: 333%）・配信者より低い称号の参加者の注意（`lowerTier`）
 - 配信者の評価は、取り込んだ最新の記録（`salmon_jobs.grade_name` / `grade_point`、`getRecordedStreamerRating`）から取る。「参加」タブで入力すると（`POST {action: 'streamer', rating}`。null で記録に戻す）それを優先する（メモリだけ。受付終了でも消さない）。入力より後のバイトを取り込んだら記録のほうを使う
 - 評価は申告の時刻（`ratedAt`。書き直すと変わる。配信者の記録はバイトの日時）を持ち、いまのいつものバイトのシフトの開始（`loadHazardContext`）より前なら「古い」と手元に出す（シフトが替わると評価は「称号 40」に戻るため）。スケジュールが取れなければ古い扱いにしない。GET / POST の応答のたびに記録とスケジュールを読む。スケジュールは `peekSalmonSchedule`（`lib/salmonScheduleFetch.ts`）で待たずにキャッシュを使い、期限切れなら裏で取り直す（外部 API の応答を待って配信画面のポーリングを止めないため）
-- お知らせ（`POST {action: 'announce', kind: 'merge' | 'private'}`、`formatJoinAnnouncement`）: 通常のバイトへの合流・プライベートバイト（おすすめの通常の値つき）の文を、テロップのコメントと同じ書き込み待ち（`queueChatPost(text, true)`）に入れる。チャットに書き込めれば配信者のコメントとして読み上げられ、書き込めなければテロップ側で読み上げる
+- お知らせ（`POST {action: 'announce', kind: 'merge' | 'private'}`、`formatJoinAnnouncement`）: 通常のバイトへの合流・プライベートバイト（おすすめの通常の値と、相当する評価つき。読み上げるので括弧は使わない）の文を、テロップのコメントと同じ書き込み待ち（`queueChatPost(text, true)`）に入れる。チャットに書き込めれば配信者のコメントとして読み上げられ、書き込めなければテロップ側で読み上げる
 - 参加用のパスワード（ゲーム内のチャンネル機能）はコード・設定・ログに書かない
 
 ### `/components/ScoreDisplay.tsx`

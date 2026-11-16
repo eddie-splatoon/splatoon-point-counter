@@ -244,7 +244,7 @@ describe('formatRoomHazard', () => {
 describe('formatJoinAnnouncement', () => {
   it('builds the announcements, with the recommendation for private jobs when known', () => {
     expect(formatJoinAnnouncement('merge', 200)).toBe('ここからは通常のバイトに合流します。配信者の評価は気にしなくて大丈夫です。一緒に楽しみましょう');
-    expect(formatJoinAnnouncement('private', 205)).toBe('プライベートバイトの枠です。評価は減らないので、誰でも気軽にどうぞ。今日のおすすめは 205% です');
+    expect(formatJoinAnnouncement('private', 205)).toBe('プライベートバイトの枠です。評価は減らないので、誰でも気軽にどうぞ。今日のおすすめは 205%、でんせつ 225 相当です');
     expect(formatJoinAnnouncement('private', null)).not.toContain('おすすめ');
   });
 });
