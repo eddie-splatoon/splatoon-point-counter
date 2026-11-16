@@ -57,6 +57,7 @@ describe('Join queue API', () => {
     [{ ...joinBody, userId: '' }, 'userId が空'],
     [{ ...joinBody, args: 'あ'.repeat(201) }, 'args が長すぎる'],
     [{ action: 'cancel' }, 'cancel の userId が無い'],
+    [{ ...joinBody, attached: 'yes' }, 'attached が boolean でない'],
     [{ action: 'reset' }, '知らない action'],
   ] as [unknown, string][])('rejects invalid requests (%s: %s)', async (body) => {
     expect((await post(body)).status).toBe(400);

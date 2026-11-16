@@ -54,6 +54,8 @@ export interface JoinRequest {
     userName: string;
     messageId: string;
     args: string;
+    // 「!参加」の直後に空白を入れずに続けて書いた（「!参加したい」など）
+    attached?: boolean;
 }
 
 /** 「!参加」。1 人 1 枠で、書き直したら評価を上書きする（順番はそのまま）。受付中でなければ何もしない（返信もしない） */
@@ -62,6 +64,8 @@ export function joinQueue(request: JoinRequest, now = Date.now()): JoinCommandRe
     if (!s.open) return {result: 'closed', position: null, reply: null};
     const userName = sanitizeDisplayName(request.userName) || request.userId;
     const {rating, unreadable} = parseJoinRating(request.args);
+    // 「!参加したい」「!参加者募集？」のように続けて書いて評価として読めないものは、雑談とみなして受け付けない
+    if (request.attached && unreadable) return {result: 'ignored', position: null, reply: null};
     const index = s.entries.findIndex((e) => e.userId === request.userId);
     if (index < 0 && s.entries.length >= JOIN_QUEUE_MAX_ENTRIES) {
         return {result: 'full', position: null, reply: formatFullReply(userName)};

@@ -61,6 +61,13 @@ describe('joinQueue', () => {
     expect(join('1', 'でんせつ')).toMatchObject({ result: 'updated' });
   });
 
+  it('ignores chatter written right after !参加 that is not a rating, but accepts a rating written that way', () => {
+    openQueue();
+    expect(joinQueue({ userId: '1', userName: 'A', messageId: 'm', args: 'したい', attached: true })).toEqual({ result: 'ignored', position: null, reply: null });
+    expect(joinQueue({ userId: '1', userName: 'A', messageId: 'm', args: 'でんせつ820', attached: true })).toMatchObject({ result: 'joined' });
+    expect(getPublicView().entries).toHaveLength(1);
+  });
+
   it('sanitizes the display name and falls back to the user id', () => {
     openQueue();
     join('1', '', 'Viewer‮A');

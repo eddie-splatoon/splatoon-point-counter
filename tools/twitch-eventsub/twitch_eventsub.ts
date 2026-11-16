@@ -641,12 +641,14 @@ export async function speakChatMessage(event: unknown, context: ChatSpeechContex
 
 // ゼロ幅文字・方向制御文字（見た目を偽装するのに使われる）
 const INVISIBLE_PATTERN = /[\u200B-\u200F\u202A-\u202E\u2066-\u2069\uFEFF]/g;
-const JOIN_PATTERN = /^!参加\s*([\s\S]*)$/;
+// 「!参加でんせつ820」のように続けて書いてもよい（空白の有無は attached で伝え、アプリが評価として読めないものは無視する）
+const JOIN_PATTERN = /^!参加(\s*)([\s\S]*)$/;
 const CANCEL_PATTERN = /^!取消(?:\s|$)/;
 // アプリに送る引数の長さ（アプリは 20 文字を超えたら読まない。送る量だけ抑える）
 const MAX_JOIN_ARGS_LENGTH = 50;
 
-export type JoinCommand = { kind: 'join'; args: string } | { kind: 'cancel' };
+// attached: 「!参加」の直後に空白が無く続けて書いた（「!参加したい」のような雑談かもしれない）
+export type JoinCommand = { kind: 'join'; args: string; attached: boolean } | { kind: 'cancel' };
 
 interface JoinCommandContext {
   broadcasterId: string;
@@ -668,7 +670,9 @@ export function parseJoinCommand(event: unknown, context: JoinCommandContext): J
   const text = raw.normalize('NFKC').replace(INVISIBLE_PATTERN, '').trim();
   if (CANCEL_PATTERN.test(text)) return { kind: 'cancel' };
   const join = JOIN_PATTERN.exec(text);
-  return join ? { kind: 'join', args: truncate(join[1].trim(), MAX_JOIN_ARGS_LENGTH) } : null;
+  if (!join) return null;
+  const args = truncate(join[2].trim(), MAX_JOIN_ARGS_LENGTH);
+  return { kind: 'join', args, attached: join[1] === '' && args !== '' };
 }
 
 /** 返信を抑える。同じ人へは 5 分、チャンネル全体では 15 秒に 1 回まで（同じ文面の連投は Twitch に捨てられることもある） */
@@ -681,14 +685,20 @@ export class ReplyThrottle {
     this.now = now;
   }
 
-  /** 返してよければ記録して true */
-  tryAcquire(userId: string): boolean {
+  /** 返してよければ記録して、書き込めなかったときに記録を戻す関数を返す。抑えるときは null */
+  tryAcquire(userId: string): (() => void) | null {
     const now = this.now();
-    if (now - this.lastAny < JOIN_REPLY_GLOBAL_INTERVAL_MS) return false;
-    if (now - (this.lastByUser.get(userId) ?? -Infinity) < JOIN_REPLY_USER_INTERVAL_MS) return false;
+    if (now - this.lastAny < JOIN_REPLY_GLOBAL_INTERVAL_MS) return null;
+    // 期限の過ぎた記録は消す（長い配信で増え続けないように）
+    for (const [id, at] of this.lastByUser) if (now - at >= JOIN_REPLY_USER_INTERVAL_MS) this.lastByUser.delete(id);
+    if (this.lastByUser.has(userId)) return null;
+    const previousAny = this.lastAny;
     this.lastAny = now;
     this.lastByUser.set(userId, now);
-    return true;
+    return () => {
+      this.lastAny = previousAny;
+      this.lastByUser.delete(userId);
+    };
   }
 }
 
@@ -715,7 +725,7 @@ export async function handleJoinCommand(event: unknown, options: JoinHandlerOpti
   const userId = chat.chatter_user_id ?? '';
   const messageId = chat.message_id ?? '';
   const body = command.kind === 'join'
-    ? { action: 'join', userId, userName: chat.chatter_user_name || chat.chatter_user_login || '', messageId, args: command.args }
+    ? { action: 'join', userId, userName: chat.chatter_user_name || chat.chatter_user_login || '', messageId, args: command.args, attached: command.attached }
     : { action: 'cancel', userId };
   const res = await fetchFn(joinUrl, {
     method: 'POST',
@@ -725,11 +735,15 @@ export async function handleJoinCommand(event: unknown, options: JoinHandlerOpti
   if (!res.ok) throw new Error(`${joinUrl} への送信に失敗しました: ${res.status}`);
   const { result, reply } = (await res.json()) as { result: string; reply: string | null };
   log(`参加受付: user_id=${userId} ${command.kind} → ${result}`);
-  if (!reply || messageId === '' || !throttle.tryAcquire(userId)) return;
+  if (!reply || messageId === '') return;
+  const release = throttle.tryAcquire(userId);
+  if (!release) return;
   const unmute = mutedOwnMessages?.add(reply);
   try {
     await sendReply(reply, messageId);
   } catch (error) {
+    // 返信が出ていないので、抑制の記録も戻す（次の !参加 で返せるように）
+    release();
     unmute?.();
     log(`参加受付の返信を書き込めませんでした（user_id=${userId}）: ${(error as Error).message}`);
   }

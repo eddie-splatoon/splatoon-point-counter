@@ -109,6 +109,10 @@ describe('sanitizeDisplayName', () => {
   it('removes control and format characters and truncates by code points', () => {
     expect(sanitizeDisplayName('Viewer‮A\n')).toBe('ViewerA');
     expect(sanitizeDisplayName('😀'.repeat(30))).toBe('😀'.repeat(25));
+    // 重ねた結合文字（Zalgo）は 2 つまで（NFKC は結合文字の順を並べ替えるので、数だけ見る）
+    const zalgo = sanitizeDisplayName('x\u0333\u0334\u0335\u0336a');
+    expect(zalgo.match(/\p{M}/gu)).toHaveLength(2);
+    expect(zalgo.replace(/\p{M}/gu, '')).toBe('xa');
   });
 });
 

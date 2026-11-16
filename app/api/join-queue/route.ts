@@ -11,7 +11,10 @@ import {
     removeFromQueue,
 } from '../../../lib/joinQueue';
 
-/** 受付の列。既定は配信画面用（番号・表示名だけ）、`?view=panel` は配信者の手元用（評価・注記つき） */
+/**
+ * 受付の列。既定は配信画面用（番号・表示名だけ）、`?view=panel` は配信者の手元用（評価・注記つき）。
+ * ほかの API と同じく localhost で使う前提で認証は無い（評価を出さないのは配信画面の話で、API では隠していない）
+ */
 export async function GET(request: Request) {
     const panel = new URL(request.url).searchParams.get('view') === 'panel';
     return NextResponse.json(panel ? getPanelView() : getPublicView());
@@ -45,11 +48,11 @@ export async function POST(request: Request) {
     const body = (json.body ?? {}) as Record<string, unknown>;
     switch (body.action) {
         case 'join': {
-            const {userId, userName, messageId, args} = body;
-            if (!isId(userId, 64) || !isText(userName, 100) || !isId(messageId, 100) || !isText(args, 200)) {
+            const {userId, userName, messageId, args, attached = false} = body;
+            if (!isId(userId, 64) || !isText(userName, 100) || !isId(messageId, 100) || !isText(args, 200) || typeof attached !== 'boolean') {
                 return badRequest('userId, userName, messageId and args are required.');
             }
-            return NextResponse.json(joinQueue({userId, userName, messageId, args}));
+            return NextResponse.json(joinQueue({userId, userName, messageId, args, attached}));
         }
         case 'cancel':
             if (!isId(body.userId, 64)) return badRequest('userId is required.');

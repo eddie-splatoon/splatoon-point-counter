@@ -128,9 +128,14 @@ export function formatJoinRating(rating: JoinRating | null): string {
     return rating.points === null ? `${name}（評価値なし・近似）` : `${name} ${rating.points}`;
 }
 
-/** 表示名を整える（制御文字・書式文字を除き、25 文字まで）。画面には textContent で出す */
+/** 表示名を整える（制御文字・書式文字を除き、重ねた結合文字は 2 つまでにして、25 文字まで）。画面には textContent で出す */
 export function sanitizeDisplayName(name: string): string {
-    const cleaned = name.normalize('NFKC').replace(/[\p{Cc}\p{Cf}]/gu, '').replace(/\s+/g, ' ').trim();
+    const cleaned = name
+        .normalize('NFKC')
+        .replace(/[\p{Cc}\p{Cf}]/gu, '')
+        .replace(/(\p{M}{2})\p{M}+/gu, '$1')
+        .replace(/\s+/g, ' ')
+        .trim();
     return Array.from(cleaned).slice(0, MAX_DISPLAY_NAME_LENGTH).join('');
 }
 
@@ -172,7 +177,7 @@ export interface JoinQueuePanelView {
 
 /** 参加・取消の結果。reply は返信の文面（返さないときは null） */
 export interface JoinCommandResult {
-    result: 'joined' | 'updated' | 'cancelled' | 'notFound' | 'full' | 'closed';
+    result: 'joined' | 'updated' | 'cancelled' | 'notFound' | 'full' | 'closed' | 'ignored';
     position: number | null;
     reply: string | null;
 }

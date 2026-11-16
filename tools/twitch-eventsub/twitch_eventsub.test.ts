@@ -855,13 +855,14 @@ describe('parseJoinCommand', () => {
   });
 
   it.each([
-    ['!参加 でんせつ820', 'でんせつ820'],
-    ['!参加', ''],
-    ['!参加でんせつ820', 'でんせつ820'],
-    ['！参加　でんせつ８２０', 'でんせつ820'],
-    ['\u200B!参加 たつじん+1', 'たつじん+1'],
-  ])('reads %s as a join', (text, args) => {
-    expect(parseJoinCommand(chat(text), context)).toEqual({ kind: 'join', args });
+    ['!参加 でんせつ820', 'でんせつ820', false],
+    ['!参加', '', false],
+    ['!参加でんせつ820', 'でんせつ820', true],
+    ['!参加したい', 'したい', true],
+    ['！参加　でんせつ８２０', 'でんせつ820', false],
+    ['\u200B!参加 たつじん+1', 'たつじん+1', false],
+  ])('reads %s as a join', (text, args, attached) => {
+    expect(parseJoinCommand(chat(text), context)).toEqual({ kind: 'join', args, attached });
   });
 
   it('reads a cancel', () => {
@@ -876,7 +877,7 @@ describe('parseJoinCommand', () => {
         fragments: [{ type: 'text', text: '!参加 ' }, { type: 'emote', text: 'Kappa' }, { type: 'text', text: ' でんせつ820' }],
       },
     });
-    expect(parseJoinCommand(event, context)).toEqual({ kind: 'join', args: 'でんせつ820' });
+    expect(parseJoinCommand(event, context)).toEqual({ kind: 'join', args: 'でんせつ820', attached: false });
   });
 
   it('ignores other messages, the broadcaster, bots and shared chat from other channels', () => {
@@ -892,14 +893,20 @@ describe('ReplyThrottle', () => {
   it('replies once per user in 5 minutes and once in the channel in 15 seconds', () => {
     let now = 0;
     const throttle = new ReplyThrottle(() => now);
-    expect(throttle.tryAcquire('a')).toBe(true);
+    expect(throttle.tryAcquire('a')).not.toBeNull();
     now = JOIN_REPLY_GLOBAL_INTERVAL_MS - 1;
-    expect(throttle.tryAcquire('b')).toBe(false);
+    expect(throttle.tryAcquire('b')).toBeNull();
     now = JOIN_REPLY_GLOBAL_INTERVAL_MS;
-    expect(throttle.tryAcquire('a')).toBe(false);
-    expect(throttle.tryAcquire('b')).toBe(true);
-    now = JOIN_REPLY_USER_INTERVAL_MS;
-    expect(throttle.tryAcquire('a')).toBe(true);
+    expect(throttle.tryAcquire('a')).toBeNull();
+    expect(throttle.tryAcquire('b')).not.toBeNull();
+    now = JOIN_REPLY_USER_INTERVAL_MS + JOIN_REPLY_GLOBAL_INTERVAL_MS;
+    expect(throttle.tryAcquire('a')).not.toBeNull();
+  });
+
+  it('can release a reply that could not be sent', () => {
+    const throttle = new ReplyThrottle(() => 0);
+    throttle.tryAcquire('a')?.();
+    expect(throttle.tryAcquire('a')).not.toBeNull();
   });
 });
 
@@ -931,7 +938,7 @@ describe('handleJoinCommand', () => {
     const [url, init] = fetchFn.mock.calls[0];
     expect(url).toBe(joinUrl);
     expect(init.headers['Content-Type']).toBe('application/json');
-    expect(JSON.parse(init.body)).toEqual({ action: 'join', userId: '999', userName: 'ViewerA', messageId: 'm-999', args: 'でんせつ820' });
+    expect(JSON.parse(init.body)).toEqual({ action: 'join', userId: '999', userName: 'ViewerA', messageId: 'm-999', args: 'でんせつ820', attached: false });
     expect(sendReply).toHaveBeenCalledWith('ViewerA さん、受付しました（1 番目）。', 'm-999');
     // 返信は読み上げない
     expect(mutedOwnMessages.consume('ViewerA さん、受付しました（1 番目）。')).toBe(true);
@@ -962,12 +969,16 @@ describe('handleJoinCommand', () => {
     expect(fetchFn).not.toHaveBeenCalled();
   });
 
-  it('logs and unmutes when the reply cannot be sent', async () => {
-    const { logs, mutedOwnMessages, options } = setup({ result: 'joined', position: 1, reply: '受付しました' }, vi.fn().mockRejectedValue(new Error('duplicate')));
+  it('logs, unmutes and releases the throttle when the reply cannot be sent', async () => {
+    const sendReply = vi.fn().mockRejectedValueOnce(new Error('duplicate')).mockResolvedValue(undefined);
+    const { logs, mutedOwnMessages, options } = setup({ result: 'joined', position: 1, reply: '受付しました' }, sendReply);
 
     await handleJoinCommand(event('!参加'), options);
     expect(logs[1]).toBe('参加受付の返信を書き込めませんでした（user_id=999）: duplicate');
     expect(mutedOwnMessages.consume('受付しました')).toBe(false);
+    // 返信が出ていないので、すぐに書き直したときは返す
+    await handleJoinCommand(event('!参加'), options);
+    expect(sendReply).toHaveBeenCalledTimes(2);
   });
 
   it('throws when the app rejects the request', async () => {
