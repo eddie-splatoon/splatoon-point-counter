@@ -17,7 +17,7 @@ import {
 interface JoinQueueEntry {
     userId: string;
     userName: string;
-    // 参加したメッセージ（削除されたら列から外すため）
+    // 参加したメッセージ（メッセージが削除されたら列から外すのに使う。対応は #119）
     messageId: string;
     rating: JoinRating | null;
     unreadable: boolean;
