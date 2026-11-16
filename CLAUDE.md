@@ -18,10 +18,11 @@
 8. **読み上げ（音声専用）オーバーレイ** (`/voice-overlay`) - 読み上げキューの文を VOICEVOX で音声にして順に再生（画面には何も出さない）
 9. **ブキ埋めカードオーバーレイ** (`/weapon-card-overlay`) - サーモンランのオールランダムで支給された全ブキ種（71 種）を埋めていくカード
 10. **サーモンランの振り返りオーバーレイ** (`/salmon-review-overlay`) - 配信の最後に、その日（セッション）のサーモンランの記録をグラフで大きく出す（1920x1080）。縦型配信用（1080x1920）は `/salmon-review-overlay/vertical`。コントロールパネルから SNS 用の PNG でダウンロードできる
-11. **バックエンドAPI** (`/api/stream-data`, `/api/score-display`, `/api/caption`, `/api/twitch`, `/api/salmon`, `/api/side-panel`, `/api/salmon-schedule`, `/api/telop`, `/api/speech`, `/api/voice`, `/api/weapon-card`, `/api/clip`, `/api/salmon/import`, `/api/salmon/review`) - データ管理とクライアント間の同期
-12. **文字起こしスクリプト** (`tools/caption-stt/`) - マイク音声を文字起こしして `/api/caption` へ送信。「クリップ撮って」などで `/api/clip` にクリップを依頼（Python, Mac ネイティブ実行）
-13. **リザルト取り込みスクリプト** (`tools/salmon-result/`) - iPhone ミラーリングのイカリング3を操作し、サーモンランの最新のリザルトを OCR で読み取って `/api/salmon/import` へ送信（Python, Mac ネイティブ実行）
-14. **Twitch連携スクリプト** (`tools/twitch-eventsub/`) - フォロワー数・フォロワー目標を EventSub で受信して `/api/twitch` へ送信。チャットの初コメの挨拶・配信者のコメントを `/api/speech` へ送信。`/api/clip` の依頼で Twitch のクリップを作成（Node, 依存なし）
+11. **視聴者参加の受付オーバーレイ** (`/join-queue-overlay`) - チャットの `!参加` で並んだ列（番号・表示名）と書き方を出す（420x600。受付中だけ表示）
+12. **バックエンドAPI** (`/api/stream-data`, `/api/score-display`, `/api/caption`, `/api/twitch`, `/api/salmon`, `/api/side-panel`, `/api/salmon-schedule`, `/api/telop`, `/api/speech`, `/api/voice`, `/api/weapon-card`, `/api/clip`, `/api/salmon/import`, `/api/salmon/review`, `/api/join-queue`) - データ管理とクライアント間の同期
+13. **文字起こしスクリプト** (`tools/caption-stt/`) - マイク音声を文字起こしして `/api/caption` へ送信。「クリップ撮って」などで `/api/clip` にクリップを依頼（Python, Mac ネイティブ実行）
+14. **リザルト取り込みスクリプト** (`tools/salmon-result/`) - iPhone ミラーリングのイカリング3を操作し、サーモンランの最新のリザルトを OCR で読み取って `/api/salmon/import` へ送信（Python, Mac ネイティブ実行）
+15. **Twitch連携スクリプト** (`tools/twitch-eventsub/`) - フォロワー数・フォロワー目標を EventSub で受信して `/api/twitch` へ送信。チャットの初コメの挨拶・配信者のコメントを `/api/speech` へ送信。`/api/clip` の依頼で Twitch のクリップを作成。チャットの `!参加` / `!取消` を `/api/join-queue` へ送って返信（Node, 依存なし）
 
 ## 技術スタック
 
@@ -74,6 +75,8 @@
 │   │   ├── page.tsx              # サーモンランの振り返りオーバーレイ
 │   │   └── vertical/
 │   │       └── page.tsx          # 振り返り（縦型配信用 1080x1920）
+│   ├── join-queue-overlay/
+│   │   └── page.tsx              # 視聴者参加の受付オーバーレイ
 │   └── api/
 │       ├── stream-data/
 │       │   └── route.ts          # データ管理API
@@ -107,8 +110,10 @@
 │       │       └── route.ts      # VOICEVOX の話者一覧の中継
 │       ├── weapon-card/
 │       │   └── route.ts          # ブキ埋めカードAPI
-│       └── clip/
-│           └── route.ts          # Twitch のクリップの依頼・結果API
+│       ├── clip/
+│       │   └── route.ts          # Twitch のクリップの依頼・結果API
+│       └── join-queue/
+│           └── route.ts          # 視聴者参加の受付の列API
 ├── components/                    # 再利用可能なReactコンポーネント
 │   ├── ScoreDisplay.tsx          # スコア表示
 │   ├── BurndownChart.tsx         # バーンダウンチャート
@@ -139,7 +144,8 @@
 │   ├── SalmonReview.tsx          # サーモンランの振り返り（横長 / 縦長のレイアウト）
 │   ├── SalmonReviewOverlay.tsx   # 振り返りのオーバーレイ（ポーリング。2 つのページで共通）
 │   ├── SalmonReviewDownload.tsx  # 振り返りを SNS 用の PNG にしてダウンロード（サーモンランタブ）
-│   └── ClipPanel.tsx             # コントロールパネルのクリップタブ
+│   ├── ClipPanel.tsx             # コントロールパネルのクリップタブ
+│   └── JoinQueuePanel.tsx        # コントロールパネルの参加タブ
 ├── lib/
 │   ├── localStorage.ts           # ローカルストレージのラッパー
 │   ├── db.ts                     # SQLite の接続とスキーマ
@@ -163,7 +169,9 @@
 │   ├── salmonImportTypes.ts      # リザルトの取り込みの依頼の型・定数（クライアントからも使う）
 │   ├── salmonImports.ts          # リザルトの取り込みの依頼の保存・記録・入力検証（サーバー専用）
 │   ├── salmonBosses.ts           # オオモノシャケ・潮位の定義（クライアントからも使う）
-│   └── weaponCardImage.ts        # ブキ埋めカードの SNS 投稿用の画像（Canvas で描く。クライアント専用）
+│   ├── weaponCardImage.ts        # ブキ埋めカードの SNS 投稿用の画像（Canvas で描く。クライアント専用）
+│   ├── joinQueueTypes.ts         # 視聴者参加の受付の型・評価の読み取り・返信の文面（クライアントからも使う）
+│   └── joinQueue.ts              # 視聴者参加の受付の列（サーバー専用。メモリだけ）
 ├── data/                          # SQLite・Twitch トークン（Git / Docker イメージ管理外）
 ├── public/                        # 静的アセット
 │   └── tips.tsv                  # Tips データ
@@ -446,6 +454,19 @@ Twitch のフォロワー数とフォロワー目標を受け取る機能と、�
 - 依頼は SQLite の `twitch_clips`（`pending` / `created` / `failed`）。処理待ちの依頼があれば新しく作らずにそれを返す（連呼・連打で同じ場面を重ねて作らない）。`CLIP_REQUEST_TTL_MS`（30 秒）以内に処理されなかった依頼は、一覧・取得のたびに `expireStaleRequests` で期限切れ（失敗）にする（スクリプトを後から起動したときに、別の場面のクリップを作らないように）。作成中に期限切れにされたものも、結果は書き込める
 - Twitch 連携スクリプトの `createClipProcessor` は前回の処理中なら何もせず、一度試した依頼はやり直さない（結果を送れなくても同じ依頼から 2 つ作らない）。文字起こし側（`ClipTrigger`）も 30 秒は依頼し直さず、合言葉を言った発話は字幕・テロップにしない。`CLIP_MATCH=off` で無効
 - `DELETE /api/clip?id=` は履歴から消すだけ（Twitch 上のクリップは消さない）。作成待ちのものは 409（作成中に消すと結果を書き込めずに失われるため）。PATCH の `editUrl` は twitch.tv の https のページのみ（偽のページへのリンクにしないため）、`clipId` は英数字・`-`・`_` のみ受け付ける（コントロールパネルでリンクにするため）。POST / PATCH は `Content-Type: application/json` 必須
+
+### `/app/api/join-queue/route.ts` と `lib/joinQueue.ts`
+
+視聴者参加型（18:00 からのプライベートバイト中心）の受付。チャットの `!参加 でんせつ820` で列に入り、配信者がコントロールパネルの「参加」タブの「次の人」で呼ぶ（Issue #116。仕様はナレッジベースの `workspaces/personal/output/twitch/handoff/join-queue.md`。推定キケン度は #118、削除・BAN・再接続は #119）。
+
+- 流れ: Twitch 連携スクリプトの `handleJoinCommand` が `channel.chat.message` の `message.fragments` の text だけを NFKC・ゼロ幅 / 方向制御文字の除去のうえ `parseJoinCommand` で `!参加` / `!取消` を見つけ、`POST /api/join-queue {action: 'join', userId, userName, messageId, args}` / `{action: 'cancel', userId}` → 応答の `reply` を `reply_parent_message_id` 付きで返信（`sendChatMessage(message, replyParentId)`）。配信者自身・`TWITCH_SPEECH_IGNORE` のボット・共有チャットのほかのチャンネルは除く
+- **本人だけに見える返信は Twitch の API ではできない**（Whisper は 1 日 40 人・黙って捨てられるなどで使わない）。返信は全員に見えるので評価はくり返さない。`ReplyThrottle` で同じ人へは 5 分・全体では 15 秒に 1 回まで（抑えている間は返さない。配信画面に書き方を出しておく）。返信は `MutedOwnMessages` に入れて読み上げない（返信は先頭に「@相手 」が付いて戻ることがあるので、`consume` は外したものとも比べる）。ログには user_id と結果だけ（本文・名前は出さない）
+- 評価の読み取り（`lib/joinQueueTypes.ts` の `parseJoinRating`）: `normalizeJoinText`（NFKC・ゼロ幅 / 方向制御文字の除去・小文字・カタカナ→ひらがな）のあと、ホワイトリストの文法（`称号? (+N|ぷらすN|plusN)? 評価値?`）と別名表（漢字・ローマ字・英語版。称号の照合では空白・中点・長音・ハイフンを除く）で読む。引数は 20 文字まで（英語版の長い正式名は入らない）。たつじん以下で 100 以上・1000 以上は読めない。数字だけは 100〜999 をでんせつとみなし、0〜99 は読めない（称号を聞き返す）。かんすと / counterstop / max → でんせつ 999、intern → かけだし 0。称号だけは `points: null`（近似）。`たつじん3` は評価値 3 と読み、注記を手元に出す。**読めなくても受け付ける**（評価は不明。返信に書き方を付ける）
+- 列（`lib/joinQueue.ts`）はメモリだけ（`globalThis`。ディスクに書かない）。1 人 1 枠（`chatter_user_id`。書き直したら評価を上書きし順番は保つ）、上限 `JOIN_QUEUE_MAX_ENTRIES`（20）。受付中（`open`。「受付開始」）のときだけ受け付け、それ以外の `!参加` は黙って捨てる（返信もしない）。「受付終了」で列といまの人を消す。`__TEST_ONLY_resetJoinQueue()` はテスト用
+- `GET /api/join-queue` は配信画面用（番号・表示名・いまの人だけ。**評価は出さない**）、`?view=panel` は手元用（評価・注記つき。`messageId` は出さない）。`POST {action}`（`join` / `cancel` / `remove` / `next` / `open` / `close`）。`Content-Type: application/json` 必須
+- 表示名は `sanitizeDisplayName`（NFKC・制御 / 書式文字の除去・25 文字まで）で整え、React の描画（textContent 相当）で出す。`dangerouslySetInnerHTML` は使わない
+- オーバーレイ（`/join-queue-overlay`、420x600）は 1 秒ごとにポーリングし、受付中だけ書き方・いまの人・列（10 人まで。残りは「ほか n 人」）を出す。フォントは `/api/stream-data` の `fontFamily`
+- 参加用のパスワード（ゲーム内のチャンネル機能）はコード・設定・ログに書かない
 
 ### `/components/ScoreDisplay.tsx`
 

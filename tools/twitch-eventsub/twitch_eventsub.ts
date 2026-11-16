@@ -3,6 +3,7 @@
  * チャットも受信し、初めてコメントした視聴者への挨拶と配信者自身のコメントを /api/speech（読み上げキュー）へ送る。
  * /api/clip に届いたクリップの依頼（声・ボタン）を受けて、クリップを作る。
  * /api/telop の「コメント」付きのテロップを、配信者のコメントとしてチャットに書き込む。
+ * チャットの !参加 / !取消 を /api/join-queue（視聴者参加の受付）に送り、受付の結果を返信する。
  *
  *   pnpm twitch    # リポジトリのルートで起動（README.md 参照）
  *
@@ -24,6 +25,9 @@ const RESYNC_INTERVAL_MS = 60_000;
 const CLIP_POLL_INTERVAL_MS = 1_000;
 // テロップのコメントの書き込み待ちを確認する間隔（アプリは 3 秒拾われなければテロップ側で読み上げる）
 const CHAT_POST_POLL_INTERVAL_MS = 1_000;
+// 参加受付の返信を抑える間隔（同じ人へ・チャンネル全体）。抑えている間は返さない（配信画面に書き方を出している）
+export const JOIN_REPLY_USER_INTERVAL_MS = 5 * 60_000;
+export const JOIN_REPLY_GLOBAL_INTERVAL_MS = 15_000;
 const INITIAL_RECONNECT_DELAY_MS = 1_000;
 const MAX_RECONNECT_DELAY_MS = 60_000;
 // keepalive_timeout_seconds を過ぎてもメッセージが来なければ切断とみなす（ネットワーク遅延分の猶予）
@@ -245,12 +249,17 @@ export class TwitchClient {
     return { clipId: clip.id, editUrl: clip.edit_url };
   }
 
-  /** 配信者としてチャットに書き込む。Twitch に弾かれたとき（AutoMod など）はエラー */
-  async sendChatMessage(message: string): Promise<void> {
+  /** 配信者としてチャットに書き込む（replyParentId があればそのメッセージへの返信）。Twitch に弾かれたとき（AutoMod など）はエラー */
+  async sendChatMessage(message: string, replyParentId?: string): Promise<void> {
     const res = await this.helix('/chat/messages', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ broadcaster_id: this.userId, sender_id: this.userId, message }),
+      body: JSON.stringify({
+        broadcaster_id: this.userId,
+        sender_id: this.userId,
+        message,
+        ...(replyParentId ? { reply_parent_message_id: replyParentId } : {}),
+      }),
     });
     const result = (await res.json()).data?.[0];
     if (result?.is_sent !== true) throw new Error(`チャットに書き込めませんでした: ${result?.drop_reason?.message ?? '理由不明'}`);
@@ -489,7 +498,9 @@ interface ChatMessageEvent {
   chatter_user_id?: string;
   chatter_user_login?: string;
   chatter_user_name?: string;
-  message?: { text?: string };
+  message_id?: string;
+  // fragments は本文を text・エモート・メンションなどに分けたもの
+  message?: { text?: string; fragments?: { type?: string; text?: string }[] };
   // 共有チャット（Shared Chat）で、ほかのチャンネルから届いたメッセージなら、そのチャンネルの ID
   source_broadcaster_user_id?: string | null;
 }
@@ -525,11 +536,13 @@ export class MutedOwnMessages {
     };
   }
 
-  /** 登録されていれば 1 件外して true */
+  /** 登録されていれば 1 件外して true。返信は先頭に「@相手 」が付いて戻ってくることがあるので、外したものとも比べる */
   consume(text: string): boolean {
     const now = this.now();
     this.entries = this.entries.filter((e) => e.until > now);
-    const index = this.entries.findIndex((e) => e.text === text);
+    const normalized = normalizeChatText(text);
+    const candidates = [normalized, normalized.replace(/^@\S+\s+/, '')];
+    const index = this.entries.findIndex((e) => candidates.includes(e.text));
     if (index < 0) return false;
     this.entries.splice(index, 1);
     return true;
@@ -621,6 +634,104 @@ export async function speakChatMessage(event: unknown, context: ChatSpeechContex
     delivered = await send(text);
   } finally {
     if (isGreeting && !delivered) context.greeted.delete(userId);
+  }
+}
+
+// ---- 視聴者参加の受付 ----
+
+// ゼロ幅文字・方向制御文字（見た目を偽装するのに使われる）
+const INVISIBLE_PATTERN = /[\u200B-\u200F\u202A-\u202E\u2066-\u2069\uFEFF]/g;
+const JOIN_PATTERN = /^!参加\s*([\s\S]*)$/;
+const CANCEL_PATTERN = /^!取消(?:\s|$)/;
+// アプリに送る引数の長さ（アプリは 20 文字を超えたら読まない。送る量だけ抑える）
+const MAX_JOIN_ARGS_LENGTH = 50;
+
+export type JoinCommand = { kind: 'join'; args: string } | { kind: 'cancel' };
+
+interface JoinCommandContext {
+  broadcasterId: string;
+  ignoredLogins: Set<string>;
+}
+
+/**
+ * チャットのメッセージから !参加 / !取消 を読む。本文は fragments の text だけ（エモート・メンションは使わない）を、
+ * NFKC（全角の「！」も半角に）とゼロ幅・方向制御文字の除去をしてから見る。
+ * 配信者自身（返信のループを防ぐ）・共有チャットのほかのチャンネル・ボットの発言は null
+ */
+export function parseJoinCommand(event: unknown, context: JoinCommandContext): JoinCommand | null {
+  const chat = (event ?? {}) as ChatMessageEvent;
+  if (!chat.chatter_user_id || chat.chatter_user_id === context.broadcasterId) return null;
+  if (chat.source_broadcaster_user_id && chat.source_broadcaster_user_id !== context.broadcasterId) return null;
+  if (context.ignoredLogins.has((chat.chatter_user_login ?? '').toLowerCase())) return null;
+  const fragments = chat.message?.fragments;
+  const raw = fragments ? fragments.filter((f) => f.type === 'text').map((f) => f.text ?? '').join('') : (chat.message?.text ?? '');
+  const text = raw.normalize('NFKC').replace(INVISIBLE_PATTERN, '').trim();
+  if (CANCEL_PATTERN.test(text)) return { kind: 'cancel' };
+  const join = JOIN_PATTERN.exec(text);
+  return join ? { kind: 'join', args: truncate(join[1].trim(), MAX_JOIN_ARGS_LENGTH) } : null;
+}
+
+/** 返信を抑える。同じ人へは 5 分、チャンネル全体では 15 秒に 1 回まで（同じ文面の連投は Twitch に捨てられることもある） */
+export class ReplyThrottle {
+  private lastByUser = new Map<string, number>();
+  private lastAny = -Infinity;
+  private now: () => number;
+
+  constructor(now: () => number = Date.now) {
+    this.now = now;
+  }
+
+  /** 返してよければ記録して true */
+  tryAcquire(userId: string): boolean {
+    const now = this.now();
+    if (now - this.lastAny < JOIN_REPLY_GLOBAL_INTERVAL_MS) return false;
+    if (now - (this.lastByUser.get(userId) ?? -Infinity) < JOIN_REPLY_USER_INTERVAL_MS) return false;
+    this.lastAny = now;
+    this.lastByUser.set(userId, now);
+    return true;
+  }
+}
+
+interface JoinHandlerOptions {
+  joinUrl: string;
+  context: JoinCommandContext;
+  throttle: ReplyThrottle;
+  sendReply: (text: string, replyParentId: string) => Promise<void>;
+  // 返信は読み上げない（初めてのコメントの挨拶と二重に鳴らさない）
+  mutedOwnMessages?: MutedOwnMessages;
+  fetchFn?: FetchFn;
+  log?: (message: string) => void;
+}
+
+/**
+ * !参加 / !取消 を /api/join-queue に送り、返信の文面が返ってきたら（抑えていなければ）そのメッセージに返信する。
+ * 本文・名前はログに出さない（user_id と結果だけ）
+ */
+export async function handleJoinCommand(event: unknown, options: JoinHandlerOptions): Promise<void> {
+  const { joinUrl, context, throttle, sendReply, mutedOwnMessages, fetchFn = fetch, log = console.log } = options;
+  const command = parseJoinCommand(event, context);
+  if (!command) return;
+  const chat = event as ChatMessageEvent;
+  const userId = chat.chatter_user_id ?? '';
+  const messageId = chat.message_id ?? '';
+  const body = command.kind === 'join'
+    ? { action: 'join', userId, userName: chat.chatter_user_name || chat.chatter_user_login || '', messageId, args: command.args }
+    : { action: 'cancel', userId };
+  const res = await fetchFn(joinUrl, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) throw new Error(`${joinUrl} への送信に失敗しました: ${res.status}`);
+  const { result, reply } = (await res.json()) as { result: string; reply: string | null };
+  log(`参加受付: user_id=${userId} ${command.kind} → ${result}`);
+  if (!reply || messageId === '' || !throttle.tryAcquire(userId)) return;
+  const unmute = mutedOwnMessages?.add(reply);
+  try {
+    await sendReply(reply, messageId);
+  } catch (error) {
+    unmute?.();
+    log(`参加受付の返信を書き込めませんでした（user_id=${userId}）: ${(error as Error).message}`);
   }
 }
 
@@ -809,6 +920,7 @@ async function main(): Promise<void> {
   const speechUrl = process.env.TWITCH_SPEECH_API_URL ?? new URL('/api/speech', apiUrl).toString();
   const clipApiUrl = process.env.TWITCH_CLIP_API_URL ?? new URL('/api/clip', apiUrl).toString();
   const telopUrl = new URL('/api/telop', clipApiUrl).toString();
+  const joinUrl = process.env.TWITCH_JOIN_API_URL ?? new URL('/api/join-queue', apiUrl).toString();
   const log = (message: string) => console.log(`[twitch] ${message}`);
 
   const client = new TwitchClient({ clientId, tokenPath: process.env.TWITCH_TOKEN_PATH ?? DEFAULT_TOKEN_PATH, log });
@@ -885,6 +997,14 @@ async function main(): Promise<void> {
     ignoredLogins: parseIgnoredLogins(process.env.TWITCH_SPEECH_IGNORE),
     mutedOwnMessages,
   };
+  const joinOptions: JoinHandlerOptions = {
+    joinUrl,
+    context: chatContext,
+    throttle: new ReplyThrottle(),
+    sendReply: (text, replyParentId) => client.sendChatMessage(text, replyParentId),
+    mutedOwnMessages,
+    log,
+  };
 
   const connection = new EventSubConnection(
     {
@@ -894,6 +1014,9 @@ async function main(): Promise<void> {
           // 視聴者の名前やコメントはログに出さない
           speakChatMessage(event, chatContext, (text) => publishSpeech(speechUrl, text)).catch((error) => {
             log(`警告: 読み上げを送信できませんでした: ${(error as Error).message}`);
+          });
+          handleJoinCommand(event, joinOptions).catch((error) => {
+            log(`警告: 参加受付に送信できませんでした: ${(error as Error).message}`);
           });
           return;
         }

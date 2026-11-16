@@ -11,7 +11,10 @@ import {
   EVENTSUB_URL,
   EventSubConnection,
   HelixError,
+  JOIN_REPLY_GLOBAL_INTERVAL_MS,
+  JOIN_REPLY_USER_INTERVAL_MS,
   MutedOwnMessages,
+  ReplyThrottle,
   SCOPES,
   TwitchClient,
   applyNotification,
@@ -19,8 +22,10 @@ import {
   clipFailureReason,
   createChatPostProcessor,
   createClipProcessor,
+  handleJoinCommand,
   loadToken,
   parseIgnoredLogins,
+  parseJoinCommand,
   publishSpeech,
   publishFollowTelop,
   publishTelop,
@@ -310,6 +315,17 @@ describe('TwitchClient', () => {
       expect(init.method).toBe('POST');
       expect(init.headers['Content-Type']).toBe('application/json');
       expect(JSON.parse(init.body)).toEqual({ broadcaster_id: '123', sender_id: '123', message: 'ナイス!!' });
+    });
+
+    it('replies to a chat message', async () => {
+      const fetchFn = vi.fn();
+      const client = await authenticated(fetchFn);
+      fetchFn.mockResolvedValueOnce(json({ data: [{ message_id: 'm2', is_sent: true }] }));
+
+      await client.sendChatMessage('受付しました', 'parent-1');
+      expect(JSON.parse(fetchFn.mock.calls[1][1].body)).toEqual({
+        broadcaster_id: '123', sender_id: '123', message: '受付しました', reply_parent_message_id: 'parent-1',
+      });
     });
 
     it('throws when the chat message is dropped', async () => {
@@ -815,6 +831,148 @@ describe('MutedOwnMessages', () => {
     expect(muted.consume('おしい')).toBe(false);
     now = 30_000;
     expect(muted.consume('満潮きた')).toBe(false);
+  });
+});
+
+describe('MutedOwnMessages with replies', () => {
+  it('matches a reply that comes back with a mention at the head', () => {
+    const muted = new MutedOwnMessages();
+    muted.add('ViewerA さん、受付しました（1 番目）。');
+    expect(muted.consume('@ViewerA ViewerA さん、受付しました（1 番目）。')).toBe(true);
+  });
+});
+
+describe('parseJoinCommand', () => {
+  const context = { broadcasterId: '123', ignoredLogins: new Set(['nightbot']) };
+  const chat = (text: string, overrides: Record<string, unknown> = {}) => ({
+    chatter_user_id: '999',
+    chatter_user_login: 'viewer_a',
+    chatter_user_name: 'ViewerA',
+    message_id: 'm1',
+    message: { text, fragments: [{ type: 'text', text }] },
+    source_broadcaster_user_id: null,
+    ...overrides,
+  });
+
+  it.each([
+    ['!参加 でんせつ820', 'でんせつ820'],
+    ['!参加', ''],
+    ['!参加でんせつ820', 'でんせつ820'],
+    ['！参加　でんせつ８２０', 'でんせつ820'],
+    ['\u200B!参加 たつじん+1', 'たつじん+1'],
+  ])('reads %s as a join', (text, args) => {
+    expect(parseJoinCommand(chat(text), context)).toEqual({ kind: 'join', args });
+  });
+
+  it('reads a cancel', () => {
+    expect(parseJoinCommand(chat('!取消'), context)).toEqual({ kind: 'cancel' });
+    expect(parseJoinCommand(chat('！取消 です'), context)).toEqual({ kind: 'cancel' });
+  });
+
+  it('uses only the text fragments (not emotes or mentions)', () => {
+    const event = chat('', {
+      message: {
+        text: '!参加 Kappa でんせつ820',
+        fragments: [{ type: 'text', text: '!参加 ' }, { type: 'emote', text: 'Kappa' }, { type: 'text', text: ' でんせつ820' }],
+      },
+    });
+    expect(parseJoinCommand(event, context)).toEqual({ kind: 'join', args: 'でんせつ820' });
+  });
+
+  it('ignores other messages, the broadcaster, bots and shared chat from other channels', () => {
+    expect(parseJoinCommand(chat('こんにちは'), context)).toBeNull();
+    expect(parseJoinCommand(chat('参加 でんせつ820'), context)).toBeNull();
+    expect(parseJoinCommand(chat('!参加', { chatter_user_id: '123' }), context)).toBeNull();
+    expect(parseJoinCommand(chat('!参加', { chatter_user_login: 'Nightbot' }), context)).toBeNull();
+    expect(parseJoinCommand(chat('!参加', { source_broadcaster_user_id: '555' }), context)).toBeNull();
+  });
+});
+
+describe('ReplyThrottle', () => {
+  it('replies once per user in 5 minutes and once in the channel in 15 seconds', () => {
+    let now = 0;
+    const throttle = new ReplyThrottle(() => now);
+    expect(throttle.tryAcquire('a')).toBe(true);
+    now = JOIN_REPLY_GLOBAL_INTERVAL_MS - 1;
+    expect(throttle.tryAcquire('b')).toBe(false);
+    now = JOIN_REPLY_GLOBAL_INTERVAL_MS;
+    expect(throttle.tryAcquire('a')).toBe(false);
+    expect(throttle.tryAcquire('b')).toBe(true);
+    now = JOIN_REPLY_USER_INTERVAL_MS;
+    expect(throttle.tryAcquire('a')).toBe(true);
+  });
+});
+
+describe('handleJoinCommand', () => {
+  const joinUrl = 'http://localhost:3000/api/join-queue';
+  const context = { broadcasterId: '123', ignoredLogins: new Set<string>() };
+  const event = (text: string, userId = '999') => ({
+    chatter_user_id: userId,
+    chatter_user_login: 'viewer_a',
+    chatter_user_name: 'ViewerA',
+    message_id: `m-${userId}`,
+    message: { text, fragments: [{ type: 'text', text }] },
+  });
+  const setup = (response: unknown, sendReply = vi.fn().mockResolvedValue(undefined), status = 200) => {
+    const fetchFn = vi.fn().mockImplementation(async () => json(response, status));
+    const logs: string[] = [];
+    const mutedOwnMessages = new MutedOwnMessages();
+    const options = {
+      joinUrl, context, throttle: new ReplyThrottle(() => 0), sendReply, mutedOwnMessages,
+      fetchFn: fetchFn as unknown as typeof fetch, log: (m: string) => logs.push(m),
+    };
+    return { fetchFn, sendReply, logs, mutedOwnMessages, options };
+  };
+
+  it('joins and replies to the message without logging the message or the name', async () => {
+    const { fetchFn, sendReply, logs, mutedOwnMessages, options } = setup({ result: 'joined', position: 1, reply: 'ViewerA さん、受付しました（1 番目）。' });
+
+    await handleJoinCommand(event('!参加 でんせつ820'), options);
+    const [url, init] = fetchFn.mock.calls[0];
+    expect(url).toBe(joinUrl);
+    expect(init.headers['Content-Type']).toBe('application/json');
+    expect(JSON.parse(init.body)).toEqual({ action: 'join', userId: '999', userName: 'ViewerA', messageId: 'm-999', args: 'でんせつ820' });
+    expect(sendReply).toHaveBeenCalledWith('ViewerA さん、受付しました（1 番目）。', 'm-999');
+    // 返信は読み上げない
+    expect(mutedOwnMessages.consume('ViewerA さん、受付しました（1 番目）。')).toBe(true);
+    expect(logs).toEqual(['参加受付: user_id=999 join → joined']);
+  });
+
+  it('cancels', async () => {
+    const { fetchFn, options } = setup({ result: 'cancelled', position: null, reply: 'ViewerA さん、受付を取り消しました。' });
+
+    await handleJoinCommand(event('!取消'), options);
+    expect(JSON.parse(fetchFn.mock.calls[0][1].body)).toEqual({ action: 'cancel', userId: '999' });
+  });
+
+  it('does not reply when there is no reply or it is throttled', async () => {
+    const { sendReply, options } = setup({ result: 'closed', position: null, reply: null });
+    await handleJoinCommand(event('!参加'), options);
+    expect(sendReply).not.toHaveBeenCalled();
+
+    const throttled = setup({ result: 'joined', position: 1, reply: '受付しました' });
+    await handleJoinCommand(event('!参加'), throttled.options);
+    await handleJoinCommand(event('!参加', '1000'), throttled.options);
+    expect(throttled.sendReply).toHaveBeenCalledTimes(1);
+  });
+
+  it('does nothing for other messages', async () => {
+    const { fetchFn, options } = setup({});
+    await handleJoinCommand(event('こんにちは'), options);
+    expect(fetchFn).not.toHaveBeenCalled();
+  });
+
+  it('logs and unmutes when the reply cannot be sent', async () => {
+    const { logs, mutedOwnMessages, options } = setup({ result: 'joined', position: 1, reply: '受付しました' }, vi.fn().mockRejectedValue(new Error('duplicate')));
+
+    await handleJoinCommand(event('!参加'), options);
+    expect(logs[1]).toBe('参加受付の返信を書き込めませんでした（user_id=999）: duplicate');
+    expect(mutedOwnMessages.consume('受付しました')).toBe(false);
+  });
+
+  it('throws when the app rejects the request', async () => {
+    const { options } = setup({ message: 'bad' }, undefined, 400);
+    await expect(handleJoinCommand(event('!参加'), options)).rejects.toThrow('400');
   });
 });
 

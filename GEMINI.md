@@ -95,8 +95,11 @@ export interface StreamData {
 #### `/app/voice-overlay/page.tsx` と `/app/api/speech/route.ts` / `/app/api/voice/route.ts`
 -   **目的**: 合成音声（VOICEVOX）の読み上げ。`/api/speech` はインメモリの読み上げキュー（`POST {text}` で追加。読み上げが無効なら 409）、`/api/speech/audio?id=` はキューの 1 件を VOICEVOX（`VOICEVOX_URL`、既定 `http://localhost:50021`）で wav にして返します。`/api/voice` は読み上げの設定（有効/無効・話者・速度・音量。SQLite の `app_state` キー `voice`）、`/api/voice/speakers` は VOICEVOX の話者一覧の中継です。音声専用オーバーレイがキューをポーリングして 1 件ずつ順に再生します。キュー・設定・VOICEVOX との通信は `lib/speech.ts`（サーバー専用）、型と検証は `lib/voiceTypes.ts` にあります。設定 UI は `components/VoiceSettingsPanel.tsx`（コントロールパネルの「テロップ」タブ）。
 
+#### `/app/join-queue-overlay/page.tsx` と `/app/api/join-queue/route.ts`
+-   **目的**: 視聴者参加型の受付。Twitch 連携スクリプトがチャットの `!参加 でんせつ820` / `!取消` を `POST /api/join-queue` に送り、受付の結果をそのメッセージへの返信で返します（同じ人へは 5 分・全体では 15 秒に 1 回まで）。評価の読み取り（表記ゆれの正規化。読めなくても受け付ける）と返信の文面は `lib/joinQueueTypes.ts`、列（メモリだけ。1 人 1 枠・20 人まで・受付中だけ受け付ける）は `lib/joinQueue.ts` にあります。配信画面には番号・表示名だけを出し、評価はコントロールパネルの「参加」タブ（`components/JoinQueuePanel.tsx`。受付開始・次の人・外す・受付終了）だけに出します。
+
 ### `/tools/twitch-eventsub`
--   **目的**: `pnpm twitch` で起動する常駐スクリプト。Device Code Flow で認証し、EventSub WebSocket でフォローとゴールの通知を受信して `/api/twitch` へ送信します。チャットも受信し、初めてコメントした視聴者への挨拶（本文は読まない）と配信者自身のコメントを `/api/speech`（読み上げキュー）へ送ります（`chatToSpeech`）。トークンは `data/twitch-token.json`（Git 管理外）に保存されます。詳細は同ディレクトリの README を参照。
+-   **目的**: `pnpm twitch` で起動する常駐スクリプト。Device Code Flow で認証し、EventSub WebSocket でフォローとゴールの通知を受信して `/api/twitch` へ送信します。チャットも受信し、初めてコメントした視聴者への挨拶（本文は読まない）と配信者自身のコメントを `/api/speech`（読み上げキュー）へ送ります（`chatToSpeech`）。チャットの `!参加` / `!取消` は `/api/join-queue` に送って返信します（`handleJoinCommand`）。トークンは `data/twitch-token.json`（Git 管理外）に保存されます。詳細は同ディレクトリの README を参照。
 
 ### `/components`
 このディレクトリには、再利用可能なReactコンポーネントが格納されています。

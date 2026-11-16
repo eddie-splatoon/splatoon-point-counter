@@ -23,6 +23,7 @@ import Image from 'next/image';
 import React, {useState, useEffect, useMemo, useCallback} from 'react';
 
 import ClipPanel from '../../components/ClipPanel';
+import JoinQueuePanel from '../../components/JoinQueuePanel';
 import SalmonRunPanel from '../../components/SalmonRunPanel';
 import ScoreDisplayPanel from '../../components/ScoreDisplayPanel';
 import SidePanelSettingsPanel from '../../components/SidePanelSettingsPanel';
@@ -397,6 +398,7 @@ const ControlPanelPage: React.FC = () => {
                         <Tab label="サイドパネル" value="sidePanel"/>
                         <Tab label="テロップ" value="telop"/>
                         <Tab label="クリップ" value="clip"/>
+                        <Tab label="参加" value="joinQueue"/>
                         <Tab label="共通設定" value="common"/>
                     </Tabs>
 
@@ -500,6 +502,7 @@ const ControlPanelPage: React.FC = () => {
                     {formData.activeTab === 'sidePanel' && <SidePanelSettingsPanel/>}
 
                     {formData.activeTab === 'clip' && <ClipPanel/>}
+                    {formData.activeTab === 'joinQueue' && <JoinQueuePanel/>}
 
                     {formData.activeTab === 'telop' && (
                         <>
