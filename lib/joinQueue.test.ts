@@ -176,6 +176,13 @@ describe('room hazard', () => {
     expect(getPanelView().streamer).toBeNull();
   });
 
+  it('uses the record again when a job is imported after the typed rating', () => {
+    setStreamerRating('でんせつ820', 100);
+    const newer: HazardContext = { ...context, recordedStreamer: { rating: { tier: 8, points: 840, note: null }, ratedAt: 200 } };
+    expect(getPanelView(newer).streamer).toMatchObject({ rating: { points: 840 }, source: 'record' });
+    expect(getPanelView(context).streamer).toMatchObject({ rating: { points: 820 }, source: 'manual' });
+  });
+
   it('updates when the rating was declared on rewriting', () => {
     openQueue();
     joinQueue({ userId: '1', userName: 'A', messageId: 'm', args: 'たつじん 40' }, 10);

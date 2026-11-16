@@ -22,7 +22,7 @@ import {
     sanitizeDisplayName,
 } from './joinQueueTypes';
 import {pickCurrentSchedule} from './salmonSchedule';
-import {getSalmonSchedule} from './salmonScheduleFetch';
+import {peekSalmonSchedule} from './salmonScheduleFetch';
 import {parsePlayedAt} from './scoreDisplay';
 
 interface JoinQueueEntry {
@@ -169,9 +169,12 @@ export interface HazardContext {
     shiftStart: number | null;
 }
 
-/** 記録とスケジュールから HazardContext を作る。スケジュールが取れなければシフトの区切りはわからない（古い扱いにしない） */
-export async function loadHazardContext(now = Date.now()): Promise<HazardContext> {
-    const schedule = await getSalmonSchedule();
+/**
+ * 記録とスケジュールから HazardContext を作る。スケジュールは待たずにキャッシュを使い（配信画面のポーリングを止めない）、
+ * 取れていなければシフトの区切りはわからない（古い扱いにしない）
+ */
+export function loadHazardContext(now = Date.now()): HazardContext {
+    const schedule = peekSalmonSchedule();
     // 評価が戻るのはいつものバイトのシフトの区切り
     const shift = schedule ? pickCurrentSchedule(schedule.entries.filter((e) => e.kind === 'regular'), now) : null;
     return {recordedStreamer: getRecordedStreamerRating(), shiftStart: shift?.startTime ?? null};
@@ -179,10 +182,13 @@ export async function loadHazardContext(now = Date.now()): Promise<HazardContext
 
 const NO_CONTEXT: HazardContext = {recordedStreamer: null, shiftStart: null};
 
+/** 配信者の評価。手入力のあとに新しいバイトを取り込んだら、記録のほうを使う */
 function streamerOf(context: HazardContext): StreamerRating | null {
     const override = state().streamerOverride;
-    if (override) return {...override, source: 'manual'};
-    return context.recordedStreamer ? {...context.recordedStreamer, source: 'record'} : null;
+    const recorded = context.recordedStreamer;
+    const recordIsNewer = recorded !== null && recorded.ratedAt !== null && override !== null && recorded.ratedAt > override.ratedAt;
+    if (override && !recordIsNewer) return {...override, source: 'manual'};
+    return recorded ? {...recorded, source: 'record'} : null;
 }
 
 // 部屋に入る順: いまの人、列の先頭から

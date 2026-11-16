@@ -90,3 +90,12 @@ export async function getSalmonSchedule(): Promise<SalmonScheduleData | null> {
     }
     return cache;
 }
+
+/**
+ * 待たずに今のキャッシュを返す（無ければ null）。期限切れなら裏で取り直す。
+ * 1 秒ごとにポーリングされる API が、外部 API の応答（最大 FETCH_TIMEOUT_MS）を待って止まらないようにするため
+ */
+export function peekSalmonSchedule(): SalmonScheduleData | null {
+    void getSalmonSchedule();
+    return cache;
+}

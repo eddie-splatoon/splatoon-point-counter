@@ -21,7 +21,7 @@ import {queueChatPost} from '../../../lib/telop';
  */
 export async function GET(request: Request) {
     const panel = new URL(request.url).searchParams.get('view') === 'panel';
-    const context = await loadHazardContext();
+    const context = loadHazardContext();
     return NextResponse.json(panel ? getPanelView(context) : getPublicView(context));
 }
 
@@ -54,7 +54,7 @@ export async function POST(request: Request) {
     const json = await readJson(request);
     if (json instanceof NextResponse) return json;
     const body = (json.body ?? {}) as Record<string, unknown>;
-    const panelView = async () => NextResponse.json(getPanelView(await loadHazardContext()));
+    const panelView = () => NextResponse.json(getPanelView(loadHazardContext()));
     switch (body.action) {
         case 'join': {
             const {userId, userName, messageId, args, attached = false} = body;
@@ -87,7 +87,7 @@ export async function POST(request: Request) {
         }
         case 'announce': {
             if (!(JOIN_ANNOUNCEMENT_KINDS as readonly unknown[]).includes(body.kind)) return badRequest("kind must be 'merge' or 'private'.");
-            const view = getPanelView(await loadHazardContext());
+            const view = getPanelView(loadHazardContext());
             queueChatPost(formatJoinAnnouncement(body.kind as JoinAnnouncementKind, view.recommended?.normal ?? null), true);
             return NextResponse.json(view);
         }

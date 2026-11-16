@@ -76,6 +76,16 @@ describe('Join queue API', () => {
     expect(await (await post({ action: 'streamer', rating: null })).json()).toMatchObject({ streamer: null });
   });
 
+  it('marks ratings from before the current regular shift as stale once the schedule is cached', async () => {
+    const start = Date.now() - 60_000;
+    const entry = { start_time: new Date(start).toISOString(), end_time: new Date(start + 7_200_000).toISOString(), stage: { name: 'S', image: 'https://example.com/s.png' }, weapons: [] };
+    vi.stubGlobal('fetch', vi.fn(async (url: string) =>
+      new Response(JSON.stringify({ results: url.endsWith('/coop-grouping/schedule') ? [entry] : [] }))));
+    // 1 回目は待たずに返り、裏でスケジュールを取る
+    expect((await (await GET(new NextRequest(url('?view=panel')))).json()).shiftStart).toBeNull();
+    await vi.waitFor(async () => expect((await (await GET(new NextRequest(url('?view=panel')))).json()).shiftStart).toBe(start));
+  });
+
   it('queues an announcement to the chat, read aloud', async () => {
     await post({ action: 'streamer', rating: 'でんせつ820' });
     expect((await post({ action: 'announce', kind: 'private' })).status).toBe(200);
