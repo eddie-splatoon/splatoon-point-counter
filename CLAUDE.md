@@ -471,8 +471,8 @@ Twitch のフォロワー数とフォロワー目標を受け取る機能と、�
 - 評価は申告の時刻（`ratedAt`。書き直すと変わる。配信者の記録はバイトの日時）を持ち、いまのいつものバイトのシフトの開始（`loadHazardContext`）より前なら「古い」と手元に出す（シフトが替わると評価は「称号 40」に戻るため）。スケジュールが取れなければ古い扱いにしない。GET / POST の応答のたびに記録とスケジュールを読む。スケジュールは `peekSalmonSchedule`（`lib/salmonScheduleFetch.ts`）で待たずにキャッシュを使い、期限切れなら裏で取り直す（外部 API の応答を待って配信画面のポーリングを止めないため）
 - お知らせ（`POST {action: 'announce', kind: 'merge' | 'private'}`、`formatJoinAnnouncement`）: 通常のバイトへの合流・プライベートバイト（おすすめの通常の値と、相当する評価つき。読み上げるので括弧は使わない）の文を、テロップのコメントと同じ書き込み待ち（`queueChatPost(text, true)`）に入れる。チャットに書き込めれば配信者のコメントとして読み上げられ、書き込めなければテロップ側で読み上げる
 - 列から外す（#119）: 並んだメッセージの削除（`channel.chat.message_delete` → `POST {action: 'removeMessage', messageId}`。`removeByMessageId`。書き直した人は最後のメッセージで照合）・BAN / タイムアウト（`channel.chat.clear_user_messages` → `{action: 'removeUser', userId}`）で列といまの人から外す（いなくても `{removed: false}` でエラーにしない）。チャットの全消去（`channel.chat.clear`）はログだけ。配信の終了（`stream.offline` → `{action: 'offline'}`）は受付終了と同じ。スクリプト側は `moderationRequest`（純粋関数）/ `handleModerationEvent`。ログは user_id と結果だけ
-- 再接続（#119）: `EventSubConnection` は 2 回目以降に新しいセッションで購読し直したとき（keepalive の途切れ・切断。`session_reconnect` では購読が引き継がれるので呼ばない）`onResubscribed` を呼び、スクリプトが `{action: 'reconnected'}` を送る。手元に「再接続しました（その間の参加は受け付けられていない可能性あり）」を出し、「確認した」（`{action: 'dismissReconnect'}`）で消す
-- 集計（#119）: 受付の枠（受付開始〜終了・配信の終了）ごとに、並んだ人数・「次の人」で呼んだ人数・2 回以上呼んだ人数だけを `app_state`（キー `joinQueueStats`）に残す（誰が来たかは残さない。数えるための user_id はメモリだけで、受付終了で消す）。28 日（`JOIN_STATS_DAYS`）を過ぎたものは保存のたびに消し、手元の「これまでの受付」に出す（配信者が 4 週間で振り返る）
+- 再接続（#119）: `EventSubConnection` は 2 回目以降に新しいセッションで購読し直したとき（keepalive の途切れ・切断。`session_reconnect` では購読が引き継がれるので呼ばない）`onResubscribed` を呼び、スクリプトが `{action: 'reconnected'}` を送る。手元に「再接続しました（その間の参加は受け付けられていない可能性あり）」を出し、「確認した」（`{action: 'dismissReconnect'}`）か、次の受付開始で消す
+- 集計（#119）: 受付の枠（受付開始〜終了・配信の終了）ごとに、並んだ人数・「次の人」で呼んだ人数・2 回以上呼んだ人数だけを `app_state`（キー `joinQueueStats`）に残す（誰が来たかは残さない。数えるための user_id はメモリだけで、受付終了で消す）。保存に失敗しても列は消す（ログだけ）。28 日（`JOIN_STATS_DAYS`）を過ぎたものは保存のたびに消し、手元の「これまでの受付」に出す（配信者が 4 週間で振り返る）
 - 参加用のパスワード（ゲーム内のチャンネル機能）はコード・設定・ログに書かない
 
 ### `/components/ScoreDisplay.tsx`
