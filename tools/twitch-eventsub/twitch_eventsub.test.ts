@@ -14,6 +14,8 @@ import {
   JOIN_REPLY_GLOBAL_INTERVAL_MS,
   JOIN_REPLY_USER_INTERVAL_MS,
   MutedOwnMessages,
+  NOTIFICATION_MAX_AGE_MS,
+  NotificationDeduper,
   ReplyThrottle,
   SCOPES,
   TwitchClient,
@@ -23,9 +25,12 @@ import {
   createChatPostProcessor,
   createClipProcessor,
   handleJoinCommand,
+  handleModerationEvent,
   loadToken,
   parseIgnoredLogins,
   parseJoinCommand,
+  moderationRequest,
+  publishReconnected,
   publishSpeech,
   publishFollowTelop,
   publishTelop,
@@ -256,7 +261,10 @@ describe('TwitchClient', () => {
       await client.subscribeAll('session-1');
 
       const bodies = fetchFn.mock.calls.slice(1).map(([, init]) => JSON.parse(init.body));
-      expect(bodies.map((b) => b.type)).toEqual(['channel.follow', 'channel.goal.begin', 'channel.goal.progress', 'channel.goal.end', 'channel.chat.message']);
+      expect(bodies.map((b) => b.type)).toEqual([
+        'channel.follow', 'channel.goal.begin', 'channel.goal.progress', 'channel.goal.end', 'channel.chat.message',
+        'channel.chat.message_delete', 'channel.chat.clear_user_messages', 'channel.chat.clear', 'stream.offline',
+      ]);
       expect(bodies[0]).toMatchObject({
         version: '2',
         condition: { broadcaster_user_id: '123', moderator_user_id: '123' },
@@ -271,8 +279,11 @@ describe('TwitchClient', () => {
 
       await client.subscribeAll('session-1');
 
-      const chat = fetchFn.mock.calls.slice(1).map(([, init]) => JSON.parse(init.body)).find((b) => b.type === 'channel.chat.message');
-      expect(chat).toMatchObject({ version: '1', condition: { broadcaster_user_id: '123', user_id: '123' } });
+      const bodies = fetchFn.mock.calls.slice(1).map(([, init]) => JSON.parse(init.body));
+      for (const type of ['channel.chat.message', 'channel.chat.message_delete', 'channel.chat.clear_user_messages', 'channel.chat.clear']) {
+        expect(bodies.find((b) => b.type === type)).toMatchObject({ version: '1', condition: { broadcaster_user_id: '123', user_id: '123' } });
+      }
+      expect(bodies.find((b) => b.type === 'stream.offline')).toMatchObject({ version: '1', condition: { broadcaster_user_id: '123' } });
     });
 
     it('creates a clip of the broadcast', async () => {
@@ -441,6 +452,43 @@ describe('EventSubConnection', () => {
 
     expect(handlers.onError).not.toHaveBeenCalled();
     expect(handlers.onWelcome).toHaveBeenLastCalledWith('s2');
+  });
+
+  it('drops duplicated and stale notifications', () => {
+    const { sockets, handlers } = setup();
+    sockets[0].receive(welcome('s1'));
+    const notification = (id: string, timestamp = new Date().toISOString()) => ({
+      metadata: { message_type: 'notification', subscription_type: 'channel.follow', message_id: id, message_timestamp: timestamp },
+      payload: { event: { id } },
+    });
+    sockets[0].receive(notification('n1'));
+    sockets[0].receive(notification('n1'));
+    sockets[0].receive(notification('n2', new Date(Date.now() - NOTIFICATION_MAX_AGE_MS).toISOString()));
+
+    expect(handlers.onNotification).toHaveBeenCalledTimes(1);
+  });
+
+  it('tells when it subscribed again on a new session, but not on the first one or a session_reconnect', async () => {
+    const sockets: FakeSocket[] = [];
+    const onResubscribed = vi.fn();
+    const handlers = { onWelcome: vi.fn().mockResolvedValue(undefined), onNotification: vi.fn(), onError: vi.fn(), onResubscribed };
+    new EventSubConnection(handlers, (url) => {
+      const socket = new FakeSocket(url);
+      sockets.push(socket);
+      return socket;
+    }, silent).start();
+
+    sockets[0].receive(welcome('s1'));
+    await vi.waitFor(() => expect(handlers.onWelcome).toHaveBeenCalledTimes(1));
+    sockets[0].receive({ metadata: { message_type: 'session_reconnect' }, payload: { session: { id: 's1', reconnect_url: 'wss://reconnect' } } });
+    sockets[1].receive(welcome('s1'));
+    expect(onResubscribed).not.toHaveBeenCalled();
+
+    // keepalive が途切れて新しいセッションに
+    vi.advanceTimersByTime(15_000);
+    vi.advanceTimersByTime(1_000);
+    sockets[2].receive(welcome('s2'));
+    await vi.waitFor(() => expect(onResubscribed).toHaveBeenCalledTimes(1));
   });
 
   it('ignores messages that are not valid JSON', () => {
@@ -1160,4 +1208,60 @@ describe('publishState', () => {
 it('keeps the token file out of git', async () => {
   const gitignore = await readFile(join(__dirname, '../../.gitignore'), 'utf8');
   expect(gitignore.split('\n')).toContain('data/');
+});
+
+describe('NotificationDeduper', () => {
+  it('accepts each message id once and forgets ids after the max age', () => {
+    let now = Date.parse('2026-11-17T10:00:00Z');
+    const deduper = new NotificationDeduper(() => now);
+    const at = (ms: number) => new Date(ms).toISOString();
+
+    expect(deduper.accept('a', at(now))).toBe(true);
+    expect(deduper.accept('a', at(now))).toBe(false);
+    expect(deduper.accept('b', at(now - NOTIFICATION_MAX_AGE_MS))).toBe(false);
+    expect(deduper.accept(undefined, undefined)).toBe(true);
+    now += NOTIFICATION_MAX_AGE_MS;
+    expect(deduper.accept('a', at(now))).toBe(true);
+  });
+});
+
+describe('moderationRequest', () => {
+  it('maps deletes, bans / timeouts and the end of the stream to the join queue', () => {
+    expect(moderationRequest('channel.chat.message_delete', { message_id: 'm1', target_user_id: '9' })).toEqual({ action: 'removeMessage', messageId: 'm1' });
+    expect(moderationRequest('channel.chat.clear_user_messages', { target_user_id: '9' })).toEqual({ action: 'removeUser', userId: '9' });
+    expect(moderationRequest('stream.offline', {})).toEqual({ action: 'offline' });
+    expect(moderationRequest('channel.chat.clear', {})).toBeNull();
+    expect(moderationRequest('channel.chat.message_delete', {})).toBeNull();
+    expect(moderationRequest('channel.chat.clear_user_messages', null)).toBeNull();
+  });
+});
+
+describe('handleModerationEvent', () => {
+  const okJson = (body: unknown) => new Response(JSON.stringify(body), { status: 200 });
+
+  it('posts the request and logs only the user id and result', async () => {
+    const fetchFn = vi.fn(async () => okJson({ removed: true }));
+    const log = vi.fn();
+    await handleModerationEvent('channel.chat.clear_user_messages', { target_user_id: '9', target_user_name: 'Viewer' }, 'http://x/api/join-queue', fetchFn, log);
+
+    expect(JSON.parse((fetchFn.mock.calls[0] as unknown as [string, RequestInit])[1].body as string)).toEqual({ action: 'removeUser', userId: '9' });
+    expect(log).toHaveBeenCalledWith('参加受付: user_id=9 BAN・タイムアウト → removed');
+    expect(log.mock.calls.flat().join()).not.toContain('Viewer');
+  });
+
+  it('only logs a chat clear, and fails on an error response', async () => {
+    const fetchFn = vi.fn(async () => new Response('', { status: 500 }));
+    const log = vi.fn();
+    await handleModerationEvent('channel.chat.clear', {}, 'http://x', fetchFn, log);
+    expect(fetchFn).not.toHaveBeenCalled();
+    await expect(handleModerationEvent('stream.offline', {}, 'http://x', fetchFn, log)).rejects.toThrow('500');
+  });
+});
+
+describe('publishReconnected', () => {
+  it('tells the join queue that the connection was renewed', async () => {
+    const fetchFn = vi.fn(async () => new Response('{}', { status: 200 }));
+    await publishReconnected('http://x/api/join-queue', fetchFn);
+    expect(JSON.parse((fetchFn.mock.calls[0] as unknown as [string, RequestInit])[1].body as string)).toEqual({ action: 'reconnected' });
+  });
 });

@@ -1,13 +1,15 @@
 // 視聴者参加型の受付の列（サーバー専用）。列はメモリだけに持ち、受付終了で消す（ディスクに書かない）。
 // ルートごとにモジュールが別に読み込まれても同じ列を共有できるよう globalThis に置く（lib/telop.ts と同じ）
-import {getDb} from './db';
+import {getAppState, getDb, setAppState} from './db';
 import {
     JOIN_QUEUE_MAX_ENTRIES,
+    JOIN_STATS_DAYS,
     JOIN_TIER_NAMES,
     JoinCommandResult,
     JoinQueueEntryView,
     JoinQueuePanelView,
     JoinQueuePublicView,
+    JoinQueueWindowStats,
     JoinRating,
     RatedPerson,
     StreamerRating,
@@ -27,7 +29,7 @@ import {parsePlayedAt} from './scoreDisplay';
 interface JoinQueueEntry {
     userId: string;
     userName: string;
-    // 参加したメッセージ（メッセージが削除されたら列から外すのに使う。対応は #119）
+    // 参加したメッセージ（モデレーターに削除されたら列から外す。書き直したら最後のメッセージ）
     messageId: string;
     rating: JoinRating | null;
     unreadable: boolean;
@@ -43,10 +45,16 @@ interface JoinQueueState {
     current: JoinQueueEntry | null;
     // 手元で入力した配信者の評価（取り込んだ記録より優先する。受付終了でも消さない）
     streamerOverride: {rating: JoinRating; ratedAt: number} | null;
+    // Twitch 連携スクリプトが EventSub に新しく接続し直した時刻（手元で確認したら null）
+    reconnectedAt: number | null;
+    // いまの受付の枠の集計用（メモリだけ。受付終了で人数だけを残して消す）
+    window: {openedAt: number; joined: Set<string>; calls: Map<string, number>} | null;
     revision: number;
 }
 
-const initialState = (): JoinQueueState => ({open: false, entries: [], current: null, streamerOverride: null, revision: 0});
+const initialState = (): JoinQueueState => ({
+    open: false, entries: [], current: null, streamerOverride: null, reconnectedAt: null, window: null, revision: 0,
+});
 const globalStore = globalThis as typeof globalThis & {__joinQueueState?: JoinQueueState};
 const state = (): JoinQueueState => (globalStore.__joinQueueState ??= initialState());
 
@@ -84,6 +92,7 @@ export function joinQueue(request: JoinRequest, now = Date.now()): JoinCommandRe
         return {result: 'full', position: null, reply: formatFullReply(userName)};
     }
     const entry: JoinQueueEntry = {userId: request.userId, userName, messageId: request.messageId, rating, unreadable, joinedAt: now, ratedAt: now};
+    s.window?.joined.add(request.userId);
     if (index < 0) {
         s.entries.push(entry);
     } else {
@@ -108,10 +117,18 @@ export function cancelJoin(userId: string): JoinCommandResult {
 export function callNext(): void {
     const s = state();
     s.current = s.entries.shift() ?? null;
+    if (s.current && s.window) s.window.calls.set(s.current.userId, (s.window.calls.get(s.current.userId) ?? 0) + 1);
     changed();
 }
 
-/** 配信者が列（といまの人）から外す */
+/** 削除されたメッセージで並んだ人を列（といまの人）から外す（チャットのメッセージの削除）。いなければ false */
+export function removeByMessageId(messageId: string): boolean {
+    const s = state();
+    const target = [...s.entries, ...(s.current ? [s.current] : [])].find((e) => e.messageId === messageId);
+    return target ? removeFromQueue(target.userId) : false;
+}
+
+/** 配信者・チャットのモデレーション（BAN・タイムアウト）で列（といまの人）から外す */
 export function removeFromQueue(userId: string): boolean {
     const s = state();
     const before = s.entries.length;
@@ -123,17 +140,59 @@ export function removeFromQueue(userId: string): boolean {
     return true;
 }
 
-export function openQueue(): void {
-    state().open = true;
+export function openQueue(now = Date.now()): void {
+    const s = state();
+    if (!s.open) {
+        s.window = {openedAt: now, joined: new Set(), calls: new Map()};
+        // 前の枠の再接続の警告は、新しい枠には当てはまらない
+        s.reconnectedAt = null;
+    }
+    s.open = true;
     changed();
 }
 
-/** 受付終了。列といまの人を消す */
-export function closeQueue(): void {
+export const JOIN_STATS_STATE_KEY = 'joinQueueStats';
+const DAY_MS = 24 * 60 * 60_000;
+
+/** 保存済みの集計（形の違うものは捨てる） */
+function loadStats(): JoinQueueWindowStats[] {
+    const stored = getAppState(JOIN_STATS_STATE_KEY);
+    if (!Array.isArray(stored)) return [];
+    return stored.filter((w): w is JoinQueueWindowStats =>
+        typeof w === 'object' && w !== null && ['openedAt', 'closedAt', 'joined', 'called', 'repeated'].every((k) => typeof w[k] === 'number'));
+}
+
+/** 直近 JOIN_STATS_DAYS 日の集計（新しい順） */
+export function getJoinStats(now = Date.now()): JoinQueueWindowStats[] {
+    return loadStats().filter((w) => w.closedAt >= now - JOIN_STATS_DAYS * DAY_MS).sort((a, b) => b.closedAt - a.closedAt);
+}
+
+/** 受付終了（ボタン・配信の終了）。列といまの人を消し、受付の枠の人数だけを残す（だれも並ばなかった枠も残す） */
+export function closeQueue(now = Date.now()): void {
     const s = state();
+    const window = s.window;
+    // 列は先に消す（集計を保存できなくても受付は終わらせる）
+    s.window = null;
     s.open = false;
     s.entries = [];
     s.current = null;
+    changed();
+    if (!window) return;
+    const counts = [...window.calls.values()];
+    const stats: JoinQueueWindowStats = {
+        openedAt: window.openedAt, closedAt: now, joined: window.joined.size, called: counts.length, repeated: counts.filter((n) => n >= 2).length,
+    };
+    try {
+        // 期間を過ぎたものは消す
+        setAppState(JOIN_STATS_STATE_KEY, [...loadStats().filter((w) => w.closedAt >= now - JOIN_STATS_DAYS * DAY_MS), stats]);
+    } catch (error) {
+        console.error('Failed to save the join queue stats:', error);
+    }
+}
+
+/** Twitch 連携スクリプトが EventSub に新しく接続し直した（null で手元の表示を消す） */
+export function setReconnectedAt(at: number | null): void {
+    state().reconnectedAt = at;
     changed();
 }
 
@@ -224,6 +283,8 @@ export function getPanelView(context: HazardContext = NO_CONTEXT): JoinQueuePane
         room,
         shiftStart: context.shiftStart,
         recommended: recommendHazards(room),
+        reconnectedAt: s.reconnectedAt,
+        history: getJoinStats(),
         revision: s.revision,
     };
 }

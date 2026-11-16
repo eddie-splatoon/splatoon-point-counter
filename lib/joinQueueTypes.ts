@@ -297,6 +297,21 @@ export interface StreamerRating extends RatedPerson {
     source: 'record' | 'manual';
 }
 
+/**
+ * 受付の枠（受付開始〜終了）ごとの集計。残すのは人数だけ（誰が来たかは残さない）。配信者が 4 週間で振り返るのに使う
+ * - joined: 並んだ人数 / called: 「次の人」で呼んだ人数 / repeated: 2 回以上呼んだ人数
+ */
+export interface JoinQueueWindowStats {
+    openedAt: number;
+    closedAt: number;
+    joined: number;
+    called: number;
+    repeated: number;
+}
+
+// 手元に出す集計の期間
+export const JOIN_STATS_DAYS = 28;
+
 /** 配信者の手元用（評価・注記つき） */
 export interface JoinQueuePanelView {
     open: boolean;
@@ -307,6 +322,10 @@ export interface JoinQueuePanelView {
     // いまのシフトの開始（これより前に申告した評価は古い。スケジュールが取れなければ null）
     shiftStart: number | null;
     recommended: {practice: number; normal: number; challenge: number} | null;
+    // Twitch 連携スクリプトが EventSub に新しく接続し直した時刻（切れていた間の !参加 は届いていない可能性がある）。確認したら null
+    reconnectedAt: number | null;
+    // 直近 JOIN_STATS_DAYS 日の受付の枠の集計（新しい順）
+    history: JoinQueueWindowStats[];
     revision: number;
 }
 

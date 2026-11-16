@@ -66,6 +66,31 @@ describe('Join queue API', () => {
     expect(await (await post({ action: 'close' })).json()).toMatchObject({ open: false, current: null, entries: [] });
   });
 
+  it('removes people by a deleted message or a ban, without failing when they are not in the queue', async () => {
+    await post({ action: 'open' });
+    await post(joinBody);
+    await post({ ...joinBody, userId: '2', messageId: 'm2' });
+
+    expect(await (await post({ action: 'removeMessage', messageId: 'm1' })).json()).toEqual({ removed: true });
+    expect(await (await post({ action: 'removeMessage', messageId: 'm1' })).json()).toEqual({ removed: false });
+    expect(await (await post({ action: 'removeUser', userId: '2' })).json()).toEqual({ removed: true });
+    expect((await (await GET(new NextRequest(url()))).json()).entries).toEqual([]);
+  });
+
+  it('closes the queue when the stream goes offline and keeps the counts', async () => {
+    await post({ action: 'open' });
+    await post(joinBody);
+    expect((await post({ action: 'offline' })).status).toBe(200);
+    const panel = await (await GET(new NextRequest(url('?view=panel')))).json();
+    expect(panel).toMatchObject({ open: false, entries: [], history: [{ joined: 1, called: 0, repeated: 0 }] });
+  });
+
+  it('shows the reconnect notice until dismissed', async () => {
+    await post({ action: 'reconnected' });
+    expect((await (await GET(new NextRequest(url('?view=panel')))).json()).reconnectedAt).toEqual(expect.any(Number));
+    expect(await (await post({ action: 'dismissReconnect' })).json()).toMatchObject({ reconnectedAt: null });
+  });
+
   it('sets the streamer rating and shows the estimate', async () => {
     await post({ action: 'open' });
     await post(joinBody);
@@ -101,6 +126,8 @@ describe('Join queue API', () => {
     [{ ...joinBody, attached: 'yes' }, 'attached が boolean でない'],
     [{ action: 'reset' }, '知らない action'],
     [{ action: 'streamer', rating: 1 }, 'streamer の rating が文字列でない'],
+    [{ action: 'removeMessage' }, 'removeMessage の messageId が無い'],
+    [{ action: 'removeUser', userId: '' }, 'removeUser の userId が空'],
   ] as [unknown, string][])('rejects invalid requests (%s: %s)', async (body) => {
     expect((await post(body)).status).toBe(400);
   });

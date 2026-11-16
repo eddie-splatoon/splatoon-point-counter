@@ -2,7 +2,7 @@
 
 Twitch のフォロワー数とフォロワー目標（クリエイターゴール）をリアルタイムに受信し、アプリの `/api/twitch` へ送信する常駐スクリプトです。チャットも受信し、初めてコメントした視聴者への挨拶と配信者自身のコメントを、アプリの読み上げキュー（`/api/speech`）へ送ります。声やコントロールパネルのボタンで依頼された（`/api/clip`）Twitch のクリップも作ります。
 
-- 受信: [EventSub WebSocket](https://dev.twitch.tv/docs/eventsub/handling-websocket-events/)（`channel.follow` v2、`channel.goal.begin` / `progress` / `end`、`channel.chat.message` v1）
+- 受信: [EventSub WebSocket](https://dev.twitch.tv/docs/eventsub/handling-websocket-events/)（`channel.follow` v2、`channel.goal.begin` / `progress` / `end`、`channel.chat.message` / `message_delete` / `clear_user_messages` / `clear` v1、`stream.offline` v1）
 - 認証: [Device Code Flow](https://dev.twitch.tv/docs/authentication/getting-tokens-oauth/#device-code-grant-flow)（リダイレクト用のサーバーや公開 URL が不要）
 - 依存パッケージなし（Node 24 標準の `fetch` / `WebSocket` と型除去で動作）
 
@@ -104,6 +104,10 @@ sequenceDiagram
 - 返信は同じ人へは 5 分に 1 回、チャンネル全体では 15 秒に 1 回までに抑えます（抑えているあいだは返しません。配信画面に書き方を出しておきます）。返信は読み上げません
 - 配信者自身・`TWITCH_SPEECH_IGNORE` のボット・共有チャットのほかのチャンネルからの発言は受け付けません
 - ログには user_id と結果だけを出します（コメント本文・名前は出しません）
+- 並んだメッセージがモデレーターに削除されたとき（`channel.chat.message_delete`）・BAN / タイムアウトされたとき（`channel.chat.clear_user_messages`）は、その人を列から外します。チャットの全消去（`channel.chat.clear`）はログに出すだけです。どれも今のスコープ `user:read:chat` で購読できます
+- 配信が終わったとき（`stream.offline`）は、受付終了と同じく列を消します
+- keepalive が途切れるなどで新しく接続し直したときは、切れていた間のチャットが届かないので、「参加」タブに「再接続しました（その間の参加は受け付けられていない可能性あり）」と出します（Twitch の `session_reconnect` による切り替えでは出しません）
+- 通知は `message_id` で重複を除き、10 分より古い通知は捨てます
 
 ### 以前から使っている場合（再承認）
 

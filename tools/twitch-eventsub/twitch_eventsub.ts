@@ -28,6 +28,8 @@ const CHAT_POST_POLL_INTERVAL_MS = 1_000;
 // 参加受付の返信を抑える間隔（同じ人へ・チャンネル全体）。抑えている間は返さない（配信画面に書き方を出している）
 export const JOIN_REPLY_USER_INTERVAL_MS = 5 * 60_000;
 export const JOIN_REPLY_GLOBAL_INTERVAL_MS = 15_000;
+// EventSub の通知の重複を除く期間。これより古い通知は捨てる（再送・再接続で古いものが届いたとき）
+export const NOTIFICATION_MAX_AGE_MS = 10 * 60_000;
 const INITIAL_RECONNECT_DELAY_MS = 1_000;
 const MAX_RECONNECT_DELAY_MS = 60_000;
 // keepalive_timeout_seconds を過ぎてもメッセージが来なければ切断とみなす（ネットワーク遅延分の猶予）
@@ -271,8 +273,14 @@ export class TwitchClient {
       { type: 'channel.goal.begin', version: '1', condition: { broadcaster_user_id: this.userId } },
       { type: 'channel.goal.progress', version: '1', condition: { broadcaster_user_id: this.userId } },
       { type: 'channel.goal.end', version: '1', condition: { broadcaster_user_id: this.userId } },
-      // 自分のチャンネルのチャットを、自分のアカウントとして読む
+      // 自分のチャンネルのチャットを、自分のアカウントとして読む（下の 3 つも user:read:chat で購読できる）
       { type: 'channel.chat.message', version: '1', condition: { broadcaster_user_id: this.userId, user_id: this.userId } },
+      // 参加受付: メッセージの削除・BAN / タイムアウトで列から外す。チャットの全消去はログだけ
+      { type: 'channel.chat.message_delete', version: '1', condition: { broadcaster_user_id: this.userId, user_id: this.userId } },
+      { type: 'channel.chat.clear_user_messages', version: '1', condition: { broadcaster_user_id: this.userId, user_id: this.userId } },
+      { type: 'channel.chat.clear', version: '1', condition: { broadcaster_user_id: this.userId, user_id: this.userId } },
+      // 配信の終了で受付の列を消す（スコープ不要）
+      { type: 'stream.offline', version: '1', condition: { broadcaster_user_id: this.userId } },
     ];
     for (const sub of subscriptions) {
       await this.helix('/eventsub/subscriptions', {
@@ -356,15 +364,39 @@ interface EventSubHandlers {
   onWelcome: (sessionId: string) => Promise<void>;
   onNotification: (type: string, event: unknown) => void;
   onError: (error: Error) => void;
+  // 切れたあと新しいセッションで購読し直した（切れていた間のイベントは再送されない）。session_reconnect では呼ばない
+  onResubscribed?: () => void;
 }
 
 interface EventSubMessage {
-  metadata: { message_type: string; subscription_type?: string };
+  metadata: { message_type: string; subscription_type?: string; message_id?: string; message_timestamp?: string };
   payload: {
     session?: { id: string; keepalive_timeout_seconds: number; reconnect_url: string };
     event?: unknown;
     subscription?: { type: string; status: string };
   };
+}
+
+/** EventSub の通知の重複を除く（metadata.message_id）。NOTIFICATION_MAX_AGE_MS より古い通知も捨てる */
+export class NotificationDeduper {
+  private seen = new Map<string, number>();
+  private now: () => number;
+
+  constructor(now: () => number = Date.now) {
+    this.now = now;
+  }
+
+  /** 処理してよい通知なら true（記録する）。重複・古い通知は false */
+  accept(messageId: string | undefined, timestamp: string | undefined): boolean {
+    const now = this.now();
+    for (const [id, at] of this.seen) if (now - at >= NOTIFICATION_MAX_AGE_MS) this.seen.delete(id);
+    const sentAt = timestamp === undefined ? NaN : Date.parse(timestamp);
+    if (!Number.isNaN(sentAt) && now - sentAt >= NOTIFICATION_MAX_AGE_MS) return false;
+    if (!messageId) return true;
+    if (this.seen.has(messageId)) return false;
+    this.seen.set(messageId, now);
+    return true;
+  }
 }
 
 export class EventSubConnection {
@@ -378,11 +410,20 @@ export class EventSubConnection {
   private keepaliveMs = 0;
   private reconnectDelay = INITIAL_RECONNECT_DELAY_MS;
   private stopped = false;
+  // 一度でも購読できたか（2 回目以降の購読は、切れたあとの購読し直し）
+  private subscribedOnce = false;
+  private deduper: NotificationDeduper;
 
-  constructor(handlers: EventSubHandlers, createSocket: (url: string) => SocketLike = (url) => new WebSocket(url), log = console.log) {
+  constructor(
+    handlers: EventSubHandlers,
+    createSocket: (url: string) => SocketLike = (url) => new WebSocket(url),
+    log = console.log,
+    deduper = new NotificationDeduper(),
+  ) {
     this.handlers = handlers;
     this.createSocket = createSocket;
     this.log = log;
+    this.deduper = deduper;
   }
 
   start(): void {
@@ -435,6 +476,8 @@ export class EventSubConnection {
           this.handlers.onWelcome(session.id).then(
             () => {
               this.reconnectDelay = INITIAL_RECONNECT_DELAY_MS;
+              if (this.subscribedOnce) this.handlers.onResubscribed?.();
+              this.subscribedOnce = true;
             },
             (error: Error) => {
               if (!isRetryable(error)) return this.handlers.onError(error);
@@ -448,6 +491,7 @@ export class EventSubConnection {
         break;
       }
       case 'notification':
+        if (!this.deduper.accept(metadata.message_id, metadata.message_timestamp)) break;
         this.handlers.onNotification(metadata.subscription_type ?? '', payload.event);
         break;
       case 'session_reconnect':
@@ -749,6 +793,46 @@ export async function handleJoinCommand(event: unknown, options: JoinHandlerOpti
   }
 }
 
+const isRecord = (value: unknown): value is Record<string, unknown> => typeof value === 'object' && value !== null;
+
+/**
+ * 参加受付に関わるチャンネルのイベントを /api/join-queue に送る本文（関係ないイベントは null）。
+ * メッセージの削除はそのメッセージで並んだ人、BAN・タイムアウトはその人を外し、配信の終了で受付の列を消す
+ */
+export function moderationRequest(type: string, event: unknown): Record<string, string> | null {
+  const e = isRecord(event) ? event : {};
+  if (type === 'channel.chat.message_delete' && typeof e.message_id === 'string' && e.message_id !== '') {
+    return { action: 'removeMessage', messageId: e.message_id };
+  }
+  if (type === 'channel.chat.clear_user_messages' && typeof e.target_user_id === 'string' && e.target_user_id !== '') {
+    return { action: 'removeUser', userId: e.target_user_id };
+  }
+  if (type === 'stream.offline') return { action: 'offline' };
+  return null;
+}
+
+/** 削除・BAN・配信の終了を参加受付に知らせる。ログには user_id と結果だけ（本文・名前は出さない） */
+export async function handleModerationEvent(type: string, event: unknown, joinUrl: string, fetchFn: FetchFn = fetch, log = console.log): Promise<void> {
+  if (type === 'channel.chat.clear') {
+    log('チャットが全消去されました（参加受付の列はそのまま）');
+    return;
+  }
+  const body = moderationRequest(type, event);
+  if (!body) return;
+  const res = await fetchFn(joinUrl, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+  if (!res.ok) throw new Error(`${joinUrl} への送信に失敗しました: ${res.status}`);
+  const { removed } = (await res.json()) as { removed?: boolean };
+  if (body.action === 'offline') log('配信が終わったので、参加受付の列を消しました');
+  else if (body.action === 'removeUser') log(`参加受付: user_id=${body.userId} BAN・タイムアウト → ${removed ? 'removed' : 'notInQueue'}`);
+  else log(`参加受付: メッセージの削除 → ${removed ? 'removed' : 'notInQueue'}`);
+}
+
+/** EventSub に新しく接続し直したことを参加受付に知らせる（手元に「その間の参加は受け付けられていない可能性あり」と出す） */
+export async function publishReconnected(joinUrl: string, fetchFn: FetchFn = fetch): Promise<void> {
+  const res = await fetchFn(joinUrl, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'reconnected' }) });
+  if (!res.ok) throw new Error(`${joinUrl} への送信に失敗しました: ${res.status}`);
+}
+
 // ---- クリップ ----
 
 export interface Clip {
@@ -1034,6 +1118,12 @@ async function main(): Promise<void> {
           });
           return;
         }
+        if (type.startsWith('channel.chat.') || type === 'stream.offline') {
+          handleModerationEvent(type, event, joinUrl, fetch, log).catch((error) => {
+            log(`警告: 参加受付に送信できませんでした: ${(error as Error).message}`);
+          });
+          return;
+        }
         state = applyNotification(state, type, event, Date.now());
         log(`${type} を受信しました（フォロワー数: ${state.followerTotal}）`);
         void publish();
@@ -1047,6 +1137,12 @@ async function main(): Promise<void> {
       onError: (error) => {
         console.error(`[twitch] ${error.message}`);
         process.exit(1);
+      },
+      onResubscribed: () => {
+        log('EventSub に接続し直しました。切れていた間のチャット（!参加 など）は届いていません');
+        publishReconnected(joinUrl).catch((error) => {
+          log(`警告: 参加受付に再接続を知らせられませんでした: ${(error as Error).message}`);
+        });
       },
     },
     undefined,
