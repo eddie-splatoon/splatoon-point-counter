@@ -1,7 +1,9 @@
 // @vitest-environment node
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { CACHE_TTL_MS, MAX_RESPONSE_BYTES, RETRY_AFTER_FAILURE_MS, __TEST_ONLY_resetSalmonScheduleCache } from '../../../lib/salmonScheduleFetch';
+import {
+  CACHE_TTL_MS, MAX_RESPONSE_BYTES, RETRY_AFTER_FAILURE_MS, __TEST_ONLY_resetSalmonScheduleCache, peekSalmonSchedule,
+} from '../../../lib/salmonScheduleFetch';
 
 import { GET } from './route';
 
@@ -36,6 +38,15 @@ afterEach(() => {
   vi.unstubAllGlobals();
   vi.useRealTimers();
   vi.restoreAllMocks();
+});
+
+describe('peekSalmonSchedule', () => {
+  it('returns the cache without waiting and fetches in the background', async () => {
+    respondWith('A');
+    expect(peekSalmonSchedule()).toBeNull();
+    await vi.waitFor(() => expect(peekSalmonSchedule()?.entries[0].stage.name).toBe('A'));
+    expect(scheduleCalls()).toHaveLength(1);
+  });
 });
 
 describe('Salmon schedule API', () => {

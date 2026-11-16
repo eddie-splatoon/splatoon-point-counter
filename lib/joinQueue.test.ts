@@ -1,23 +1,30 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 
+import { __TEST_ONLY_setDb, openDb } from './db';
 import {
+  HazardContext,
   __TEST_ONLY_resetJoinQueue,
   callNext,
   cancelJoin,
   closeQueue,
   getPanelView,
   getPublicView,
+  getRecordedStreamerRating,
   joinQueue,
   openQueue,
   removeFromQueue,
+  setStreamerRating,
 } from './joinQueue';
 import { JOIN_QUEUE_MAX_ENTRIES } from './joinQueueTypes';
+import { addJob } from './salmon';
+import { SalmonJobDetails } from './salmonTypes';
 
 const join = (userId: string, args = '', userName = `Viewer${userId}`) =>
   joinQueue({ userId, userName, messageId: `m-${userId}`, args }, 1000);
 
 beforeEach(() => {
   __TEST_ONLY_resetJoinQueue();
+  __TEST_ONLY_setDb(openDb(':memory:'));
 });
 
 describe('joinQueue', () => {
@@ -123,6 +130,63 @@ describe('callNext / removeFromQueue / closeQueue', () => {
     join('2');
     const before = getPublicView().revision;
     closeQueue();
-    expect(getPublicView()).toEqual({ open: false, current: null, entries: [], revision: before + 1 });
+    expect(getPublicView()).toEqual({ open: false, current: null, entries: [], hazard: null, revision: before + 1 });
+  });
+});
+
+const recordGrade = (gradeName: string, gradePoint: number, playedAt: string) => addJob(
+  { goldenEggs: 50, bossKills: 20, deaths: 1, cleared: true, waveReached: 3, stage: '', weapons: [], jobKind: 'regular' },
+  1000, playedAt, {
+    hazardLevel: 200, gradeName, gradePoint, jobPoint: null, jobScore: null, jobRate: null, clearBonus: null,
+    teamGoldenEggs: null, teamPowerEggs: null, scaleBronze: null, scaleSilver: null, scaleGold: null, kingName: null, kingDefeated: null,
+    waves: [], players: [], bosses: [],
+  } satisfies SalmonJobDetails,
+);
+
+describe('getRecordedStreamerRating', () => {
+  it('takes the latest recorded grade', () => {
+    expect(getRecordedStreamerRating()).toBeNull();
+    recordGrade('たつじん+2', 40, '2026/11/16 20:00');
+    recordGrade('でんせつ', 820, '2026/11/16 20:10');
+    expect(getRecordedStreamerRating()).toEqual({ rating: { tier: 8, points: 820, note: null }, ratedAt: Date.parse('2026-11-16T11:10:00Z') });
+  });
+});
+
+describe('room hazard', () => {
+  const context: HazardContext = { recordedStreamer: { rating: { tier: 8, points: 820, note: null }, ratedAt: 0 }, shiftStart: null };
+
+  it('estimates from the streamer, the current person and the queue, showing only the rounded value to the stream', () => {
+    openQueue();
+    join('1', 'たつじん 40');
+    join('2', '');
+    callNext();
+    // (1620 + 440) / 2 = 1030 → 206% → 約 210%。2 は不明、野良 1 人
+    expect(getPublicView(context).hazard).toEqual({ value: 210, unknown: 1, wild: 1 });
+    expect(getPanelView(context)).toMatchObject({
+      streamer: { source: 'record' }, room: { estimate: 206, counted: 2 }, recommended: { practice: 90, normal: 205, challenge: 333 },
+    });
+  });
+
+  it('lets the streamer type a rating that wins over the record, and go back to the record', () => {
+    expect(setStreamerRating('あいうえお')).toBe(false);
+    expect(setStreamerRating('たつじん+3 50', 5)).toBe(true);
+    expect(getPanelView(context).streamer).toEqual({ rating: { tier: 7, points: 50, note: null }, ratedAt: 5, source: 'manual' });
+    expect(setStreamerRating(null)).toBe(true);
+    expect(getPanelView(context).streamer?.source).toBe('record');
+    expect(getPanelView().streamer).toBeNull();
+  });
+
+  it('uses the record again when a job is imported after the typed rating', () => {
+    setStreamerRating('でんせつ820', 100);
+    const newer: HazardContext = { ...context, recordedStreamer: { rating: { tier: 8, points: 840, note: null }, ratedAt: 200 } };
+    expect(getPanelView(newer).streamer).toMatchObject({ rating: { points: 840 }, source: 'record' });
+    expect(getPanelView(context).streamer).toMatchObject({ rating: { points: 820 }, source: 'manual' });
+  });
+
+  it('updates when the rating was declared on rewriting', () => {
+    openQueue();
+    joinQueue({ userId: '1', userName: 'A', messageId: 'm', args: 'たつじん 40' }, 10);
+    joinQueue({ userId: '1', userName: 'A', messageId: 'm', args: 'たつじん 50' }, 20);
+    expect(getPanelView().entries[0]).toMatchObject({ joinedAt: 10, ratedAt: 20 });
   });
 });

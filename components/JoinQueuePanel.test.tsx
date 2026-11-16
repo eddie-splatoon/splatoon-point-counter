@@ -13,10 +13,14 @@ const view = (overrides: Partial<JoinQueuePanelView> = {}): JoinQueuePanelView =
   open: true,
   current: null,
   entries: [
-    { position: 1, userId: '1', userName: 'ViewerA', rating: { tier: 8, points: 820, note: null }, unreadable: false, joinedAt: 1 },
-    { position: 2, userId: '2', userName: 'ViewerB', rating: { tier: 4, points: 3, note: 'たつじん+3 ではなく、たつじん 3 として読みました' }, unreadable: false, joinedAt: 2 },
-    { position: 3, userId: '3', userName: 'ViewerC', rating: null, unreadable: true, joinedAt: 3 },
+    { position: 1, userId: '1', userName: 'ViewerA', rating: { tier: 8, points: 820, note: null }, unreadable: false, joinedAt: 1, ratedAt: 1 },
+    { position: 2, userId: '2', userName: 'ViewerB', rating: { tier: 4, points: 3, note: 'たつじん+3 ではなく、たつじん 3 として読みました' }, unreadable: false, joinedAt: 2, ratedAt: 2 },
+    { position: 3, userId: '3', userName: 'ViewerC', rating: null, unreadable: true, joinedAt: 3, ratedAt: 3 },
   ],
+  streamer: { rating: { tier: 8, points: 820, note: null }, ratedAt: 0, source: 'record' },
+  room: { estimate: 206, counted: 3, unknown: 1, wild: 0, stale: 1, lowest: 88, lowerTier: 1 },
+  shiftStart: 2,
+  recommended: { practice: 90, normal: 205, challenge: 333 },
   revision: 1,
   ...overrides,
 });
@@ -38,9 +42,64 @@ describe('JoinQueuePanel', () => {
     expect(mockedAxios.get).toHaveBeenCalledWith('/api/join-queue?view=panel');
   });
 
+  it('shows the room estimate, the recommendations and a warning about lower titles', async () => {
+    render(<JoinQueuePanel />);
+
+    expect(await screen.findByText('通常のバイトなら 約 205%（でんせつ 225 相当）')).toBeInTheDocument();
+    expect(screen.getByText('3 人で計算・不明 1 人を除く・古い評価 1 人')).toBeInTheDocument();
+    expect(screen.getByRole('list', { name: 'おすすめのキケン度' })).toHaveTextContent(
+      '練習: 90%（たつじん 50 相当）通常: 205%（でんせつ 225 相当）腕試し: 333%（でんせつ 865 相当）');
+    expect(screen.getByText(/配信者より低い称号の人が 1 人います/)).toBeInTheDocument();
+    expect(screen.getByText('取り込んだ記録')).toBeInTheDocument();
+    // 配信者（ratedAt 0）と ViewerA（ratedAt 1）はシフトの開始（2）より前
+    expect(screen.getAllByText('シフトが替わる前の評価（古い）')).toHaveLength(2);
+  });
+
+  it('sets the streamer rating and goes back to the record', async () => {
+    mockedAxios.post.mockResolvedValue({
+      data: view({ streamer: { rating: { tier: 7, points: 50, note: null }, ratedAt: 5, source: 'manual' } }), status: 200,
+    });
+    render(<JoinQueuePanel />);
+
+    fireEvent.change(await screen.findByLabelText('配信者の評価'), { target: { value: 'たつじん+3 50' } });
+    fireEvent.click(screen.getByRole('button', { name: '入れる' }));
+    await waitFor(() => expect(mockedAxios.post).toHaveBeenCalledWith('/api/join-queue', { action: 'streamer', rating: 'たつじん+3 50' }));
+    fireEvent.click(await screen.findByRole('button', { name: '取り込んだ記録に戻す' }));
+    await waitFor(() => expect(mockedAxios.post).toHaveBeenCalledWith('/api/join-queue', { action: 'streamer', rating: null }));
+  });
+
+  it('shows an error when the streamer rating cannot be read', async () => {
+    mockedAxios.post.mockRejectedValue(new Error('400'));
+    render(<JoinQueuePanel />);
+
+    fireEvent.change(await screen.findByLabelText('配信者の評価'), { target: { value: 'あいうえお' } });
+    fireEvent.click(screen.getByRole('button', { name: '入れる' }));
+    expect(await screen.findByText('配信者の評価を読めませんでした（例: でんせつ820）。')).toBeInTheDocument();
+  });
+
+  it('announces a private job', async () => {
+    mockedAxios.post.mockResolvedValue({ data: view(), status: 200 });
+    render(<JoinQueuePanel />);
+
+    fireEvent.click(await screen.findByRole('button', { name: 'プライベートバイトのお知らせを流す' }));
+    await waitFor(() => expect(mockedAxios.post).toHaveBeenCalledWith('/api/join-queue', { action: 'announce', kind: 'private' }));
+    expect(await screen.findByText(/チャットに書き込んで読み上げます/)).toBeInTheDocument();
+  });
+
+  it('says the estimate is unavailable when nobody has a known rating', async () => {
+    mockedAxios.get.mockResolvedValue({
+      data: view({ streamer: null, room: { estimate: null, counted: 0, unknown: 1, wild: 3, stale: 0, lowest: null, lowerTier: 0 }, recommended: null }),
+      status: 200,
+    });
+    render(<JoinQueuePanel />);
+
+    expect(await screen.findByText('評価がわかる人がいないので出せません。')).toBeInTheDocument();
+    expect(screen.getByText('不明（取り込んだ記録に評価がありません）')).toBeInTheDocument();
+  });
+
   it('calls the next person', async () => {
     mockedAxios.post.mockResolvedValue({
-      data: view({ current: { userId: '1', userName: 'ViewerA', rating: { tier: 8, points: 820, note: null }, unreadable: false, joinedAt: 1 }, entries: [] }),
+      data: view({ current: { userId: '1', userName: 'ViewerA', rating: { tier: 8, points: 820, note: null }, unreadable: false, joinedAt: 1, ratedAt: 1 }, entries: [] }),
       status: 200,
     });
     render(<JoinQueuePanel />);

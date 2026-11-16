@@ -148,13 +148,135 @@ export function formatJoinReply(userName: string, position: number, unreadable: 
 export const formatCancelReply = (userName: string) => `${userName} さん、受付を取り消しました。`;
 export const formatFullReply = (userName: string) => `${userName} さん、ごめんなさい。受付がいっぱいです（${JOIN_QUEUE_MAX_ENTRIES} 人まで）。`;
 
+// ---- 部屋の推定キケン度 ----
+
+// 部屋の人数（配信者 + 参加者 3 人）
+export const ROOM_SIZE = 4;
+// キケン度の上限（MAX）
+export const MAX_HAZARD = 333;
+// 評価値が無い（称号だけ）ときの近似。たつじん以下は tier の中央、でんせつは仮の値（仕様では要調整）
+const APPROX_POINTS = 50;
+const APPROX_LEGEND_POINTS = 400;
+
+/**
+ * 累計評価値（0〜1799）。tier 0〜7 は tier*100 + 評価値、でんせつは 800 + 評価値。
+ * 評価値が無ければ近似する
+ */
+export function ratingAxis(rating: JoinRating): number {
+    if (rating.tier >= LEGEND_TIER) return 800 + (rating.points ?? APPROX_LEGEND_POINTS);
+    return rating.tier * 100 + (rating.points ?? APPROX_POINTS);
+}
+
+/** 推定キケン度(%) = 累計評価値 ÷ 5、上限 333%（攻略 Wiki の解析値。公式は公表していない） */
+export const hazardOfAxis = (axis: number): number => Math.min(MAX_HAZARD, axis / 5);
+
+/** キケン度に相当する評価（230% → でんせつ 350、88% → たつじん 40）。hazardOfAxis の逆 */
+export function ratingOfHazard(hazard: number): JoinRating {
+    const axis = Math.max(0, Math.round(hazard * 5));
+    if (axis >= 800) return {tier: LEGEND_TIER, points: Math.min(LEGEND_MAX_POINTS, axis - 800), note: null};
+    return {tier: Math.floor(axis / 100), points: axis % 100, note: null};
+}
+
+/** 「230%（でんせつ 350 相当）」 */
+export const formatHazardWithRating = (hazard: number): string => `${hazard}%（${formatJoinRating(ratingOfHazard(hazard))} 相当）`;
+
+/** キケン度を step% ごとに丸める（333% は MAX なので丸めない。丸めて 333% を超えるときも 333%） */
+export function roundHazard(value: number, step: number): number {
+    if (value >= MAX_HAZARD) return MAX_HAZARD;
+    return Math.min(MAX_HAZARD, Math.round(value / step) * step);
+}
+
+/** 計算に使う人。ratedAt は評価を申告（記録）した時刻（わからなければ null） */
+export interface RatedPerson {
+    rating: JoinRating | null;
+    ratedAt: number | null;
+}
+
+export interface RoomHazard {
+    // 推定キケン度（丸める前）。評価がわかる人が 1 人もいなければ null
+    estimate: number | null;
+    // 計算に使った人数（配信者を含む）
+    counted: number;
+    // 評価が不明で計算から外した人数（配信者を含む）
+    unknown: number;
+    // 部屋に足りない人数（野良。計算には含まない）
+    wild: number;
+    // 計算に使った評価のうち、いまのシフトより前に申告したもの（シフトが替わると評価が「称号 40」に戻る）
+    stale: number;
+    // 計算に使った人のうち、いちばん低い人のキケン度（練習のおすすめ）
+    lowest: number | null;
+    // 配信者より低い称号の参加者の人数（通常のバイトに合流すると、評価が上がるのはいちばん低い称号の人だけ）
+    lowerTier: number;
+}
+
+/**
+ * 配信者と参加者（先頭から、配信者と合わせて 4 人まで）から部屋の推定キケン度を出す。
+ * 評価が不明の人は外し、4 人に足りない分（野良）は含まない。shiftStart はいまのシフトの開始（わからなければ null）
+ */
+export function estimateRoomHazard(streamer: RatedPerson | null, participants: RatedPerson[], shiftStart: number | null): RoomHazard {
+    const members = participants.slice(0, ROOM_SIZE - 1);
+    const people = [streamer ?? {rating: null, ratedAt: null}, ...members];
+    const known = people.filter((p): p is RatedPerson & {rating: JoinRating} => p.rating !== null);
+    const hazards = known.map((p) => hazardOfAxis(ratingAxis(p.rating)));
+    const streamerTier = streamer?.rating?.tier;
+    return {
+        estimate: known.length === 0 ? null : hazardOfAxis(known.reduce((sum, p) => sum + ratingAxis(p.rating), 0) / known.length),
+        counted: known.length,
+        unknown: people.length - known.length,
+        wild: ROOM_SIZE - people.length,
+        stale: known.filter((p) => isStaleRating(p.ratedAt, shiftStart)).length,
+        lowest: hazards.length === 0 ? null : Math.min(...hazards),
+        lowerTier: streamerTier === undefined ? 0 : members.filter((p) => p.rating !== null && p.rating.tier < streamerTier).length,
+    };
+}
+
+/** 手元に出すおすすめのキケン度（5% ごと）。練習: いちばん低い人、通常: 推定値、腕試し: 333% */
+export function recommendHazards(room: RoomHazard): {practice: number; normal: number; challenge: number} | null {
+    if (room.estimate === null || room.lowest === null) return null;
+    return {practice: roundHazard(room.lowest, 5), normal: roundHazard(room.estimate, 5), challenge: MAX_HAZARD};
+}
+
+/** シフトが替わる前に申告した評価か（シフトが替わると評価は「称号 40」に戻る） */
+export const isStaleRating = (ratedAt: number | null, shiftStart: number | null): boolean =>
+    ratedAt !== null && shiftStart !== null && ratedAt < shiftStart;
+
+/** 配信画面の文面（値は 10% ごとに丸めたもの） */
+export function formatRoomHazard(hazard: JoinQueuePublicHazard): string {
+    const notes = [
+        hazard.unknown > 0 ? `不明 ${hazard.unknown} 人を除く` : null,
+        hazard.wild > 0 ? `野良 ${hazard.wild} 人分は含まない` : null,
+    ].filter((note) => note !== null);
+    const head = `この部屋の推定キケン度 約 ${hazard.value}%（${formatJoinRating(ratingOfHazard(hazard.value))} 相当・自己申告からの目安）`;
+    return notes.length === 0 ? head : `${head}。${notes.join('・')}`;
+}
+
+// 配信者が流すお知らせ（チャットに書き込んで読み上げる）
+export const JOIN_ANNOUNCEMENT_KINDS = ['merge', 'private'] as const;
+export type JoinAnnouncementKind = typeof JOIN_ANNOUNCEMENT_KINDS[number];
+
+export function formatJoinAnnouncement(kind: JoinAnnouncementKind, recommended: number | null): string {
+    if (kind === 'merge') return 'ここからは通常のバイトに合流します。配信者の評価は気にしなくて大丈夫です。一緒に楽しみましょう';
+    const head = 'プライベートバイトの枠です。評価は減らないので、誰でも気軽にどうぞ。';
+    // 読み上げるので括弧は使わない
+    return recommended === null ? head : `${head}今日のおすすめは ${recommended}%、${formatJoinRating(ratingOfHazard(recommended))} 相当です`;
+}
+
 // ---- API の型 ----
+
+/** 配信画面に出す推定キケン度（10% ごとに丸めた値と人数だけ。誰の評価かは出さない） */
+export interface JoinQueuePublicHazard {
+    value: number;
+    unknown: number;
+    wild: number;
+}
 
 /** 配信画面用（番号・表示名だけ。評価は出さない） */
 export interface JoinQueuePublicView {
     open: boolean;
     current: string | null;
     entries: {position: number; userName: string}[];
+    // 部屋の推定キケン度。評価がわかる人がいなければ null
+    hazard: JoinQueuePublicHazard | null;
     revision: number;
 }
 
@@ -165,6 +287,14 @@ export interface JoinQueueEntryView {
     rating: JoinRating | null;
     unreadable: boolean;
     joinedAt: number;
+    // 評価を申告した時刻（書き直すと変わる）
+    ratedAt: number;
+}
+
+/** 配信者の評価。record は取り込んだ最新の記録から、manual は手元で入力したもの */
+export interface StreamerRating extends RatedPerson {
+    rating: JoinRating;
+    source: 'record' | 'manual';
 }
 
 /** 配信者の手元用（評価・注記つき） */
@@ -172,6 +302,11 @@ export interface JoinQueuePanelView {
     open: boolean;
     current: Omit<JoinQueueEntryView, 'position'> | null;
     entries: JoinQueueEntryView[];
+    streamer: StreamerRating | null;
+    room: RoomHazard;
+    // いまのシフトの開始（これより前に申告した評価は古い。スケジュールが取れなければ null）
+    shiftStart: number | null;
+    recommended: {practice: number; normal: number; challenge: number} | null;
     revision: number;
 }
 
