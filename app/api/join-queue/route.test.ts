@@ -1,8 +1,11 @@
 // @vitest-environment node
 import { NextRequest } from 'next/server';
-import { beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
+import { __TEST_ONLY_setDb, openDb } from '../../../lib/db';
 import { __TEST_ONLY_resetJoinQueue } from '../../../lib/joinQueue';
+import { __TEST_ONLY_resetSalmonScheduleCache } from '../../../lib/salmonScheduleFetch';
+import { __TEST_ONLY_resetTelop, expireChatPosts } from '../../../lib/telop';
 
 import { GET, POST } from './route';
 
@@ -19,6 +22,17 @@ const joinBody = { action: 'join', userId: '999', userName: 'ViewerA', messageId
 
 beforeEach(() => {
   __TEST_ONLY_resetJoinQueue();
+  __TEST_ONLY_resetTelop();
+  __TEST_ONLY_resetSalmonScheduleCache();
+  __TEST_ONLY_setDb(openDb(':memory:'));
+  // スケジュールは取れない（シフトの区切りはわからない）
+  vi.stubGlobal('fetch', vi.fn(async () => { throw new Error('offline'); }));
+  vi.spyOn(console, 'error').mockImplementation(() => {});
+});
+
+afterEach(() => {
+  vi.unstubAllGlobals();
+  vi.restoreAllMocks();
 });
 
 describe('Join queue API', () => {
@@ -34,7 +48,7 @@ describe('Join queue API', () => {
     await post(joinBody);
 
     const publicView = await (await GET(new NextRequest(url()))).json();
-    expect(publicView).toEqual({ open: true, current: null, entries: [{ position: 1, userName: 'ViewerA' }], revision: 2 });
+    expect(publicView).toEqual({ open: true, current: null, entries: [{ position: 1, userName: 'ViewerA' }], hazard: { value: 320, unknown: 1, wild: 2 }, revision: 2 });
     const panelView = await (await GET(new NextRequest(url('?view=panel')))).json();
     expect(panelView.entries[0]).toMatchObject({ userId: '999', rating: { tier: 8, points: 820 } });
   });
@@ -52,6 +66,23 @@ describe('Join queue API', () => {
     expect(await (await post({ action: 'close' })).json()).toMatchObject({ open: false, current: null, entries: [] });
   });
 
+  it('sets the streamer rating and shows the estimate', async () => {
+    await post({ action: 'open' });
+    await post(joinBody);
+    const response = await post({ action: 'streamer', rating: 'でんせつ820' });
+    // (1620 + 1620) / 2 = 1620 → 324%
+    expect(await response.json()).toMatchObject({ streamer: { source: 'manual' }, room: { estimate: 324, counted: 2, wild: 2 } });
+    expect((await post({ action: 'streamer', rating: 'あいうえお' })).status).toBe(400);
+    expect(await (await post({ action: 'streamer', rating: null })).json()).toMatchObject({ streamer: null });
+  });
+
+  it('queues an announcement to the chat, read aloud', async () => {
+    await post({ action: 'streamer', rating: 'でんせつ820' });
+    expect((await post({ action: 'announce', kind: 'private' })).status).toBe(200);
+    expect(expireChatPosts()).toEqual([expect.objectContaining({ text: expect.stringContaining('今日のおすすめは 325% です'), speak: true })]);
+    expect((await post({ action: 'announce', kind: 'other' })).status).toBe(400);
+  });
+
   it.each([
     [{ action: 'join', userId: '1', userName: 'A', messageId: 'm' }, 'args が無い'],
     [{ ...joinBody, userId: '' }, 'userId が空'],
@@ -59,6 +90,7 @@ describe('Join queue API', () => {
     [{ action: 'cancel' }, 'cancel の userId が無い'],
     [{ ...joinBody, attached: 'yes' }, 'attached が boolean でない'],
     [{ action: 'reset' }, '知らない action'],
+    [{ action: 'streamer', rating: 1 }, 'streamer の rating が文字列でない'],
   ] as [unknown, string][])('rejects invalid requests (%s: %s)', async (body) => {
     expect((await post(body)).status).toBe(400);
   });

@@ -2,12 +2,20 @@ import { describe, expect, it } from 'vitest';
 
 import {
   JOIN_QUEUE_MAX_ENTRIES,
+  JoinRating,
+  estimateRoomHazard,
   formatCancelReply,
+  formatJoinAnnouncement,
   formatFullReply,
   formatJoinRating,
   formatJoinReply,
+  formatRoomHazard,
+  isStaleRating,
   normalizeJoinText,
   parseJoinRating,
+  ratingAxis,
+  recommendHazards,
+  roundHazard,
   sanitizeDisplayName,
 } from './joinQueueTypes';
 
@@ -122,5 +130,102 @@ describe('replies', () => {
     expect(formatJoinReply('ViewerA', 1, true)).toBe('ViewerA さん、受付しました（1 番目）。書き方: !参加 でんせつ820 / !参加 たつじん+1（!参加 だけでも OK）');
     expect(formatCancelReply('ViewerA')).toBe('ViewerA さん、受付を取り消しました。');
     expect(formatFullReply('ViewerA')).toBe(`ViewerA さん、ごめんなさい。受付がいっぱいです（${JOIN_QUEUE_MAX_ENTRIES} 人まで）。`);
+  });
+});
+
+const r = (tier: number, points: number | null): JoinRating => ({ tier, points, note: null });
+const person = (rating: JoinRating | null, ratedAt: number | null = null) => ({ rating, ratedAt });
+
+describe('ratingAxis', () => {
+  it('adds tier*100 below でんせつ and 800 for でんせつ, approximating a missing point', () => {
+    expect(ratingAxis(r(0, 0))).toBe(0);
+    expect(ratingAxis(r(4, 40))).toBe(440);
+    expect(ratingAxis(r(7, 99))).toBe(799);
+    expect(ratingAxis(r(8, 999))).toBe(1799);
+    expect(ratingAxis(r(4, null))).toBe(450);
+    expect(ratingAxis(r(8, null))).toBe(1200);
+  });
+});
+
+describe('roundHazard', () => {
+  it('rounds to the step and keeps MAX at 333%', () => {
+    expect(roundHazard(164, 10)).toBe(160);
+    expect(roundHazard(166, 5)).toBe(165);
+    expect(roundHazard(332, 5)).toBe(330);
+    expect(roundHazard(332.6, 5)).toBe(333);
+    expect(roundHazard(333, 10)).toBe(333);
+  });
+});
+
+describe('estimateRoomHazard', () => {
+  it('reaches 333% when everyone is でんせつ 865 or more', () => {
+    const room = estimateRoomHazard(person(r(8, 865)), [person(r(8, 900)), person(r(8, 999)), person(r(8, 865))], null);
+    expect(room).toMatchObject({ estimate: 333, counted: 4, unknown: 0, wild: 0 });
+  });
+
+  it('averages the axes and divides by 5', () => {
+    // (1620 + 440) / 2 = 1030 → 206%
+    const room = estimateRoomHazard(person(r(8, 820)), [person(r(4, 40))], null);
+    expect(room.estimate).toBe(206);
+    expect(room.lowest).toBe(88);
+  });
+
+  it('leaves out people whose rating is unknown and counts the missing members as wild', () => {
+    const room = estimateRoomHazard(person(r(8, 500)), [person(null)], null);
+    expect(room).toMatchObject({ estimate: 260, counted: 1, unknown: 1, wild: 2 });
+  });
+
+  it('uses only the first three participants with the streamer', () => {
+    const room = estimateRoomHazard(person(r(8, 500)), [person(r(8, 500)), person(r(8, 500)), person(r(8, 500)), person(r(0, 0))], null);
+    expect(room).toMatchObject({ estimate: 260, counted: 4, wild: 0 });
+  });
+
+  it('cannot estimate without any known rating, including the streamer', () => {
+    expect(estimateRoomHazard(null, [person(null)], null)).toMatchObject({ estimate: null, counted: 0, unknown: 2, wild: 2, lowest: null });
+  });
+
+  it('counts ratings from before the shift began as stale', () => {
+    const room = estimateRoomHazard(person(r(8, 500), 50), [person(r(8, 500), 150), person(r(8, 500), null)], 100);
+    expect(room.stale).toBe(1);
+    expect(estimateRoomHazard(person(r(8, 500), 50), [], null).stale).toBe(0);
+  });
+
+  it('counts participants with a lower title than the streamer', () => {
+    const room = estimateRoomHazard(person(r(8, 0)), [person(r(7, 99)), person(r(8, 999)), person(null)], null);
+    expect(room.lowerTier).toBe(1);
+    expect(estimateRoomHazard(null, [person(r(0, 0))], null).lowerTier).toBe(0);
+  });
+});
+
+describe('isStaleRating', () => {
+  it('is stale only when both times are known and the rating is older than the shift', () => {
+    expect(isStaleRating(50, 100)).toBe(true);
+    expect(isStaleRating(100, 100)).toBe(false);
+    expect(isStaleRating(null, 100)).toBe(false);
+    expect(isStaleRating(50, null)).toBe(false);
+  });
+});
+
+describe('recommendHazards', () => {
+  it('recommends the lowest person for practice, the estimate for normal and 333% for a challenge, every 5%', () => {
+    const room = estimateRoomHazard(person(r(8, 820)), [person(r(4, 40))], null);
+    expect(recommendHazards(room)).toEqual({ practice: 90, normal: 205, challenge: 333 });
+    expect(recommendHazards(estimateRoomHazard(null, [], null))).toBeNull();
+  });
+});
+
+describe('formatRoomHazard', () => {
+  it('shows the estimate with the unknown and wild people, without names', () => {
+    expect(formatRoomHazard({ value: 210, unknown: 0, wild: 0 })).toBe('この部屋の推定キケン度 約 210%（自己申告からの目安）');
+    expect(formatRoomHazard({ value: 260, unknown: 1, wild: 2 }))
+      .toBe('この部屋の推定キケン度 約 260%（自己申告からの目安）。不明 1 人を除く・野良 2 人分は含まない');
+  });
+});
+
+describe('formatJoinAnnouncement', () => {
+  it('builds the announcements, with the recommendation for private jobs when known', () => {
+    expect(formatJoinAnnouncement('merge', 200)).toBe('ここからは通常のバイトに合流します。配信者の評価は気にしなくて大丈夫です。一緒に楽しみましょう');
+    expect(formatJoinAnnouncement('private', 205)).toBe('プライベートバイトの枠です。評価は減らないので、誰でも気軽にどうぞ。今日のおすすめは 205% です');
+    expect(formatJoinAnnouncement('private', null)).not.toContain('おすすめ');
   });
 });

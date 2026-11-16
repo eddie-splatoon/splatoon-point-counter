@@ -1,18 +1,29 @@
 // 視聴者参加型の受付の列（サーバー専用）。列はメモリだけに持ち、受付終了で消す（ディスクに書かない）。
 // ルートごとにモジュールが別に読み込まれても同じ列を共有できるよう globalThis に置く（lib/telop.ts と同じ）
+import {getDb} from './db';
 import {
+    JOIN_TIER_NAMES,
+
     JOIN_QUEUE_MAX_ENTRIES,
     JoinCommandResult,
     JoinQueueEntryView,
     JoinQueuePanelView,
     JoinQueuePublicView,
     JoinRating,
+    RatedPerson,
+    StreamerRating,
+    estimateRoomHazard,
     formatCancelReply,
     formatFullReply,
     formatJoinReply,
     parseJoinRating,
+    recommendHazards,
+    roundHazard,
     sanitizeDisplayName,
 } from './joinQueueTypes';
+import {pickCurrentSchedule} from './salmonSchedule';
+import {getSalmonSchedule} from './salmonScheduleFetch';
+import {parsePlayedAt} from './scoreDisplay';
 
 interface JoinQueueEntry {
     userId: string;
@@ -22,6 +33,7 @@ interface JoinQueueEntry {
     rating: JoinRating | null;
     unreadable: boolean;
     joinedAt: number;
+    ratedAt: number;
 }
 
 interface JoinQueueState {
@@ -30,10 +42,12 @@ interface JoinQueueState {
     entries: JoinQueueEntry[];
     // 「次の人」で呼んだ人
     current: JoinQueueEntry | null;
+    // 手元で入力した配信者の評価（取り込んだ記録より優先する。受付終了でも消さない）
+    streamerOverride: {rating: JoinRating; ratedAt: number} | null;
     revision: number;
 }
 
-const initialState = (): JoinQueueState => ({open: false, entries: [], current: null, revision: 0});
+const initialState = (): JoinQueueState => ({open: false, entries: [], current: null, streamerOverride: null, revision: 0});
 const globalStore = globalThis as typeof globalThis & {__joinQueueState?: JoinQueueState};
 const state = (): JoinQueueState => (globalStore.__joinQueueState ??= initialState());
 
@@ -70,7 +84,7 @@ export function joinQueue(request: JoinRequest, now = Date.now()): JoinCommandRe
     if (index < 0 && s.entries.length >= JOIN_QUEUE_MAX_ENTRIES) {
         return {result: 'full', position: null, reply: formatFullReply(userName)};
     }
-    const entry: JoinQueueEntry = {userId: request.userId, userName, messageId: request.messageId, rating, unreadable, joinedAt: now};
+    const entry: JoinQueueEntry = {userId: request.userId, userName, messageId: request.messageId, rating, unreadable, joinedAt: now, ratedAt: now};
     if (index < 0) {
         s.entries.push(entry);
     } else {
@@ -124,25 +138,87 @@ export function closeQueue(): void {
     changed();
 }
 
-export function getPublicView(): JoinQueuePublicView {
+/** 手元で配信者の評価を入れる（null なら取り込んだ記録に戻す）。読めなければ false */
+export function setStreamerRating(args: string | null, now = Date.now()): boolean {
     const s = state();
+    if (args === null) {
+        s.streamerOverride = null;
+    } else {
+        const {rating} = parseJoinRating(args);
+        if (!rating) return false;
+        s.streamerOverride = {rating, ratedAt: now};
+    }
+    changed();
+    return true;
+}
+
+/** 取り込んだ最新の記録の評価（いつものバイトだけに出る）。無い・読めなければ null */
+export function getRecordedStreamerRating(): RatedPerson & {rating: JoinRating} | null {
+    const row = getDb().prepare(`
+        SELECT grade_name, grade_point, played_at FROM salmon_jobs
+        WHERE grade_name IS NOT NULL ORDER BY id DESC LIMIT 1`)
+        .get() as {grade_name: string; grade_point: number | null; played_at: string | null} | undefined;
+    const tier = row ? (JOIN_TIER_NAMES as readonly string[]).indexOf(row.grade_name) : -1;
+    if (!row || tier < 0) return null;
+    return {rating: {tier, points: row.grade_point, note: null}, ratedAt: row.played_at === null ? null : parsePlayedAt(row.played_at)};
+}
+
+/** 推定キケン度の計算に使う、列の外の情報（配信者の評価の記録・いまのシフトの開始） */
+export interface HazardContext {
+    recordedStreamer: (RatedPerson & {rating: JoinRating}) | null;
+    shiftStart: number | null;
+}
+
+/** 記録とスケジュールから HazardContext を作る。スケジュールが取れなければシフトの区切りはわからない（古い扱いにしない） */
+export async function loadHazardContext(now = Date.now()): Promise<HazardContext> {
+    const schedule = await getSalmonSchedule();
+    // 評価が戻るのはいつものバイトのシフトの区切り
+    const shift = schedule ? pickCurrentSchedule(schedule.entries.filter((e) => e.kind === 'regular'), now) : null;
+    return {recordedStreamer: getRecordedStreamerRating(), shiftStart: shift?.startTime ?? null};
+}
+
+const NO_CONTEXT: HazardContext = {recordedStreamer: null, shiftStart: null};
+
+function streamerOf(context: HazardContext): StreamerRating | null {
+    const override = state().streamerOverride;
+    if (override) return {...override, source: 'manual'};
+    return context.recordedStreamer ? {...context.recordedStreamer, source: 'record'} : null;
+}
+
+// 部屋に入る順: いまの人、列の先頭から
+const roomOf = (s: JoinQueueState, context: HazardContext) => {
+    const participants = [...(s.current ? [s.current] : []), ...s.entries];
+    return estimateRoomHazard(streamerOf(context), participants, context.shiftStart);
+};
+
+export function getPublicView(context: HazardContext = NO_CONTEXT): JoinQueuePublicView {
+    const s = state();
+    const room = roomOf(s, context);
     return {
         open: s.open,
         current: s.current?.userName ?? null,
         entries: s.entries.map((e, i) => ({position: i + 1, userName: e.userName})),
+        hazard: room.estimate === null ? null : {value: roundHazard(room.estimate, 10), unknown: room.unknown, wild: room.wild},
         revision: s.revision,
     };
 }
 
 // messageId は手元にも出さない
-const toPanelEntry = (e: JoinQueueEntry) => ({userId: e.userId, userName: e.userName, rating: e.rating, unreadable: e.unreadable, joinedAt: e.joinedAt});
+const toPanelEntry = (e: JoinQueueEntry) => ({
+    userId: e.userId, userName: e.userName, rating: e.rating, unreadable: e.unreadable, joinedAt: e.joinedAt, ratedAt: e.ratedAt,
+});
 
-export function getPanelView(): JoinQueuePanelView {
+export function getPanelView(context: HazardContext = NO_CONTEXT): JoinQueuePanelView {
     const s = state();
+    const room = roomOf(s, context);
     return {
         open: s.open,
         current: s.current ? toPanelEntry(s.current) : null,
         entries: s.entries.map((e, i): JoinQueueEntryView => ({position: i + 1, ...toPanelEntry(e)})),
+        streamer: streamerOf(context),
+        room,
+        shiftStart: context.shiftStart,
+        recommended: recommendHazards(room),
         revision: s.revision,
     };
 }
