@@ -2,7 +2,7 @@
 
 Twitch のフォロワー数とフォロワー目標（クリエイターゴール）をリアルタイムに受信し、アプリの `/api/twitch` へ送信する常駐スクリプトです。チャットも受信し、初めてコメントした視聴者への挨拶と配信者自身のコメントを、アプリの読み上げキュー（`/api/speech`）へ送ります。声やコントロールパネルのボタンで依頼された（`/api/clip`）Twitch のクリップも作ります。
 
-- 受信: [EventSub WebSocket](https://dev.twitch.tv/docs/eventsub/handling-websocket-events/)（`channel.follow` v2、`channel.goal.begin` / `progress` / `end`、`channel.chat.message` v1）
+- 受信: [EventSub WebSocket](https://dev.twitch.tv/docs/eventsub/handling-websocket-events/)（`channel.follow` v2、`channel.goal.begin` / `progress` / `end`、`channel.chat.message` / `message_delete` / `clear_user_messages` / `clear` v1、`stream.offline` v1）
 - 認証: [Device Code Flow](https://dev.twitch.tv/docs/authentication/getting-tokens-oauth/#device-code-grant-flow)（リダイレクト用のサーバーや公開 URL が不要）
 - 依存パッケージなし（Node 24 標準の `fetch` / `WebSocket` と型除去で動作）
 
