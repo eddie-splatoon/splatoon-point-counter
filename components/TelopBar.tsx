@@ -6,6 +6,8 @@ import React, {useCallback, useEffect, useState} from 'react';
 
 import {TELOP_SHORTCUT_KEYS, TelopData, TelopPreset} from '../lib/telopTypes';
 
+import BreakControl from './BreakControl';
+
 // 入力欄で数字を打っているときや、プルダウン（MUI の Select はフォーカスが div[role=combobox] やメニューの項目に乗る）を
 // キーボードで操作しているときは、ショートカットとして扱わない
 const isEditableTarget = (target: EventTarget | null) =>
@@ -68,6 +70,8 @@ const TelopBar: React.FC<TelopBarProps> = ({reloadKey = 0}) => {
     return (
         // スクロールしても押せるよう上部に固定する（下のカードが透けないよう背景は不透明）
         <Paper elevation={12} sx={{position: 'sticky', top: 0, zIndex: 10, mb: 2, p: 1.5, bgcolor: '#2A2A2A', border: '1px solid rgba(255, 255, 255, 0.15)'}}>
+            {/* 席を離れるときの「休憩する」もどのタブからでも押せるよう、ここに置く */}
+            <BreakControl/>
             {error && <Alert severity="error" sx={{mb: 1}}>{error}</Alert>}
             {presets && presets.length > 0 ? (
                 // プリセットが多いとバーが高くなるので詰めて並べる。キーの割り当ての無いものは outlined で区別する

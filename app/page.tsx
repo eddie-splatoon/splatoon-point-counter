@@ -137,6 +137,8 @@ const OVERLAY_PAGES: OverlayPage[] = [
     {href: '/salmon-review-overlay', label: 'サーモンランの振り返り', size: {width: 1920, height: 1080}},
     {href: '/salmon-review-overlay/vertical', label: 'サーモンランの振り返り 縦型配信用', size: {width: 1080, height: 1920}},
     {href: '/join-queue-overlay', label: '視聴者参加の受付', size: {width: 420, height: 600}},
+    {href: '/break-overlay', label: '休憩中', size: {width: 1920, height: 1080}},
+    {href: '/break-overlay/vertical', label: '休憩中 縦型配信用', size: {width: 1080, height: 1920}},
     // 埋め込むとランチャーを開いているだけで読み上げが鳴る（OBS と二重に鳴る）のでプレビューしない
     {href: '/voice-overlay', label: '読み上げ（音声専用）'},
 ];

@@ -81,6 +81,9 @@ CLIP_PATTERN = re.compile(
 )
 CLIP_COOLDOWN_SECONDS = 30  # 続けて言っても、この時間内は依頼し直さない
 
+# 休憩を終わる合言葉（normalize_for_match した発話に対して調べる）。休憩中でなければサーバーは何もしない
+BREAK_END_PATTERN = re.compile(r"ただいま|只今|(休憩|きゅうけい)(終わり|おわり|終了|しゅうりょう|おしまい)|(戻|もど)りました")
+
 _PUNCTUATION = re.compile(r"[\s、。．，,.!！?？…・「」『』（）()\-ー〜~]+")
 _LATIN_WORD = re.compile(r"[A-Za-z]+")
 
@@ -227,6 +230,31 @@ class ClipTrigger:
         return True
 
 
+def match_break_end(text: str) -> bool:
+    """発話が休憩を終わる合言葉を含むか。"""
+    return BREAK_END_PATTERN.search(normalize_for_match(text)) is not None
+
+
+class BreakNotifier:
+    """配信者の声を拾ったことを /api/break に知らせる（休憩の解除忘れの注意と、合言葉での解除）。
+
+    休憩中かどうかはサーバーが判断する（休憩中でなければ何もしない）。字幕・テロップは止めない。
+    """
+
+    def __init__(self, url: str, post_heard):
+        self.url = url
+        self._post_heard = post_heard
+
+    def heard(self, text: str) -> bool:
+        """知らせて、合言葉を含んでいたかを返す。送れなくても字幕は続ける。"""
+        resume = match_break_end(text)
+        try:
+            self._post_heard(self.url, resume)
+        except Exception as e:  # noqa: BLE001 - 休憩の状態が送れなくても字幕は続ける
+            print(f"[caption-stt] 休憩の状態を送れませんでした: {e}", file=sys.stderr)
+        return resume
+
+
 class TelopMatcher:
     """テロップのプリセットを定期的に取得し、発話に近いものがあればテロップを出す。"""
 
@@ -297,6 +325,16 @@ def default_effect_url(caption_url: str) -> str:
 
 def default_clip_url(caption_url: str) -> str:
     return urljoin(caption_url, "/api/clip")
+
+
+def default_break_url(caption_url: str) -> str:
+    return urljoin(caption_url, "/api/break")
+
+
+def post_heard(url: str, resume: bool) -> None:
+    import requests
+
+    requests.post(url, json={"action": "heard", "resume": resume}, timeout=3).raise_for_status()
 
 
 def request_clip(url: str) -> None:
@@ -436,6 +474,7 @@ def run(
     effect_url: str | None,
     clip: ClipTrigger | None,
     save_dir: Path | None,
+    break_notifier: BreakNotifier | None,
 ) -> None:
     import numpy as np
     import sounddevice as sd
@@ -487,6 +526,9 @@ def run(
         if reason:
             print(f"[caption-stt] (除外: {reason}) {text}")
             return
+        # 休憩中に話したら解除忘れを知らせ、「ただいま」などなら休憩を終わる（字幕・テロップはそのまま続ける）
+        if break_notifier and break_notifier.heard(text):
+            print(f"[caption-stt] (休憩の終わりの合言葉) {text}")
         if clip and clip.try_request(text):
             print(f"[caption-stt] (クリップ) {text}")
             return
@@ -556,6 +598,9 @@ def main() -> None:
     clip = None if os.environ.get("CLIP_MATCH") == "off" else ClipTrigger(
         os.environ.get("CLIP_URL") or default_clip_url(caption_url), request_clip
     )
+    break_notifier = None if os.environ.get("BREAK_MATCH") == "off" else BreakNotifier(
+        os.environ.get("BREAK_URL") or default_break_url(caption_url), post_heard
+    )
 
     if args.compare:
         models = [m.strip() for m in (args.models or model).split(",") if m.strip()]
@@ -576,6 +621,7 @@ def main() -> None:
             effect_url=effect_url,
             clip=clip,
             save_dir=Path(save_dir) if save_dir else None,
+            break_notifier=break_notifier,
         )
     except KeyboardInterrupt:
         print("\n[caption-stt] 終了しました。")

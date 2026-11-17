@@ -3,6 +3,7 @@ import pytest
 
 from caption_stt import (
     CLIP_COOLDOWN_SECONDS,
+    BreakNotifier,
     GLOSSARY,
     TELOP_COOLDOWN_SECONDS,
     TELOP_REFRESH_SECONDS,
@@ -10,11 +11,13 @@ from caption_stt import (
     TelopMatcher,
     build_prompt,
     caption_rejection,
+    default_break_url,
     default_clip_url,
     default_effect_url,
     default_telop_url,
     is_valid_caption,
     load_sample,
+    match_break_end,
     match_clip,
     match_effect,
     match_telop,
@@ -363,3 +366,36 @@ def test_clip_trigger_retries_after_failure():
 
 def test_default_clip_url():
     assert default_clip_url("http://localhost:3000/api/caption") == "http://localhost:3000/api/clip"
+
+
+@pytest.mark.parametrize(
+    "text",
+    ["ただいま", "ただいま。", "只今。", "ただいまー", "タダイマ！", "休憩終わり", "はい、休憩終了です", "きゅうけいおわり", "戻りました。"],
+)
+def test_match_break_end(text):
+    assert match_break_end(text)
+
+
+@pytest.mark.parametrize("text", ["休憩します", "ちょっと水取ってくる", "休憩中だよ", "戻ってきてね"])
+def test_match_break_end_ignores_other_speech(text):
+    assert not match_break_end(text)
+
+
+def test_break_notifier_reports_speech_and_resume_phrase():
+    posted = []
+    notifier = BreakNotifier("http://localhost:3000/api/break", lambda url, resume: posted.append((url, resume)))
+
+    assert notifier.heard("ナイス") is False
+    assert notifier.heard("ただいま") is True
+    assert posted == [("http://localhost:3000/api/break", False), ("http://localhost:3000/api/break", True)]
+
+
+def test_break_notifier_keeps_going_when_post_fails():
+    def fail(_url, _resume):
+        raise RuntimeError("connection refused")
+
+    assert BreakNotifier("http://localhost:3000/api/break", fail).heard("ただいま") is True
+
+
+def test_default_break_url():
+    assert default_break_url("http://localhost:3000/api/caption") == "http://localhost:3000/api/break"
