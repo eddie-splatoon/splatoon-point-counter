@@ -12,7 +12,7 @@ const mockedAxios = vi.mocked(axios);
 const renderLoaded = async (presets: TelopPreset[] = getDefaultTelopSettings().presets) => {
   mockedAxios.get.mockResolvedValue({ data: { presets, current: null, revision: 0 }, status: 200 });
   render(<TelopPanel />);
-  await screen.findByText('📣 自由入力でテロップを出す');
+  await screen.findByText('自由入力でテロップを出す');
 };
 
 const lastPosted = () => mockedAxios.post.mock.calls.at(-1)?.[1];
@@ -150,7 +150,7 @@ describe('TelopPanel', () => {
     mockedAxios.get.mockResolvedValue({ data: { presets: getDefaultTelopSettings().presets, current: null, revision: 0 }, status: 200 });
     const onPresetsChange = vi.fn();
     render(<TelopPanel onPresetsChange={onPresetsChange} />);
-    await screen.findByText('📣 自由入力でテロップを出す');
+    await screen.findByText('自由入力でテロップを出す');
 
     await act(async () => fireEvent.click(screen.getByLabelText('「ナイス!」を読み上げる')));
     expect(onPresetsChange).toHaveBeenCalledTimes(1);

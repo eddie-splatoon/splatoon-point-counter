@@ -1,0 +1,115 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<title>準備 — 配信パネル</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&amp;family=Noto+Sans+JP:wght@400;500;700&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0;background:#0E1014}
+a{color:#FF7AA8}a:hover{color:#FFA3C4}
+button{font-family:inherit;cursor:pointer}
+</style>
+</helmet>
+<div style="min-height: 100vh; background: #0E1014; color: #ECEEF2; font-family: Inter, 'Noto Sans JP', system-ui, sans-serif; font-size: 14px; line-height: 1.5">
+<header style="display: flex; flex-wrap: wrap; align-items: center; gap: 12px 16px; padding: 10px 20px; border-bottom: 1px solid #262B35; background: #12151B">
+  <div style="display: flex; align-items: center; gap: 10px">
+    <svg width="28" height="28" viewBox="0 0 64 64" aria-hidden="true"><rect x="2" y="2" width="60" height="60" rx="16" fill="#FF4F8B"></rect><circle cx="32" cy="34" r="19" fill="#FFC83D" stroke="#E09A12" stroke-width="3"></circle><ellipse cx="25" cy="26" rx="6" ry="3.6" fill="#FFF6D6" transform="rotate(-35 25 26)"></ellipse><circle cx="27" cy="37" r="2.4" fill="#3A2400"></circle><circle cx="38" cy="37" r="2.4" fill="#3A2400"></circle><path d="M29.5 42 q3 2.8 6 0" stroke="#3A2400" stroke-width="2.2" fill="none" stroke-linecap="round"></path></svg>
+    <span style="font-weight: 700; font-size: 16px">配信パネル</span>
+  </div>
+  <nav aria-label="配信のフェーズ" style="display: flex; gap: 2px; padding: 3px; background: #1B1F27; border: 1px solid #262B35; border-radius: 999px">
+    <a href="#" aria-current="page" style="padding: 6px 14px; border-radius: 999px; background: #FF4F8B; color: #1A0710; text-decoration: none; font-weight: 700">準備</a>
+    <a href="Main.dc.html" style="padding: 6px 14px; border-radius: 999px; color: #B5BCC8; text-decoration: none; font-weight: 500">配信中</a>
+    <a href="#" style="padding: 6px 14px; border-radius: 999px; color: #B5BCC8; text-decoration: none; font-weight: 500">振り返り</a>
+  </nav>
+  <div style="flex: 1 1 0"></div>
+  <span style="display: inline-flex; align-items: center; gap: 6px; color: #9AA3B2; font-size: 12px"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#3DDC84" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12l5 5L20 7"></path></svg>変更はすぐ保存</span>
+  <a href="Settings.dc.html" aria-label="設定" style="display: inline-flex; align-items: center; justify-content: center; width: 40px; height: 40px; border-radius: 10px; border: 1px solid #2A303B; color: #B5BCC8"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="3"></circle><path d="M12 2v3M12 19v3M2 12h3M19 12h3M4.9 4.9l2.1 2.1M17 17l2.1 2.1M4.9 19.1L7 17M17 7l2.1-2.1"></path></svg></a>
+</header>
+
+<main style="max-width: 1200px; margin: 0 auto; padding: 20px; box-sizing: border-box; display: flex; flex-wrap: wrap; align-items: flex-start; gap: 16px">
+  <div style="flex: 1 1 420px; min-width: 0; display: flex; flex-direction: column; gap: 16px">
+    <section aria-labelledby="start-h" style="background: #1A1520; border: 1px solid #5B3346; border-radius: 14px; padding: 20px">
+      <h2 id="start-h" style="margin: 0 0 4px; font-size: 18px; font-weight: 700">今日の配信</h2>
+      <p style="margin: 0 0 14px; color: #B5BCC8; font-size: 13px">始めると新しいセッションを作り、「本日」の合計を 0 から数え直して「配信中」の画面に移ります。</p>
+      <label style="display: flex; flex-direction: column; gap: 4px; font-size: 12px; color: #B5BCC8">セッションのタイトル(任意)<input placeholder="例: 夜のバイト" style="height: 44px; border-radius: 10px; border: 1px solid #343B48; background: #0E1014; color: #ECEEF2; padding: 0 12px; font-size: 15px"></label>
+      <a href="Main.dc.html" style="display: flex; align-items: center; justify-content: center; gap: 8px; margin-top: 12px; height: 52px; border-radius: 12px; background: #FF4F8B; color: #1A0710; text-decoration: none; font-size: 16px; font-weight: 700">配信を始める</a>
+      <p style="margin: 8px 0 0; color: #9AA3B2; font-size: 12px">いまのセッション: #25 11/16 17:00 どんぴこ(30 バイト)</p>
+    </section>
+
+    <section aria-labelledby="ch-h" style="background: #161A21; border: 1px solid #262B35; border-radius: 14px; padding: 16px">
+      <div style="display: flex; align-items: baseline; justify-content: space-between; margin-bottom: 8px"><h2 id="ch-h" style="margin: 0; font-size: 15px; font-weight: 700">本日のお題</h2><span style="color: #9AA3B2; font-size: 12px">3 / 8</span></div>
+      <sc-for list="{{ challenges }}" as="c" hint-placeholder-count="3">
+        <div style="display: flex; align-items: center; gap: 8px; min-height: 44px; border-top: 1px solid #232832">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#6B7383" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M9 6h.01M15 6h.01M9 12h.01M15 12h.01M9 18h.01M15 18h.01"></path></svg>
+          <span style="flex: 1 1 auto">{{ c.text }}</span>
+          <button type="button" aria-label="{{ c.del }}" style="width: 32px; height: 32px; border: 0; border-radius: 8px; background: transparent; color: #9AA3B2; font-size: 16px">×</button>
+        </div>
+      </sc-for>
+      <div style="display: flex; gap: 8px; margin-top: 8px">
+        <label style="flex: 1 1 auto; display: flex"><span style="position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0)">新しいお題</span><input placeholder="新しいお題(40 文字・3 行まで)" style="flex: 1 1 auto; height: 40px; border-radius: 10px; border: 1px solid #343B48; background: #0E1014; color: #ECEEF2; padding: 0 12px; font-size: 14px"></label>
+        <button type="button" style="height: 40px; padding: 0 14px; border-radius: 10px; border: 1px solid #343B48; background: #1B1F27; color: #ECEEF2; font-weight: 600">追加</button>
+      </div>
+    </section>
+  </div>
+
+  <div style="flex: 1 1 420px; min-width: 0; display: flex; flex-direction: column; gap: 16px">
+    <section aria-labelledby="sp-h" style="background: #161A21; border: 1px solid #262B35; border-radius: 14px; padding: 16px">
+      <h2 id="sp-h" style="margin: 0 0 12px; font-size: 15px; font-weight: 700">サイドパネル</h2>
+      <div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px">
+        <label style="display: flex; flex-direction: column; gap: 4px; font-size: 12px; color: #B5BCC8">固定枠<select style="height: 40px; border-radius: 10px; border: 1px solid #343B48; background: #0E1014; color: #ECEEF2; padding: 0 10px"><option>本日の戦績</option></select></label>
+        <label style="display: flex; flex-direction: column; gap: 4px; font-size: 12px; color: #B5BCC8">フォロワー目標<input value="20" inputmode="numeric" style="height: 40px; border-radius: 10px; border: 1px solid #343B48; background: #0E1014; color: #ECEEF2; padding: 0 12px"></label>
+      </div>
+      <div style="margin-top: 12px; font-size: 12px; color: #B5BCC8">ローテーション枠</div>
+      <div style="display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px">
+        <sc-for list="{{ slots }}" as="s" hint-placeholder-count="6">
+          <button type="button" aria-pressed="{{ s.on }}" style="height: 34px; padding: 0 12px; border-radius: 999px; border: 1px solid {{ s.bd }}; background: {{ s.bg }}; color: {{ s.fg }}; font-size: 13px; font-weight: 600">{{ s.label }}</button>
+        </sc-for>
+      </div>
+      <label style="display: flex; align-items: center; gap: 8px; margin-top: 12px; font-size: 13px; color: #B5BCC8">切り替え<input value="15" inputmode="numeric" style="width: 64px; height: 36px; border-radius: 8px; border: 1px solid #343B48; background: #0E1014; color: #ECEEF2; padding: 0 10px">秒ごと</label>
+    </section>
+
+    <section aria-labelledby="jq-h" style="background: #161A21; border: 1px solid #262B35; border-radius: 14px; padding: 16px">
+      <h2 id="jq-h" style="margin: 0 0 4px; font-size: 15px; font-weight: 700">参加型の準備</h2>
+      <p style="margin: 0 0 10px; color: #9AA3B2; font-size: 12px">部屋の推定キケン度に使います。ふだんは取り込んだ記録の評価が入ります。</p>
+      <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap">
+        <span>配信者 <strong>でんせつ 999</strong></span>
+        <span style="padding: 1px 8px; border-radius: 6px; background: #1E232C; color: #B5BCC8; font-size: 12px">取り込んだ記録</span>
+        <button type="button" style="margin-left: auto; height: 34px; padding: 0 12px; border-radius: 8px; border: 1px solid #343B48; background: transparent; color: #DDE1E8; font-size: 13px">手で入れる</button>
+      </div>
+    </section>
+
+    <section aria-labelledby="msg-h" style="background: #161A21; border: 1px solid #262B35; border-radius: 14px; padding: 16px">
+      <h2 id="msg-h" style="margin: 0 0 10px; font-size: 15px; font-weight: 700">流すメッセージ・バーンダウン</h2>
+      <div role="radiogroup" aria-label="メッセージのプリセット" style="display: flex; flex-wrap: wrap; gap: 6px">
+        <button type="button" role="radio" aria-checked="true" style="height: 34px; padding: 0 12px; border-radius: 999px; border: 1px solid #FF4F8B; background: #2A1720; color: #FF9CC0; font-size: 13px; font-weight: 600">参加型の日</button>
+        <button type="button" role="radio" aria-checked="false" style="height: 34px; padding: 0 12px; border-radius: 999px; border: 1px solid #343B48; background: transparent; color: #B5BCC8; font-size: 13px">野良の日</button>
+        <button type="button" role="radio" aria-checked="false" style="height: 34px; padding: 0 12px; border-radius: 999px; border: 1px solid #343B48; background: transparent; color: #B5BCC8; font-size: 13px">ビッグラン</button>
+      </div>
+      <div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; margin-top: 12px">
+        <label style="display: flex; flex-direction: column; gap: 4px; font-size: 12px; color: #B5BCC8">バーンダウンの名前<input placeholder="例: 金イクラ" style="height: 40px; border-radius: 10px; border: 1px solid #343B48; background: #0E1014; color: #ECEEF2; padding: 0 12px"></label>
+        <label style="display: flex; flex-direction: column; gap: 4px; font-size: 12px; color: #B5BCC8">目標値<input inputmode="numeric" style="height: 40px; border-radius: 10px; border: 1px solid #343B48; background: #0E1014; color: #ECEEF2; padding: 0 12px"></label>
+      </div>
+      <p style="margin: 8px 0 0; color: #9AA3B2; font-size: 12px">ここも入力したそばから配信画面に反映されます(「OBSに反映」ボタンは廃止)。</p>
+    </section>
+  </div>
+</main>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1280,"height":900}}'>
+class Component extends DCLogic {
+  renderVals() {
+    var slots = [['スケジュール', true], ['本日の戦績', false], ['オオモノ討伐TOP3', true], ['ブキ埋め', true], ['本日のお題', true], ['バーンダウン', false]];
+    return {
+      challenges: ['記録更新いけるところまで!', 'WAVE 3 までデス 0', 'オオモノ 30 体'].map(function (t) { return { text: t, del: t + ' を消す' }; }),
+      slots: slots.map(function (s) { return { label: s[0], on: s[1], bd: s[1] ? '#3DDC84' : '#343B48', bg: s[1] ? '#163A26' : 'transparent', fg: s[1] ? '#7FE3B0' : '#B5BCC8' }; })
+    };
+  }
+}
+</script>
+</body>
+</html>

@@ -1,5 +1,8 @@
 'use client';
 
+import AddCircleOutlineRoundedIcon from '@mui/icons-material/AddCircleOutlineRounded';
+import CasinoRoundedIcon from '@mui/icons-material/CasinoRounded';
+import ImageRoundedIcon from '@mui/icons-material/ImageRounded';
 import {
     Alert,
     Box,
@@ -20,9 +23,10 @@ import {StreamData} from '../app/api/stream-data/route';
 import {WeaponCard} from '../lib/salmonWeapons';
 import {downloadBlob, renderWeaponCardImage, weaponCardImageFileName} from '../lib/weaponCardImage';
 
+import SectionTitle from './SectionTitle';
 import WeaponPicker from './WeaponPicker';
 
-const paperSx = {mb: 3, p: 3, bgcolor: 'background.paper', backdropFilter: 'blur(10px)', border: '1px solid rgba(255, 255, 255, 0.1)'};
+const paperSx = {mb: 4, p: 4};
 
 const formatDateTime = (timestamp: number) =>
     new Date(timestamp).toLocaleString('ja-JP', {month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hour12: false});
@@ -91,8 +95,8 @@ const WeaponCardPanel: React.FC = () => {
         <>
             {error && <Alert severity="error" sx={{mb: 2}}>{error}</Alert>}
 
-            <Paper elevation={12} sx={paperSx}>
-                <Typography variant="h6" gutterBottom>🎲 オールランダム ブキ埋め</Typography>
+            <Paper sx={paperSx}>
+                <SectionTitle icon={CasinoRoundedIcon}>オールランダム ブキ埋め</SectionTitle>
                 <Box sx={{display: 'flex', alignItems: 'center', gap: 2, mb: 2}}>
                     <Typography variant="h5" sx={{fontVariantNumeric: 'tabular-nums'}} data-testid="weapon-card-count">
                         {obtainedKeys.length} / {card.total}
@@ -110,16 +114,16 @@ const WeaponCardPanel: React.FC = () => {
                 </Typography>
             </Paper>
 
-            <Paper elevation={12} sx={paperSx}>
-                <Typography variant="h6" gutterBottom>📸 SNS 用の画像</Typography>
+            <Paper sx={paperSx}>
+                <SectionTitle icon={ImageRoundedIcon}>SNS 用の画像</SectionTitle>
                 <Typography variant="body2" sx={{mb: 2}}>今のカードを PNG 画像でダウンロードします。</Typography>
                 <Button variant="contained" onClick={handleDownload} disabled={downloading}>
                     {downloading ? '画像を作成中...' : '画像をダウンロード'}
                 </Button>
             </Paper>
 
-            <Paper elevation={12} sx={paperSx}>
-                <Typography variant="h6" gutterBottom>🆕 新しいカード</Typography>
+            <Paper sx={paperSx}>
+                <SectionTitle icon={AddCircleOutlineRoundedIcon}>新しいカード</SectionTitle>
                 <Typography variant="body2" sx={{mb: 2}}>
                     {card.startedAt > 0 ? `今のカードは ${formatDateTime(card.startedAt)} から` : '今のカードはすべての記録から'}埋めています。
                 </Typography>

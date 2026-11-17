@@ -1,6 +1,10 @@
 'use client';
 
+import ChecklistRoundedIcon from '@mui/icons-material/ChecklistRounded';
+import FlagRoundedIcon from '@mui/icons-material/FlagRounded';
+import PushPinRoundedIcon from '@mui/icons-material/PushPinRounded';
 import RemoveCircleIcon from '@mui/icons-material/RemoveCircle';
+import SyncRoundedIcon from '@mui/icons-material/SyncRounded';
 import {
     Alert,
     Box,
@@ -35,7 +39,9 @@ import {
     normalizeChallengeText,
 } from '../lib/sidePanelTypes';
 
-const paperSx = {mb: 3, p: 3, bgcolor: 'background.paper', backdropFilter: 'blur(10px)', border: '1px solid rgba(255, 255, 255, 0.1)'};
+import SectionTitle from './SectionTitle';
+
+const paperSx = {mb: 4, p: 4};
 
 const isValidSeconds = (value: string) =>
     /^\d+$/.test(value) && Number(value) >= MIN_ROTATE_SECONDS && Number(value) <= MAX_ROTATE_SECONDS;
@@ -142,8 +148,8 @@ const SidePanelSettingsPanel: React.FC = () => {
         <>
             {error && <Alert severity="error" sx={{mb: 2}}>{error}</Alert>}
 
-            <Paper elevation={12} sx={paperSx}>
-                <Typography variant="h6" gutterBottom>🦑 フォロワー目標（上段のゲージ）</Typography>
+            <Paper sx={paperSx}>
+                <SectionTitle icon={FlagRoundedIcon}>フォロワー目標（上段のゲージ）</SectionTitle>
                 <TextField
                     label="目標フォロワー数"
                     type="number"
@@ -160,8 +166,8 @@ const SidePanelSettingsPanel: React.FC = () => {
                 </Typography>
             </Paper>
 
-            <Paper elevation={12} sx={paperSx}>
-                <Typography variant="h6" gutterBottom>📝 本日のお題</Typography>
+            <Paper sx={paperSx}>
+                <SectionTitle icon={ChecklistRoundedIcon}>本日のお題</SectionTitle>
                 <Box data-testid="challenge-editor" sx={{my: 1}}>
                     {settings.challenges.length === 0 ? (
                         <Typography variant="body2" sx={{color: 'text.secondary', p: 1}}>お題がありません</Typography>
@@ -215,8 +221,8 @@ const SidePanelSettingsPanel: React.FC = () => {
                 </Typography>
             </Paper>
 
-            <Paper elevation={12} sx={paperSx}>
-                <Typography variant="h6" gutterBottom>📌 固定枠</Typography>
+            <Paper sx={paperSx}>
+                <SectionTitle icon={PushPinRoundedIcon}>固定枠</SectionTitle>
                 <ToggleButtonGroup
                     value={settings.fixedSlots}
                     onChange={(e, value: SidePanelSlot[]) => handleFixedSlotsChange(value)}
@@ -231,8 +237,8 @@ const SidePanelSettingsPanel: React.FC = () => {
                 </Typography>
             </Paper>
 
-            <Paper elevation={12} sx={paperSx}>
-                <Typography variant="h6" gutterBottom>🔄 ローテーション枠</Typography>
+            <Paper sx={paperSx}>
+                <SectionTitle icon={SyncRoundedIcon}>ローテーション枠</SectionTitle>
                 <ToggleButtonGroup
                     value={settings.rotationSlots}
                     onChange={(e, value: SidePanelSlot[]) => handleRotationSlotsChange(value)}

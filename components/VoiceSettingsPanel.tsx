@@ -1,5 +1,6 @@
 'use client';
 
+import VolumeUpRoundedIcon from '@mui/icons-material/VolumeUpRounded';
 import {
     Alert,
     Box,
@@ -27,7 +28,9 @@ import {
     voiceCredit,
 } from '../lib/voiceTypes';
 
-const paperSx = {mb: 3, p: 3, bgcolor: 'background.paper', backdropFilter: 'blur(10px)', border: '1px solid rgba(255, 255, 255, 0.1)'};
+import SectionTitle from './SectionTitle';
+
+const paperSx = {mb: 4, p: 4};
 
 const TEST_TEXT = 'テスト再生です。聞こえていますか？';
 
@@ -112,8 +115,8 @@ const VoiceSettingsPanel: React.FC = () => {
     const selectedMissing = settings.speakerId !== null && !speakerOptions.some((o) => o.id === settings.speakerId);
 
     return (
-        <Paper elevation={12} sx={paperSx}>
-            <Typography variant="h6" gutterBottom>🔊 読み上げ（VOICEVOX）</Typography>
+        <Paper sx={paperSx}>
+            <SectionTitle icon={VolumeUpRoundedIcon}>読み上げ（VOICEVOX）</SectionTitle>
             {error && <Alert severity="error" sx={{mb: 2}}>{error}</Alert>}
             {notice && <Alert severity="success" sx={{mb: 2}}>{notice}</Alert>}
 

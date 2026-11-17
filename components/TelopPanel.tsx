@@ -2,6 +2,8 @@
 
 import ArrowDownwardIcon from '@mui/icons-material/ArrowDownward';
 import ArrowUpwardIcon from '@mui/icons-material/ArrowUpward';
+import CampaignRoundedIcon from '@mui/icons-material/CampaignRounded';
+import ListAltRoundedIcon from '@mui/icons-material/ListAltRounded';
 import RemoveCircleIcon from '@mui/icons-material/RemoveCircle';
 import {
     Alert,
@@ -25,7 +27,9 @@ import {
     normalizeTelopText,
 } from '../lib/telopTypes';
 
-const paperSx = {mb: 3, p: 3, bgcolor: 'background.paper', backdropFilter: 'blur(10px)', border: '1px solid rgba(255, 255, 255, 0.1)'};
+import SectionTitle from './SectionTitle';
+
+const paperSx = {mb: 4, p: 4};
 
 interface TelopPanelProps {
     /** プリセットを保存（または保存に失敗して読み込み直）したとき。上部のテロップバーに反映するのに使う */
@@ -121,8 +125,8 @@ const TelopPanel: React.FC<TelopPanelProps> = ({onPresetsChange}) => {
         <>
             {error && <Alert severity="error" sx={{mb: 2}}>{error}</Alert>}
 
-            <Paper elevation={12} sx={paperSx}>
-                <Typography variant="h6" gutterBottom>📣 自由入力でテロップを出す</Typography>
+            <Paper sx={paperSx}>
+                <SectionTitle icon={CampaignRoundedIcon}>自由入力でテロップを出す</SectionTitle>
                 <Typography variant="body2" sx={{color: 'text.secondary'}}>
                     プリセットは、画面上部のボタンか、キーボードの 1〜9, 0 でどのタブからでも出せます（入力欄にカーソルがあるときは効きません）。
                 </Typography>
@@ -153,8 +157,8 @@ const TelopPanel: React.FC<TelopPanelProps> = ({onPresetsChange}) => {
                 />
             </Paper>
 
-            <Paper elevation={12} sx={paperSx}>
-                <Typography variant="h6" gutterBottom>🗂️ プリセット</Typography>
+            <Paper sx={paperSx}>
+                <SectionTitle icon={ListAltRoundedIcon}>プリセット</SectionTitle>
                 <Box data-testid="telop-preset-editor" sx={{my: 1}}>
                     {presets.map((preset, index) => (
                         <Box key={preset.id} sx={{display: 'flex', alignItems: 'center', gap: 1, borderBottom: '1px dotted rgba(255,255,255,0.2)'}}>

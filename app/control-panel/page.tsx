@@ -1,6 +1,8 @@
 'use client';
 
+import AutoAwesomeRoundedIcon from '@mui/icons-material/AutoAwesomeRounded';
 import RemoveCircleIcon from '@mui/icons-material/RemoveCircle';
+import TextFieldsRoundedIcon from '@mui/icons-material/TextFieldsRounded';
 import {
     TextField,
     Button,
@@ -17,7 +19,7 @@ import {
     Alert,
     AlertTitle,
 } from '@mui/material';
-import {createTheme, ThemeProvider} from '@mui/material/styles';
+import {ThemeProvider} from '@mui/material/styles';
 import axios from 'axios';
 import Image from 'next/image';
 import React, {useState, useEffect, useMemo, useCallback} from 'react';
@@ -26,6 +28,7 @@ import ClipPanel from '../../components/ClipPanel';
 import JoinQueuePanel from '../../components/JoinQueuePanel';
 import SalmonRunPanel from '../../components/SalmonRunPanel';
 import ScoreDisplayPanel from '../../components/ScoreDisplayPanel';
+import SectionTitle from '../../components/SectionTitle';
 import SidePanelSettingsPanel from '../../components/SidePanelSettingsPanel';
 import TelopBar from '../../components/TelopBar';
 import TelopPanel from '../../components/TelopPanel';
@@ -34,122 +37,10 @@ import WeaponCardPanel from '../../components/WeaponCardPanel';
 import {getItem, setItem, removeItem} from '../../lib/localStorage';
 import {StreamData, MessagePreset, BurndownData} from '../api/stream-data/route';
 
+import {monoFontFamily, theme, tokens} from './theme';
 
-const darkTheme = createTheme({
-    palette: {
-        mode: 'dark',
-        primary: {
-            main: '#FF40A0',
-        },
-        secondary: {
-            main: '#32E675',
-        },
-        text: {
-            primary: '#FFFFFF',
-            secondary: 'rgba(255, 255, 255, 0.7)',
-        },
-        background: {
-            paper: 'rgba(255, 255, 255, 0.05)',
-            default: '#121212',
-        },
-    },
-    components: {
-        // 紙の背景（background.paper）はカード用にほぼ透明なので、プルダウンなどのメニューは不透明にして背景と重ならないようにする
-        MuiPopover: {
-            styleOverrides: {
-                paper: {
-                    backgroundColor: '#2A2A2A',
-                    backgroundImage: 'none',
-                    border: '1px solid rgba(255, 255, 255, 0.15)',
-                },
-            },
-        },
-        MuiOutlinedInput: {
-            styleOverrides: {
-                root: {
-                    '& .MuiOutlinedInput-notchedOutline': {
-                        borderColor: 'rgba(255, 255, 255, 0.2)',
-                    },
-                    '&:hover .MuiOutlinedInput-notchedOutline': {
-                        borderColor: 'rgba(255, 255, 255, 0.5)',
-                    },
-                    '&.Mui-focused .MuiOutlinedInput-notchedOutline': {
-                        borderColor: '#FF40A0',
-                    },
-                    '& .MuiInputBase-input': {
-                        color: '#FFFFFF',
-                    },
-                },
-            },
-        },
-        MuiInputLabel: {
-            styleOverrides: {
-                root: {
-                    color: 'rgba(255, 255, 255, 0.7)',
-                    '&.Mui-focused': {
-                        color: '#FF40A0',
-                    },
-                },
-            },
-        },
-        MuiFormHelperText: {
-            styleOverrides: {
-                root: {
-                    color: 'rgba(255, 255, 255, 0.5)',
-                },
-            },
-        },
-        MuiSelect: {
-            styleOverrides: {
-                icon: {
-                    color: '#FFFFFF',
-                },
-            },
-        },
-        MuiPaper: {
-            styleOverrides: {
-                root: {
-                    backgroundColor: 'rgba(255, 255, 255, 0.05)',
-                },
-            },
-        },
-        MuiTab: {
-            styleOverrides: {
-                root: {
-                    color: 'rgba(255, 255, 255, 0.7)',
-                    '&.Mui-selected': {
-                        color: '#FF40A0',
-                    },
-                },
-            },
-        },
-        MuiTabs: {
-            styleOverrides: {
-                indicator: {
-                    backgroundColor: '#FF40A0',
-                },
-            },
-        },
-        MuiButton: {
-            styleOverrides: {
-                root: {
-                    variants: [
-                        {
-                            props: {variant: 'contained', color: 'primary'},
-                            style: {
-                                color: '#FFFFFF',
-                                backgroundColor: '#FF40A0',
-                                '&:hover': {
-                                    backgroundColor: '#E6398D',
-                                },
-                            },
-                        },
-                    ],
-                },
-            },
-        },
-    },
-});
+// OBS のブラウザソースの URL
+const codeStyle: React.CSSProperties = {backgroundColor: tokens.color.surface2, padding: '2px 6px', borderRadius: tokens.radius.badge, fontFamily: monoFontFamily};
 
 const LOCAL_STORAGE_KEY = 'control-panel-state';
 
@@ -342,7 +233,7 @@ const ControlPanelPage: React.FC = () => {
 
     if (!isInitialized || !formData) {
         return (
-             <ThemeProvider theme={darkTheme}>
+             <ThemeProvider theme={theme}>
                  <Box sx={{ minHeight: '100vh', bgcolor: 'background.default', color: 'text.primary', display: 'flex', justifyContent: 'center', alignItems: 'center' }}>
                     {storageError ? (
                         <Alert severity="error" action={
@@ -363,15 +254,12 @@ const ControlPanelPage: React.FC = () => {
     }
     
     return (
-        <ThemeProvider theme={darkTheme}>
+        <ThemeProvider theme={theme}>
             {/* hidden だとスクロール領域になり、テロップバーの sticky が効かないので clip ではみ出しだけ切る */}
             <Box sx={{minHeight: '100vh', bgcolor: 'background.default', color: 'text.primary', position: 'relative', overflow: 'clip'}}>
-                <Box sx={{position: 'absolute', top: '-200px', left: '-200px', width: '500px', height: '500px', bgcolor: 'primary.main', borderRadius: '50%', filter: 'blur(150px)', opacity: 0.3}}/>
-                <Box sx={{position: 'absolute', bottom: '-250px', right: '-250px', width: '600px', height: '600px', bgcolor: 'secondary.main', borderRadius: '50%', filter: 'blur(150px)', opacity: 0.3}}/>
-
-                <Box sx={{p: 4, maxWidth: 700, margin: 'auto', position: 'relative', zIndex: 1, pb: '120px'}}>
+                <Box sx={{p: 5, maxWidth: 700, margin: 'auto', position: 'relative', zIndex: 1, pb: '120px'}}>
                     {storageError && (
-                        <Alert severity="error" sx={{mb: 2}} action={
+                        <Alert severity="error" sx={{mb: 4}} action={
                             <Button color="inherit" size="small" onClick={handleClearCache}>
                                 キャッシュをクリア
                             </Button>
@@ -380,16 +268,16 @@ const ControlPanelPage: React.FC = () => {
                             設定の読み込みに失敗しました。データが破損している可能性があります。キャッシュをクリアしてください。
                         </Alert>
                     )}
-                    <Box sx={{display: 'flex', alignItems: 'center', gap: 2, mb: 2}}>
-                        <Image src="/favicon.svg" alt="icon" width={40} height={40}/>
-                        <Typography variant="h4" component="h1" gutterBottom sx={{mb: 0, color: 'text.primary'}}>
+                    <Box sx={{display: 'flex', alignItems: 'center', gap: 3, mb: 4}}>
+                        <Image src="/favicon.svg" alt="icon" width={32} height={32}/>
+                        <Typography variant="h1" sx={{color: 'text.primary'}}>
                             配信オーバーレイ設定パネル
                         </Typography>
                     </Box>
 
                     <TelopBar reloadKey={telopPresetsRevision}/>
 
-                    <Tabs value={formData.activeTab} onChange={(e, newValue) => updateFormData({ activeTab: newValue })} variant="scrollable" scrollButtons="auto" sx={{mb: 3}}>
+                    <Tabs value={formData.activeTab} onChange={(e, newValue) => updateFormData({ activeTab: newValue })} variant="scrollable" scrollButtons="auto" sx={{mb: 4}}>
                         <Tab label="スコア表示" value="score"/>
                         <Tab label="バーンダウン" value="burndown"/>
                         <Tab label="メッセージ" value="message"/>
@@ -405,7 +293,7 @@ const ControlPanelPage: React.FC = () => {
                     {formData.activeTab === 'score' && <ScoreDisplayPanel/>}
 
                     {formData.activeTab === 'burndown' && (
-                        <Paper elevation={12} sx={{p: 3, bgcolor: 'background.paper', backdropFilter: 'blur(10px)', border: '1px solid rgba(255, 255, 255, 0.1)'}}>
+                        <Paper sx={{p: 4}}>
                             <Typography variant="h6" gutterBottom>バーンダウンチャート設定</Typography>
                             <TextField label="フィールド名" value={formData.burndown.label} onChange={(e) => updateBurndown({ label: e.target.value })} fullWidth margin="normal" variant="outlined" multiline rows={2}/>
                             <TextField label="目標値" type="number" value={formData.burndown.targetValue} onChange={(e) => updateBurndown({ targetValue: Number(e.target.value) })} fullWidth margin="normal" variant="outlined"/>
@@ -456,7 +344,7 @@ const ControlPanelPage: React.FC = () => {
                     )}
 
                     {formData.activeTab === 'message' && (
-                        <Paper elevation={12} sx={{p: 3, bgcolor: 'background.paper', backdropFilter: 'blur(10px)', border: '1px solid rgba(255, 255, 255, 0.1)'}}>
+                        <Paper sx={{p: 4}}>
                             <Typography variant="h6" gutterBottom>視聴者向け概要メッセージ</Typography>
                             <Box sx={{borderBottom: 1, borderColor: 'divider', mb: 2}}>
                                 <Tabs value={formData.activePresetName} onChange={(e, newValue) => updateFormData({activePresetName: newValue})} variant="scrollable" scrollButtons="auto" aria-label="メッセージプリセット">
@@ -513,8 +401,8 @@ const ControlPanelPage: React.FC = () => {
 
                     {formData.activeTab === 'common' && (
                         <>
-                            <Paper elevation={12} sx={{ mb: 3, p: 3, bgcolor: 'background.paper', backdropFilter: 'blur(10px)', border: '1px solid rgba(255, 255, 255, 0.1)' }}>
-                                <Typography variant="h6" gutterBottom>🎆 演出効果</Typography>
+                            <Paper sx={{mb: 4, p: 4}}>
+                                <SectionTitle icon={AutoAwesomeRoundedIcon}>演出効果</SectionTitle>
                                 <Box sx={{display: 'flex', gap: 2, alignItems: 'center', flexWrap: 'wrap'}}>
                                     <Button variant="contained" color="primary" onClick={() => handleTriggerEffect('LOVE')} disabled={effectStatus === 'loading'}>💖 LOVE</Button>
                                     <Button variant="contained" color="secondary" onClick={() => handleTriggerEffect('STAR')} disabled={effectStatus === 'loading'}>⭐ STAR</Button>
@@ -538,12 +426,12 @@ const ControlPanelPage: React.FC = () => {
                                     文字起こし（pnpm caption）の起動中は、話した言葉でも出ます: 「ナイス」→ ⭐, 「ありがとう」→ 💖, 「よっしゃ」→ ✨, 「やべぇ」→ 🫧
                                 </Typography>
                             </Paper>
-                            <Paper elevation={12} sx={{ mb: 3, p: 3, bgcolor: 'background.paper', backdropFilter: 'blur(10px)', border: '1px solid rgba(255, 255, 255, 0.1)' }}>
-                                <Typography variant="h6" gutterBottom>🎨 フォント設定</Typography>
+                            <Paper sx={{mb: 4, p: 4}}>
+                                <SectionTitle icon={TextFieldsRoundedIcon}>フォント設定</SectionTitle>
                                 <TextField label="フォント名 (CSS font-family)" value={formData.fontFamily} onChange={(e) => updateFormData({fontFamily: e.target.value})} fullWidth margin="normal" helperText="システムフォントや、OBS側でカスタムフォントがインストールされているフォント名を入力" variant="outlined"/>
                                 <TextField label="フォントサイズ (px)" type="number" value={formData.fontSize} onChange={(e) => updateFormData({fontSize: Number(e.target.value)})} fullWidth margin="normal" slotProps={{htmlInput: {min: 1}}} variant="outlined"/>
                             </Paper>
-                            <Paper elevation={12} sx={{p: 3, bgcolor: 'background.paper', backdropFilter: 'blur(10px)', border: '1px solid rgba(255, 255, 255, 0.1)'}}>
+                            <Paper sx={{p: 4}}>
                                 <Typography variant="h6" gutterBottom>各種設定</Typography>
                                 <Box sx={{display: 'flex', gap: 2, alignItems: 'center', flexWrap: 'wrap'}}>
                                      <Button variant="outlined" color="warning" onClick={handleClearCache}>
@@ -554,21 +442,21 @@ const ControlPanelPage: React.FC = () => {
                         </>
                     )}
 
-                    <Box sx={{ mt: 4, p: 2, border: '1px dashed grey', borderRadius: '4px', bgcolor: 'rgba(255, 255, 255, 0.05)' }}>
+                    <Box sx={{mt: 8, p: 4, border: 1, borderStyle: 'dashed', borderColor: tokens.color.borderStrong, borderRadius: `${tokens.radius.card}px`}}>
                         <Typography variant="body2" sx={{
                             fontWeight: "bold"
                         }}>OBSブラウザソース設定</Typography>
-                        <Typography variant="body2">スコア表示URL: <code style={{ backgroundColor: '#333', padding: '2px 4px', borderRadius: '4px', color: 'text.primary' }}>{origin}/obs-overlay</code></Typography>
-                        <Typography variant="body2">バーンダウン表示URL: <code style={{ backgroundColor: '#333', padding: '2px 4px', borderRadius: '4px', color: 'text.primary' }}>{origin}/burndown-overlay</code></Typography>
-                        <Typography variant="body2">サイドパネル表示URL: <code style={{ backgroundColor: '#333', padding: '2px 4px', borderRadius: '4px', color: 'text.primary' }}>{origin}/side-panel-overlay</code></Typography>
+                        <Typography variant="body2">スコア表示URL: <code style={codeStyle}>{origin}/obs-overlay</code></Typography>
+                        <Typography variant="body2">バーンダウン表示URL: <code style={codeStyle}>{origin}/burndown-overlay</code></Typography>
+                        <Typography variant="body2">サイドパネル表示URL: <code style={codeStyle}>{origin}/side-panel-overlay</code></Typography>
                         <Typography variant="body2">幅: 1450, 高さ: 160 (スコア表示)</Typography>
                         <Typography variant="body2">幅: 250, 高さ: 584 (バーンダウン表示・サイドパネル表示)</Typography>
                     </Box>
                 </Box>
                 
-                <Paper elevation={16} sx={{ position: 'fixed', bottom: 0, left: 0, right: 0, p: 2, zIndex: 10, bgcolor: 'rgba(18, 18, 18, 0.9)', backdropFilter: 'blur(10px)', borderTop: '1px solid rgba(255, 255, 255, 0.1)'}}>
+                <Paper sx={{position: 'fixed', bottom: 0, left: 0, right: 0, p: 4, zIndex: 10, bgcolor: tokens.color.header, border: 'none', borderTop: 1, borderColor: 'divider', borderRadius: 0}}>
                     <Box sx={{ maxWidth: 700, margin: 'auto' }}>
-                        <Button variant="contained" color="primary" onClick={handleSubmit} disabled={status === 'loading'} fullWidth size="large" sx={{ p: 1.5, fontSize: '1rem' }}>
+                        <Button variant="contained" color="primary" onClick={handleSubmit} disabled={status === 'loading'} fullWidth size="large">
                             {status === 'loading' ? '更新中...' : 'OBSに反映 (データ送信)'}
                         </Button>
                         {status === 'success' && (<Typography

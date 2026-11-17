@@ -1,6 +1,7 @@
 'use client';
 
 import DeleteIcon from '@mui/icons-material/Delete';
+import GroupAddRoundedIcon from '@mui/icons-material/GroupAddRounded';
 import {
     Alert,
     Box,
@@ -39,7 +40,9 @@ import {
     roundHazard,
 } from '../lib/joinQueueTypes';
 
-const paperSx = {mb: 3, p: 3, bgcolor: 'background.paper', backdropFilter: 'blur(10px)', border: '1px solid rgba(255, 255, 255, 0.1)'};
+import SectionTitle from './SectionTitle';
+
+const paperSx = {mb: 4, p: 4};
 
 // チャットからの参加を見せるため、定期的に読み込み直す
 const POLL_INTERVAL_MS = 2000;
@@ -126,8 +129,8 @@ const JoinQueuePanel: React.FC = () => {
                 </Alert>
             )}
 
-            <Paper elevation={12} sx={paperSx}>
-                <Typography variant="h6" gutterBottom>🙋 視聴者参加の受付</Typography>
+            <Paper sx={paperSx}>
+                <SectionTitle icon={GroupAddRoundedIcon}>視聴者参加の受付</SectionTitle>
                 <Typography variant="body2" sx={{mb: 2}}>
                     受付中は、チャットの <code>{JOIN_HOW_TO}</code> で列に入り、<code>!取消</code> で抜けられます（Twitch 連携 <code>pnpm twitch</code> を起動しておく）。
                     受付の返信は全員に見えるので、評価はくり返しません。評価はこの画面だけに出ます。
@@ -150,7 +153,7 @@ const JoinQueuePanel: React.FC = () => {
             </Paper>
 
             {queue && (
-                <Paper elevation={12} sx={paperSx}>
+                <Paper sx={paperSx}>
                     <Typography variant="h6" gutterBottom>部屋の推定キケン度</Typography>
                     <Typography variant="body2" sx={{mb: 2, color: 'text.secondary'}}>
                         配信者と、いまの人・列の先頭から合わせて 4 人の評価の平均 ÷ 5（上限 333%。攻略 Wiki の解析値で、自己申告からの目安）。評価が不明の人は除きます。
@@ -221,7 +224,7 @@ const JoinQueuePanel: React.FC = () => {
             )}
 
             {queue && (
-                <Paper elevation={12} sx={paperSx}>
+                <Paper sx={paperSx}>
                     <Typography variant="h6" gutterBottom>いまの人</Typography>
                     {queue.current ? (
                         <Box sx={{display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 1}}>
@@ -265,7 +268,7 @@ const JoinQueuePanel: React.FC = () => {
             )}
 
             {queue && (
-                <Paper elevation={12} sx={paperSx}>
+                <Paper sx={paperSx}>
                     <Typography variant="h6" gutterBottom>これまでの受付（{JOIN_STATS_DAYS} 日）</Typography>
                     <Typography variant="body2" sx={{mb: 1, color: 'text.secondary'}}>
                         受付終了（配信の終了でも）のたびに人数だけを残します（誰が来たかは残しません）。

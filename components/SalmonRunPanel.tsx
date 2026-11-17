@@ -1,7 +1,10 @@
 'use client';
 
 import EditIcon from '@mui/icons-material/Edit';
+import HistoryRoundedIcon from '@mui/icons-material/HistoryRounded';
+import ImageRoundedIcon from '@mui/icons-material/ImageRounded';
 import RemoveCircleIcon from '@mui/icons-material/RemoveCircle';
+import SetMealRoundedIcon from '@mui/icons-material/SetMealRounded';
 import {
     Alert,
     Box,
@@ -36,10 +39,11 @@ import {MAX_JOB_WEAPONS, findSalmonWeapon} from '../lib/salmonWeapons';
 
 import SalmonReviewDownload from './SalmonReviewDownload';
 import SalmonStats from './SalmonStats';
+import SectionTitle from './SectionTitle';
 import WeaponIcon from './WeaponIcon';
 import WeaponPicker from './WeaponPicker';
 
-const paperSx = {mb: 3, p: 3, bgcolor: 'background.paper', backdropFilter: 'blur(10px)', border: '1px solid rgba(255, 255, 255, 0.1)'};
+const paperSx = {mb: 4, p: 4};
 const listSx = {my: 2, maxHeight: 240, overflowY: 'auto', p: 1, bgcolor: 'rgba(255, 255, 255, 0.03)', borderRadius: '4px'};
 
 const NUMBER_FIELDS = [
@@ -324,8 +328,8 @@ const SalmonRunPanel: React.FC = () => {
         <>
             {error && <Alert severity="error" sx={{mb: 2}}>{error}</Alert>}
 
-            <Paper elevation={12} sx={paperSx}>
-                <Typography variant="h6" gutterBottom>🐟 バイトの記録</Typography>
+            <Paper sx={paperSx}>
+                <SectionTitle icon={SetMealRoundedIcon}>バイトの記録</SectionTitle>
                 <SalmonImportButton onImported={load}/>
                 {editing && (
                     <Alert severity="info" sx={{mb: 1}} action={<Button color="inherit" size="small" onClick={handleCancelEdit}>キャンセル</Button>}>
@@ -412,7 +416,7 @@ const SalmonRunPanel: React.FC = () => {
                 </Typography>
             </Paper>
 
-            <Paper elevation={12} sx={paperSx}>
+            <Paper sx={paperSx}>
                 <Typography variant="h6" gutterBottom>
                     今のセッション{summary.session ? `: ${sessionLabel(summary.session)}` : '（最初の記録で自動作成）'}
                 </Typography>
@@ -437,8 +441,8 @@ const SalmonRunPanel: React.FC = () => {
                 </Typography>
             </Paper>
 
-            <Paper elevation={12} sx={paperSx}>
-                <Typography variant="h6" gutterBottom>📜 過去のセッション</Typography>
+            <Paper sx={paperSx}>
+                <SectionTitle icon={HistoryRoundedIcon}>過去のセッション</SectionTitle>
                 <FormControl fullWidth margin="normal">
                     <InputLabel id="salmon-past-session-label">セッションを選択</InputLabel>
                     <Select
@@ -470,8 +474,8 @@ const SalmonRunPanel: React.FC = () => {
                 )}
             </Paper>
 
-            <Paper elevation={12} sx={paperSx}>
-                <Typography variant="h6" gutterBottom>📸 振り返りの画像</Typography>
+            <Paper sx={paperSx}>
+                <SectionTitle icon={ImageRoundedIcon}>振り返りの画像</SectionTitle>
                 <Typography variant="body2" sx={{mb: 2}}>
                     {pastSessionId !== '' ? '上で選んだセッション' : '現在のセッション'}の振り返り（/salmon-review-overlay と同じ画面）を、X・Bluesky などに投稿できる PNG 画像でダウンロードします。
                 </Typography>

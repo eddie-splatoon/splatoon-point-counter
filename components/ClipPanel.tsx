@@ -1,13 +1,16 @@
 'use client';
 
 import DeleteIcon from '@mui/icons-material/Delete';
+import MovieRoundedIcon from '@mui/icons-material/MovieRounded';
 import {Alert, Box, Button, Chip, IconButton, Link, List, ListItem, Paper, Typography} from '@mui/material';
 import axios from 'axios';
 import React, {useCallback, useEffect, useState} from 'react';
 
 import {CLIP_SOURCE_LABELS, ClipRequest, clipUrl} from '../lib/clipTypes';
 
-const paperSx = {mb: 3, p: 3, bgcolor: 'background.paper', backdropFilter: 'blur(10px)', border: '1px solid rgba(255, 255, 255, 0.1)'};
+import SectionTitle from './SectionTitle';
+
+const paperSx = {mb: 4, p: 4};
 
 // 処理待ちの依頼が結果に変わるのを見せるため、定期的に読み込み直す
 const POLL_INTERVAL_MS = 5000;
@@ -66,8 +69,8 @@ const ClipPanel: React.FC = () => {
         <>
             {error && <Alert severity="error" sx={{mb: 2}}>{error}</Alert>}
 
-            <Paper elevation={12} sx={paperSx}>
-                <Typography variant="h6" gutterBottom>🎬 Twitch のクリップ</Typography>
+            <Paper sx={paperSx}>
+                <SectionTitle icon={MovieRoundedIcon}>Twitch のクリップ</SectionTitle>
                 <Typography variant="body2" sx={{mb: 2}}>
                     配信中に「クリップ撮って」「今のクリップ」などと言うと、直前の場面をクリップにします（文字起こし <code>pnpm caption</code> と Twitch 連携 <code>pnpm twitch</code> を起動しておく）。
                     作れたらテロップと読み上げで知らせます。
@@ -75,7 +78,7 @@ const ClipPanel: React.FC = () => {
                 <Button variant="contained" onClick={handleRequest}>今クリップする</Button>
             </Paper>
 
-            <Paper elevation={12} sx={paperSx}>
+            <Paper sx={paperSx}>
                 <Typography variant="h6" gutterBottom>履歴</Typography>
                 {clips === null ? (
                     !error && <Typography>読み込み中...</Typography>

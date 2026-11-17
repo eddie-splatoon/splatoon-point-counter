@@ -5,6 +5,7 @@ import { describe, it, expect, vi, beforeEach, afterAll, beforeAll } from 'vites
 import { getInitialStreamData, StreamData } from '../api/stream-data/route';
 
 import ControlPanelPage from './page';
+import { tokens } from './theme';
 
 import type { ComponentPropsWithoutRef } from 'react';
 
@@ -117,9 +118,9 @@ describe('ControlPanelPage', () => {
         fireEvent.click(screen.getByRole('tab', { name: 'メッセージ' }));
         fireEvent.mouseDown(await screen.findByRole('combobox'));
 
-        // カード用の紙の背景（ほぼ透明）ではなく、不透明な背景で表示する
+        // カードと同じ色だと重なって見分けにくいので、1 段上の面（tokens.color.surface2）で表示する
         const menuPaper = (await screen.findByRole('listbox')).closest('.MuiPaper-root');
-        expect(menuPaper).toHaveStyle({ backgroundColor: '#2A2A2A' });
+        expect(menuPaper).toHaveStyle({ backgroundColor: tokens.color.surface2 });
     });
 
     it('sends the payload without the score on submit', async () => {
@@ -299,7 +300,7 @@ describe('ControlPanelPage', () => {
             render(<ControlPanelPage />);
             await waitFor(() => expect(screen.getByText('ScoreDisplayPanel')).toBeInTheDocument());
             fireEvent.click(screen.getByRole('tab', { name: '共通設定' }));
-            await screen.findByText('🎆 演出効果');
+            await screen.findByText('演出効果');
         };
 
         it.each(effects)('triggers the $name effect with the correct payload', async ({ name, label }) => {

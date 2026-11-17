@@ -6,7 +6,7 @@ import React, {useCallback, useEffect, useState} from 'react';
 
 import {MAX_SCORE_LABEL_LENGTH, MAX_SCORE_VALUE_LENGTH, ScoreDisplay, ScoreDisplaySettings} from '../lib/scoreDisplayTypes';
 
-const paperSx = {p: 3, bgcolor: 'background.paper', backdropFilter: 'blur(10px)', border: '1px solid rgba(255, 255, 255, 0.1)'};
+const paperSx = {p: 4};
 
 // リザルトの取り込みで書き換わった値を見せるため、定期的に読み込み直す
 const POLL_INTERVAL_MS = 3000;
@@ -62,7 +62,7 @@ const ScoreDisplayPanel: React.FC = () => {
     const edit = (delta: Partial<ScoreDisplay>) => setDraft({...draft, ...delta});
 
     return (
-        <Paper elevation={12} sx={paperSx}>
+        <Paper sx={paperSx}>
             {error && <Alert severity="error" sx={{mb: 2}}>{error}</Alert>}
             <Typography variant="h6" gutterBottom>スコア設定</Typography>
             <FormControlLabel
