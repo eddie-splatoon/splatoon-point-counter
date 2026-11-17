@@ -48,6 +48,10 @@ const codeStyle: React.CSSProperties = {backgroundColor: tokens.color.surface2, 
 const LOCAL_STORAGE_KEY = 'control-panel-state';
 // 入力が止まってから保存するまでの時間
 const SAVE_DELAY_MS = 500;
+// fetch の keepalive で送れる本文の大きさ（ブラウザの上限 64KiB より少し小さく）
+const KEEPALIVE_MAX_BYTES = 60_000;
+// 不正な値（数値の欄を空にしたときの 0 など）は保存しないので、欄に出す
+const NOT_SAVED_TEXT = 'この値は保存されません（1 以上の、大きすぎない数を入れてください）';
 
 interface StoredPanelState {
     activeTab?: unknown;
@@ -203,11 +207,13 @@ const ControlPanelPage: React.FC = () => {
             if (!current || !saved) return;
             const update = changedSettings(current, saved);
             if (Object.keys(update).length === 0) return;
+            const body = JSON.stringify(update);
             void fetch('/api/stream-data', {
                 method: 'POST',
                 headers: {'Content-Type': 'application/json'},
-                body: JSON.stringify(update),
-                keepalive: true,
+                body,
+                // keepalive は本文が 64KiB を超えると送れずに失敗するので、大きいとき（バーンダウンの履歴が多いなど）は付けずに送る
+                keepalive: new Blob([body]).size <= KEEPALIVE_MAX_BYTES,
             }).catch(() => undefined);
         };
         window.addEventListener('pagehide', handlePageHide);
@@ -399,7 +405,7 @@ const ControlPanelPage: React.FC = () => {
                                     <MenuItem value={'slide'}>スライド</MenuItem>
                                 </Select>
                             </FormControl>
-                            <TextField label="表示秒数 (秒)" type="number" value={settings.transitionDuration} onChange={(e) => updateSettings({transitionDuration: Number(e.target.value)})} fullWidth margin="normal" slotProps={{htmlInput: {min: 1}}} variant="outlined"/>
+                            <TextField label="表示秒数 (秒)" type="number" value={settings.transitionDuration} onChange={(e) => updateSettings({transitionDuration: Number(e.target.value)})} error={!isValidStreamSetting('transitionDuration', settings.transitionDuration)} helperText={isValidStreamSetting('transitionDuration', settings.transitionDuration) ? undefined : NOT_SAVED_TEXT} fullWidth margin="normal" slotProps={{htmlInput: {min: 1}}} variant="outlined"/>
                         </Paper>
                     )}
 
@@ -449,7 +455,7 @@ const ControlPanelPage: React.FC = () => {
                             <Paper sx={{mb: 4, p: 4}}>
                                 <SectionTitle icon={TextFieldsRoundedIcon}>フォント設定</SectionTitle>
                                 <TextField label="フォント名 (CSS font-family)" value={settings.fontFamily} onChange={(e) => updateSettings({fontFamily: e.target.value})} fullWidth margin="normal" helperText="システムフォントや、OBS側でカスタムフォントがインストールされているフォント名を入力" variant="outlined"/>
-                                <TextField label="フォントサイズ (px)" type="number" value={settings.fontSize} onChange={(e) => updateSettings({fontSize: Number(e.target.value)})} fullWidth margin="normal" slotProps={{htmlInput: {min: 1}}} variant="outlined"/>
+                                <TextField label="フォントサイズ (px)" type="number" value={settings.fontSize} onChange={(e) => updateSettings({fontSize: Number(e.target.value)})} error={!isValidStreamSetting('fontSize', settings.fontSize)} helperText={isValidStreamSetting('fontSize', settings.fontSize) ? undefined : NOT_SAVED_TEXT} fullWidth margin="normal" slotProps={{htmlInput: {min: 1}}} variant="outlined"/>
                             </Paper>
                         </>
                     )}

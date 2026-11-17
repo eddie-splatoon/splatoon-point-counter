@@ -195,6 +195,8 @@ describe('ControlPanelPage', () => {
 
             // 数値の欄を空にすると 0 になる。フォントサイズとしては不正なので送らない
             fireEvent.change(await screen.findByLabelText('フォントサイズ (px)'), { target: { value: '' } });
+            // 保存されないことを欄に出す
+            expect(screen.getByText(/この値は保存されません/)).toBeInTheDocument();
             await act(() => new Promise((resolve) => setTimeout(resolve, 800)));
             expect(mockedAxios.post).not.toHaveBeenCalled();
 
@@ -215,6 +217,41 @@ describe('ControlPanelPage', () => {
                 burndown: { ...mockData.burndown, label: 'A', targetValue: 300 },
             }));
             await waitFor(() => expect(screen.queryByText(/設定を保存できませんでした/)).not.toBeInTheDocument());
+        });
+
+        it('waits for the save in flight and then sends what changed since', async () => {
+            let finishFirst: (value: unknown) => void = () => {};
+            mockedAxios.post.mockReturnValueOnce(new Promise((resolve) => { finishFirst = resolve; }));
+            await openBurndownTab();
+
+            fireEvent.change(screen.getByLabelText('フィールド名'), { target: { value: 'A' } });
+            await waitFor(() => expect(mockedAxios.post).toHaveBeenCalledTimes(1));
+
+            // 送っている間に変えたものは、前の保存が終わってから送る（順番を守る）
+            fireEvent.change(screen.getByLabelText('目標値'), { target: { value: '300' } });
+            await act(() => new Promise((resolve) => setTimeout(resolve, 700)));
+            expect(mockedAxios.post).toHaveBeenCalledTimes(1);
+
+            await act(async () => finishFirst({ data: {}, status: 200 }));
+            await waitFor(() => expect(mockedAxios.post).toHaveBeenCalledTimes(2));
+            expect(mockedAxios.post).toHaveBeenLastCalledWith('/api/stream-data', {
+                burndown: { ...mockData.burndown, label: 'A', targetValue: 300 },
+            });
+        });
+
+        it('sends a pending change with keepalive when the tab is closed', async () => {
+            const fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response('{}'));
+            await openBurndownTab();
+
+            fireEvent.change(screen.getByLabelText('フィールド名'), { target: { value: 'Closing' } });
+            window.dispatchEvent(new Event('pagehide'));
+
+            expect(fetchSpy).toHaveBeenCalledWith('/api/stream-data', expect.objectContaining({
+                method: 'POST',
+                keepalive: true,
+                body: JSON.stringify({ burndown: { ...mockData.burndown, label: 'Closing' } }),
+            }));
+            fetchSpy.mockRestore();
         });
 
         it('saves a pending change when leaving the page', async () => {
