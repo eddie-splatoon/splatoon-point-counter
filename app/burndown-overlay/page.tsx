@@ -52,10 +52,8 @@ const BurndownOverlayPage: React.FC = () => {
         if (hasReachedZero && data && data.burndown) {
             // Only trigger if lastEvent is not already FIREWORKS or if it has expired
             if (!data.lastEvent || data.lastEvent.name !== 'FIREWORKS' || (Date.now() - data.lastEvent.timestamp) > FIREWORKS_DURATION) {
-                axios.post('/api/stream-data', {
-                    ...data, // Send current data
-                    lastEvent: { name: 'FIREWORKS', timestamp: Date.now() },
-                }).catch(error => {
+                // エフェクトだけを出す（設定を丸ごと送ると、開いたときの古い値でコントロールパネルの設定を上書きしてしまう）
+                axios.patch('/api/stream-data', {event: 'FIREWORKS'}).catch(error => {
                     console.error('Failed to trigger fireworks:', error);
                 });
             }

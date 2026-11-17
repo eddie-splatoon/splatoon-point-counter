@@ -159,7 +159,7 @@ const SalmonImportButton: React.FC<{onImported: () => void}> = ({onImported}) =>
     );
 };
 
-/** コントロールパネルの「サーモンラン」タブ。記録はボタンを押した時点で保存される（「OBSに反映」は不要） */
+/** コントロールパネルの「サーモンラン」タブ。記録はボタンを押した時点で保存される */
 const SalmonRunPanel: React.FC = () => {
     const [summary, setSummary] = useState<SalmonSummary | null>(null);
     const [sessions, setSessions] = useState<SalmonSessionWithTotals[]>([]);
@@ -412,7 +412,7 @@ const SalmonRunPanel: React.FC = () => {
                     {saving ? '保存中...' : editing ? '修正を保存' : '記録'}
                 </Button>
                 <Typography variant="caption" sx={{display: 'block', mt: 1, color: 'text.secondary'}}>
-                    記録はすぐに保存され、オーバーレイに反映されます（「OBSに反映」ボタンは不要です）。ステージは次の記録にも引き継がれます。支給ブキを選ぶと、ブキ埋めカードも埋まります。取り込みの読み間違いは、削除して手入力し直すのではなく ✏️ で修正してください（削除すると次の取り込みで同じバイトがもう一度記録されます）。
+                    記録はすぐに保存され、オーバーレイに反映されます。ステージは次の記録にも引き継がれます。支給ブキを選ぶと、ブキ埋めカードも埋まります。取り込みの読み間違いは、削除して手入力し直すのではなく ✏️ で修正してください（削除すると次の取り込みで同じバイトがもう一度記録されます）。
                 </Typography>
             </Paper>
 

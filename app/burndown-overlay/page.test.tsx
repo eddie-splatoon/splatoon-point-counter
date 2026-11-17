@@ -34,7 +34,7 @@ describe('BurndownOverlayPage', () => {
     describe('with polling disabled', () => {
         beforeEach(() => {
             mockedAxios.get.mockClear();
-            mockedAxios.post.mockClear();
+            mockedAxios.patch.mockClear();
             vi.spyOn(global, 'setInterval').mockImplementation(vi.fn());
         });
 
@@ -74,7 +74,7 @@ describe('BurndownOverlayPage', () => {
             const mockData = getInitialStreamData();
             mockData.burndown.entries = [{ score: 100, timestamp: Date.now() }];
             mockedAxios.get.mockResolvedValueOnce({ data: mockData, status: 200 });
-            mockedAxios.post.mockResolvedValue({ data: {}, status: 200 });
+            mockedAxios.patch.mockResolvedValue({ data: {}, status: 200 });
 
             render(<BurndownOverlayPage />);
 
@@ -82,7 +82,7 @@ describe('BurndownOverlayPage', () => {
             
             const fireworks = screen.getByTestId('FireworksEffect');
             expect(fireworks.getAttribute('data-trigger')).toBe('false');
-            expect(mockedAxios.post).not.toHaveBeenCalled();
+            expect(mockedAxios.patch).not.toHaveBeenCalled();
         });
 
         describe('when the goal is reached', () => {
@@ -99,27 +99,25 @@ describe('BurndownOverlayPage', () => {
 
             it('triggers fireworks via the API', async () => {
                 mockedAxios.get.mockResolvedValueOnce({ data: reachedData(), status: 200 });
-                mockedAxios.post.mockResolvedValue({ data: {}, status: 200 });
+                mockedAxios.patch.mockResolvedValue({ data: {}, status: 200 });
 
                 render(<BurndownOverlayPage />);
                 await screen.findByTestId('BurndownChart');
 
                 await waitFor(() => {
-                    expect(mockedAxios.post).toHaveBeenCalledWith('/api/stream-data', expect.objectContaining({
-                        lastEvent: expect.objectContaining({ name: 'FIREWORKS' }),
-                    }));
+                    expect(mockedAxios.patch).toHaveBeenCalledWith('/api/stream-data', { event: 'FIREWORKS' });
                 });
             });
 
             it('does not write to the API when shown as a preview in the launcher', async () => {
                 window.history.replaceState(null, '', '/burndown-overlay?preview=1');
                 mockedAxios.get.mockResolvedValueOnce({ data: reachedData(), status: 200 });
-                mockedAxios.post.mockResolvedValue({ data: {}, status: 200 });
+                mockedAxios.patch.mockResolvedValue({ data: {}, status: 200 });
 
                 render(<BurndownOverlayPage />);
 
                 await screen.findByTestId('BurndownChart');
-                expect(mockedAxios.post).not.toHaveBeenCalled();
+                expect(mockedAxios.patch).not.toHaveBeenCalled();
             });
         });
     });
@@ -129,7 +127,7 @@ describe('BurndownOverlayPage', () => {
         beforeEach(() => {
             vi.useFakeTimers();
             mockedAxios.get.mockClear();
-            mockedAxios.post.mockClear();
+            mockedAxios.patch.mockClear();
         });
 
         afterEach(() => {

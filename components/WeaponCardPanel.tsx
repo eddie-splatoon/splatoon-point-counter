@@ -31,7 +31,7 @@ const paperSx = {mb: 4, p: 4};
 const formatDateTime = (timestamp: number) =>
     new Date(timestamp).toLocaleString('ja-JP', {month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hour12: false});
 
-/** コントロールパネルの「ブキ埋め」タブ。変更はその場で保存される（「OBSに反映」は不要） */
+/** コントロールパネルの「ブキ埋め」タブ。変更はその場で保存される */
 const WeaponCardPanel: React.FC = () => {
     const [card, setCard] = useState<WeaponCard | null>(null);
     const [error, setError] = useState('');
@@ -80,7 +80,7 @@ const WeaponCardPanel: React.FC = () => {
         setDownloading(true);
         setError('');
         try {
-            // オーバーレイと同じく、OBS に反映済みの共通設定のフォントで描く（取れなければ代わりのフォント）
+            // オーバーレイと同じく、保存済みの共通設定のフォントで描く（取れなければ代わりのフォント）
             const fontFamily = await axios.get<StreamData>('/api/stream-data').then((res) => res.data.fontFamily, () => '');
             const now = new Date();
             downloadBlob(await renderWeaponCardImage(card, fontFamily, now), weaponCardImageFileName(now));
