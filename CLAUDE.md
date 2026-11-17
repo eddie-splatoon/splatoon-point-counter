@@ -19,10 +19,11 @@
 9. **ブキ埋めカードオーバーレイ** (`/weapon-card-overlay`) - サーモンランのオールランダムで支給された全ブキ種（71 種）を埋めていくカード
 10. **サーモンランの振り返りオーバーレイ** (`/salmon-review-overlay`) - 配信の最後に、その日（セッション）のサーモンランの記録をグラフで大きく出す（1920x1080）。縦型配信用（1080x1920）は `/salmon-review-overlay/vertical`。コントロールパネルから SNS 用の PNG でダウンロードできる
 11. **視聴者参加の受付オーバーレイ** (`/join-queue-overlay`) - チャットの `!参加` で並んだ列（番号・表示名）と書き方・部屋の推定キケン度を出す（420x600。受付中だけ表示）
-12. **バックエンドAPI** (`/api/stream-data`, `/api/score-display`, `/api/caption`, `/api/twitch`, `/api/salmon`, `/api/side-panel`, `/api/salmon-schedule`, `/api/telop`, `/api/speech`, `/api/voice`, `/api/weapon-card`, `/api/clip`, `/api/salmon/import`, `/api/salmon/review`, `/api/join-queue`) - データ管理とクライアント間の同期
-13. **文字起こしスクリプト** (`tools/caption-stt/`) - マイク音声を文字起こしして `/api/caption` へ送信。「クリップ撮って」などで `/api/clip` にクリップを依頼（Python, Mac ネイティブ実行）
-14. **リザルト取り込みスクリプト** (`tools/salmon-result/`) - iPhone ミラーリングのイカリング3を操作し、サーモンランの最新のリザルトを OCR で読み取って `/api/salmon/import` へ送信（Python, Mac ネイティブ実行）
-15. **Twitch連携スクリプト** (`tools/twitch-eventsub/`) - フォロワー数・フォロワー目標を EventSub で受信して `/api/twitch` へ送信。チャットの初コメの挨拶・配信者のコメントを `/api/speech` へ送信。`/api/clip` の依頼で Twitch のクリップを作成。チャットの `!参加` / `!取消`・削除・BAN・配信の終了・再接続を `/api/join-queue` へ送る（Node, 依存なし）
+12. **休憩中オーバーレイ** (`/break-overlay`) - コントロールパネル上部の「休憩する」で、席を離れている間「休憩中・ちょっと待っててね🐟️」と経過時間を大きく出す（1920x1080）。縦型配信用（1080x1920）は `/break-overlay/vertical`
+13. **バックエンドAPI** (`/api/stream-data`, `/api/score-display`, `/api/caption`, `/api/twitch`, `/api/salmon`, `/api/side-panel`, `/api/salmon-schedule`, `/api/telop`, `/api/speech`, `/api/voice`, `/api/weapon-card`, `/api/clip`, `/api/salmon/import`, `/api/salmon/review`, `/api/join-queue`, `/api/break`) - データ管理とクライアント間の同期
+14. **文字起こしスクリプト** (`tools/caption-stt/`) - マイク音声を文字起こしして `/api/caption` へ送信。「クリップ撮って」などで `/api/clip` にクリップを依頼。休憩中に拾った声を `/api/break` に知らせる（Python, Mac ネイティブ実行）
+15. **リザルト取り込みスクリプト** (`tools/salmon-result/`) - iPhone ミラーリングのイカリング3を操作し、サーモンランの最新のリザルトを OCR で読み取って `/api/salmon/import` へ送信（Python, Mac ネイティブ実行）
+16. **Twitch連携スクリプト** (`tools/twitch-eventsub/`) - フォロワー数・フォロワー目標を EventSub で受信して `/api/twitch` へ送信。チャットの初コメの挨拶・配信者のコメントを `/api/speech` へ送信。`/api/clip` の依頼で Twitch のクリップを作成。チャットの `!参加` / `!取消`・削除・BAN・配信の終了・再接続を `/api/join-queue` へ送る（Node, 依存なし）
 
 ## 技術スタック
 
@@ -77,6 +78,10 @@
 │   │       └── page.tsx          # 振り返り（縦型配信用 1080x1920）
 │   ├── join-queue-overlay/
 │   │   └── page.tsx              # 視聴者参加の受付オーバーレイ
+│   ├── break-overlay/
+│   │   ├── page.tsx              # 休憩中オーバーレイ
+│   │   └── vertical/
+│   │       └── page.tsx          # 休憩中（縦型配信用 1080x1920）
 │   └── api/
 │       ├── stream-data/
 │       │   └── route.ts          # データ管理API
@@ -112,8 +117,10 @@
 │       │   └── route.ts          # ブキ埋めカードAPI
 │       ├── clip/
 │       │   └── route.ts          # Twitch のクリップの依頼・結果API
-│       └── join-queue/
-│           └── route.ts          # 視聴者参加の受付の列API
+│       ├── join-queue/
+│       │   └── route.ts          # 視聴者参加の受付の列API
+│       └── break/
+│           └── route.ts          # 休憩の状態API
 ├── components/                    # 再利用可能なReactコンポーネント
 │   ├── ScoreDisplay.tsx          # スコア表示
 │   ├── BurndownChart.tsx         # バーンダウンチャート
@@ -145,7 +152,9 @@
 │   ├── SalmonReviewOverlay.tsx   # 振り返りのオーバーレイ（ポーリング。2 つのページで共通）
 │   ├── SalmonReviewDownload.tsx  # 振り返りを SNS 用の PNG にしてダウンロード（サーモンランタブ）
 │   ├── ClipPanel.tsx             # コントロールパネルのクリップタブ
-│   └── JoinQueuePanel.tsx        # コントロールパネルの参加タブ
+│   ├── JoinQueuePanel.tsx        # コントロールパネルの参加タブ
+│   ├── BreakControl.tsx          # テロップバーの「休憩する」ボタン・解除忘れの注意
+│   └── BreakOverlay.tsx          # 休憩中オーバーレイの本体（横長 / 縦型配信用で共通）
 ├── lib/
 │   ├── localStorage.ts           # ローカルストレージのラッパー
 │   ├── db.ts                     # SQLite の接続とスキーマ
@@ -171,7 +180,9 @@
 │   ├── salmonBosses.ts           # オオモノシャケ・潮位の定義（クライアントからも使う）
 │   ├── weaponCardImage.ts        # ブキ埋めカードの SNS 投稿用の画像（Canvas で描く。クライアント専用）
 │   ├── joinQueueTypes.ts         # 視聴者参加の受付の型・評価の読み取り・返信の文面・推定キケン度の計算（クライアントからも使う）
-│   └── joinQueue.ts              # 視聴者参加の受付の列（サーバー専用。メモリだけ）
+│   ├── joinQueue.ts              # 視聴者参加の受付の列（サーバー専用。メモリだけ）
+│   ├── breakTypes.ts             # 休憩の型・定数・経過時間の表記（クライアントからも使う）
+│   └── break.ts                  # 休憩の状態（サーバー専用。メモリだけ）
 ├── data/                          # SQLite・Twitch トークン（Git / Docker イメージ管理外）
 ├── public/                        # 静的アセット
 │   └── tips.tsv                  # Tips データ
@@ -474,6 +485,16 @@ Twitch のフォロワー数とフォロワー目標を受け取る機能と、�
 - 再接続（#119）: `EventSubConnection` は 2 回目以降に新しいセッションで購読し直したとき（keepalive の途切れ・切断。`session_reconnect` では購読が引き継がれるので呼ばない）`onResubscribed` を呼び、スクリプトが `{action: 'reconnected'}` を送る。手元に「再接続しました（その間の参加は受け付けられていない可能性あり）」を出し、「確認した」（`{action: 'dismissReconnect'}`）か、次の受付開始で消す
 - 集計（#119）: 受付の枠（受付開始〜終了・配信の終了）ごとに、並んだ人数・「次の人」で呼んだ人数・2 回以上呼んだ人数だけを `app_state`（キー `joinQueueStats`）に残す（誰が来たかは残さない。数えるための user_id はメモリだけで、受付終了で消す）。保存に失敗しても列は消す（ログだけ）。28 日（`JOIN_STATS_DAYS`）を過ぎたものは保存のたびに消し、手元の「これまでの受付」に出す（配信者が 4 週間で振り返る）
 - 参加用のパスワード（ゲーム内のチャンネル機能）はコード・設定・ログに書かない
+
+### `/app/break-overlay/page.tsx` と `/app/api/break/route.ts`
+
+水・トイレなどで席を離れるときに「休憩中」を出し、戻ったときの解除忘れを防ぐ機能（Issue #123）。
+
+- 状態は `lib/break.ts` が `globalThis` にインメモリで持つ（`{startedAt, voiceHeardAt, lastReminderAt}`。再起動で解除されてよい）。型・定数は `lib/breakTypes.ts`
+- `GET /api/break`（`{active, startedAt, voiceHeardAt, serverTime}`）、`POST {action: 'start' | 'end'}`（休憩中に start しても開始時刻は変えない）、`POST {action: 'heard', resume}`（文字起こしスクリプトが発話のたびに送る。休憩中でなければ何もしない。`resume` なら終わる。開始から `BREAK_VOICE_GRACE_MS`（1 分）以内は離れる前のひとこととみなして無視し、それ以降は `voiceHeardAt` を記録して `BREAK_REMINDER_TEXT` を読み上げキューに入れる。読み上げは `BREAK_REMINDER_COOLDOWN_MS`（1 分）に 1 回）。`Content-Type: application/json` 必須
+- コントロールパネルのボタンは `components/BreakControl.tsx`（テロップバーの中に置き、どのタブでも押せる）。1 秒ごとにポーリングし、休憩中は経過時間と「休憩を終わる」を出す。`BREAK_LONG_MS`（10 分）を超えたか声を拾ったら赤く点滅させ、タブのタイトルにも出す（`⚠️ 休憩中 m:ss | 元のタイトル`）
+- オーバーレイの本体は `components/BreakOverlay.tsx`（`layout: 'landscape' | 'portrait'`）。1 秒ごとにポーリングし、休憩中だけ半透明の暗幕に「休憩中」「ちょっと待っててね🐟️」と経過時間を出す。経過時間はサーバーの時計どうしで測る（`localBreakStart`）。フォントは `/api/stream-data` の `fontFamily`
+- 文字起こしスクリプトは `BreakNotifier` が字幕のフィルタを通った発話ごとに `heard` を送る（合言葉は `BREAK_END_PATTERN`。「ただいま」「休憩終わり」「戻りました」など）。字幕・テロップ・エフェクトは止めない。`BREAK_MATCH=off` で無効
 
 ### `/components/ScoreDisplay.tsx`
 
