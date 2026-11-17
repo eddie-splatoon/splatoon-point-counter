@@ -11,4 +11,7 @@ vi.mock('next/navigation', () => ({
   useSearchParams: () => ({
     get: vi.fn(),
   }),
+  usePathname: () => '/control-panel',
+  notFound: vi.fn(),
+  redirect: vi.fn(),
 }));

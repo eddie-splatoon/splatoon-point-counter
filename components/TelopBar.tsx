@@ -1,88 +1,35 @@
 'use client';
 
+import CampaignRoundedIcon from '@mui/icons-material/CampaignRounded';
 import {Alert, Box, Button, Paper, Typography} from '@mui/material';
-import axios from 'axios';
-import React, {useCallback, useEffect, useState} from 'react';
+import React from 'react';
 
 import {monoFontFamily, tokens} from '../app/control-panel/theme';
-import {TELOP_SHORTCUT_KEYS, TelopData, TelopPreset} from '../lib/telopTypes';
+import {TELOP_SHORTCUT_KEYS} from '../lib/telopTypes';
 
-import BreakControl from './BreakControl';
-
-// 入力欄で数字を打っているときや、プルダウン（MUI の Select はフォーカスが div[role=combobox] やメニューの項目に乗る）を
-// キーボードで操作しているときは、ショートカットとして扱わない
-const isEditableTarget = (target: EventTarget | null) =>
-    target instanceof HTMLElement && (
-        target.isContentEditable
-        || ['INPUT', 'TEXTAREA', 'SELECT'].includes(target.tagName)
-        || target.closest('[role="combobox"], [role="listbox"], [role="option"]') !== null
-    );
-
-interface TelopBarProps {
-    /** 変わるたびにプリセットを読み込み直す（テロップタブでプリセットを編集したとき） */
-    reloadKey?: number;
-}
+import {useTelopPresets} from './controlPanelContext';
+import SectionTitle from './SectionTitle';
 
 /**
- * コントロールパネルの上部に常に出すテロップのボタン。どのタブを開いていても、
- * ボタンかキーボードの 1〜9, 0（先頭の 10 個）で並び順のプリセットを出せる
+ * 配信中の画面のテロップのボタン。キーボードの 1〜9, 0（先頭の 10 個）でも出せる
+ * （キーは共通の外枠の useTelopHotkeys が受けるので、どの画面からでも効く）
  */
-const TelopBar: React.FC<TelopBarProps> = ({reloadKey = 0}) => {
-    const [presets, setPresets] = useState<TelopPreset[] | null>(null);
-    const [error, setError] = useState('');
-
-    useEffect(() => {
-        let active = true;
-        axios.get<TelopData>('/api/telop')
-            .then((res) => {
-                if (!active) return;
-                setPresets(res.data.presets);
-                setError('');
-            })
-            .catch(() => active && setError('テロップのプリセットを読み込めませんでした。'));
-        return () => {
-            active = false;
-        };
-    }, [reloadKey]);
-
-    const show = useCallback(async (presetId: number) => {
-        setError('');
-        try {
-            await axios.post('/api/telop', {presetId});
-        } catch {
-            setError('テロップを出せませんでした。');
-        }
-    }, []);
-
-    useEffect(() => {
-        if (!presets) return;
-        const handleKeyDown = (e: KeyboardEvent) => {
-            if (e.isComposing || e.repeat || e.ctrlKey || e.metaKey || e.altKey || isEditableTarget(e.target)) return;
-            const index = (TELOP_SHORTCUT_KEYS as readonly string[]).indexOf(e.key);
-            const preset = index >= 0 ? presets[index] : undefined;
-            if (!preset) return;
-            e.preventDefault();
-            void show(preset.id);
-        };
-        window.addEventListener('keydown', handleKeyDown);
-        return () => window.removeEventListener('keydown', handleKeyDown);
-    }, [presets, show]);
+const TelopBar: React.FC = () => {
+    const {presets, error, show} = useTelopPresets();
 
     return (
-        // スクロールしても押せるよう上部に固定する（下のカードが透けないよう背景は不透明）
-        <Paper sx={{position: 'sticky', top: 0, zIndex: 10, mb: 4, p: 3}}>
-            {/* 席を離れるときの「休憩する」もどのタブからでも押せるよう、ここに置く */}
-            <BreakControl/>
-            {error && <Alert severity="error" sx={{mb: 1}}>{error}</Alert>}
+        <Paper sx={{mb: 4, p: 4}}>
+            <SectionTitle icon={CampaignRoundedIcon}>テロップ</SectionTitle>
+            {error && <Alert severity="error" sx={{mb: 2}}>{error}</Alert>}
             {presets && presets.length > 0 ? (
-                // プリセットが多いとバーが高くなるので詰めて並べる。キーの割り当ての無いものは outlined で区別する
+                // プリセットが多いと高くなるので詰めて並べる。キーの割り当ての無いものは outlined で区別する
                 <Box data-testid="telop-buttons" sx={{display: 'flex', flexWrap: 'wrap', gap: 1.5}}>
                     {presets.map((preset, index) => (
                         <Button
                             key={preset.id}
                             variant={TELOP_SHORTCUT_KEYS[index] !== undefined ? 'contained' : 'outlined'}
                             size="small"
-                            onClick={() => void show(preset.id)}
+                            onClick={() => show(preset.id)}
                             sx={{textTransform: 'none'}}
                         >
                             {TELOP_SHORTCUT_KEYS[index] !== undefined && (
@@ -101,7 +48,7 @@ const TelopBar: React.FC<TelopBarProps> = ({reloadKey = 0}) => {
                     ))}
                 </Box>
             ) : (
-                presets && <Typography variant="body2" sx={{color: 'text.secondary'}}>テロップのプリセットがありません（「テロップ」タブで追加できます）</Typography>
+                presets && <Typography variant="body2" sx={{color: 'text.secondary'}}>テロップのプリセットがありません（設定の「テロップ」で追加できます）</Typography>
             )}
         </Paper>
     );

@@ -4,10 +4,21 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { BREAK_LONG_MS, BreakState } from '../lib/breakTypes';
 
-import BreakControl from './BreakControl';
+import { BreakBanner, BreakButton, useBreak } from './BreakControl';
 
 vi.mock('axios');
 const mockedAxios = vi.mocked(axios);
+
+// コントロールパネルのヘッダーと同じく、状態を 1 回だけ取ってボタンと帯に渡す
+const Harness = () => {
+  const view = useBreak();
+  return (
+    <>
+      <BreakButton view={view} />
+      <BreakBanner view={view} />
+    </>
+  );
+};
 
 const NOW = 1_700_000_000_000;
 const idle: BreakState = { active: false, startedAt: null, voiceHeardAt: null, serverTime: NOW };
@@ -16,7 +27,7 @@ const onBreak = (elapsedMs: number, voiceHeardAt: number | null = null): BreakSt
 
 const renderWith = async (state: BreakState) => {
   mockedAxios.get.mockResolvedValue({ data: state, status: 200 });
-  render(<BreakControl />);
+  render(<Harness />);
   await act(async () => {});
 };
 
@@ -31,7 +42,7 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
-describe('BreakControl', () => {
+describe('useBreak / BreakButton / BreakBanner', () => {
   it('starts a break', async () => {
     await renderWith(idle);
     mockedAxios.post.mockResolvedValue({ data: onBreak(0), status: 200 });
@@ -46,9 +57,11 @@ describe('BreakControl', () => {
   it('ends a break and restores the title', async () => {
     await renderWith(onBreak(65_000));
     expect(screen.getByTestId('break-active')).toHaveTextContent('休憩中 1:05');
+    // ヘッダーのボタンにも経過時間を出す
+    expect(screen.getByRole('button', { name: '休憩を終わる 1:05' })).toBeInTheDocument();
     mockedAxios.post.mockResolvedValue({ data: idle, status: 200 });
 
-    await act(async () => fireEvent.click(screen.getByRole('button', { name: '休憩を終わる' })));
+    await act(async () => fireEvent.click(screen.getByRole('button', { name: /休憩を終わる/ })));
 
     expect(mockedAxios.post).toHaveBeenCalledWith('/api/break', { action: 'end' });
     expect(screen.getByRole('button', { name: /休憩する/ })).toBeInTheDocument();
@@ -60,6 +73,8 @@ describe('BreakControl', () => {
 
     expect(screen.getByTestId('break-active')).toHaveAttribute('data-attention', 'true');
     expect(screen.getByText(/10 分を超えました/)).toBeInTheDocument();
+    // 点滅は帯とボタンの両方に出す
+    expect(screen.getByRole('button', { name: /休憩を終わる/ })).toHaveAttribute('data-attention', 'true');
     expect(document.title).toBe('⚠️ 休憩中 10:00 | Control Panel');
   });
 
