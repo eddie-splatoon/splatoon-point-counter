@@ -15,6 +15,20 @@ describe('parseStreamSettingsUpdate', () => {
     });
   });
 
+  it('keeps only the known keys of nested objects', () => {
+    const result = parseStreamSettingsUpdate({
+      messagePresets: [{ name: '通常', extra: 'x'.repeat(1000), messages: [{ id: 1, text: 'a', extra: 1 }] }],
+      burndown: { label: 'あと', targetValue: 10, extra: true, entries: [{ score: 1, timestamp: 2, extra: [] }] },
+    });
+    expect(result).toEqual({
+      ok: true,
+      update: {
+        messagePresets: [{ name: '通常', messages: [{ id: 1, text: 'a' }] }],
+        burndown: { label: 'あと', targetValue: 10, entries: [{ score: 1, timestamp: 2 }] },
+      },
+    });
+  });
+
   it('names the invalid and unknown fields', () => {
     expect(parseStreamSettingsUpdate({ fontSize: 0 })).toEqual({ ok: false, message: 'Invalid fields: fontSize.' });
     expect(parseStreamSettingsUpdate({ lastEvent: null })).toEqual({ ok: false, message: 'Unknown fields: lastEvent.' });

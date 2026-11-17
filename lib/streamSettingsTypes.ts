@@ -115,6 +115,21 @@ const VALIDATORS: {[K in keyof StreamSettings]: (value: unknown) => boolean} = {
     burndown: isBurndown,
 };
 
+// 検証を通った値から、決まったキーだけを取り出す（余分なキーを SQLite に残さない）
+const pickKnownKeys = <K extends keyof StreamSettings>(key: K, value: StreamSettings[K]): StreamSettings[K] => {
+    if (key === 'messagePresets') {
+        return (value as MessagePreset[]).map(({name, messages}) => ({
+            name,
+            messages: messages.map(({id, text}) => ({id, text})),
+        })) as StreamSettings[K];
+    }
+    if (key === 'burndown') {
+        const {label, targetValue, entries} = value as BurndownData;
+        return {label, targetValue, entries: entries.map(({score, timestamp}) => ({score, timestamp}))} as StreamSettings[K];
+    }
+    return value;
+};
+
 /** 項目の値として受け付けられるか（コントロールパネルが、入力途中の不正な値を送らないために使う） */
 export function isValidStreamSetting<K extends keyof StreamSettings>(key: K, value: unknown): value is StreamSettings[K] {
     return VALIDATORS[key](value);
@@ -136,7 +151,11 @@ export function parseStreamSettingsUpdate(body: unknown): StreamSettingsUpdateRe
     if (keys.length === 0) return {ok: false, message: 'No settings to update.'};
     const invalid = STREAM_SETTINGS_KEYS.filter((key) => key in body && !isValidStreamSetting(key, body[key]));
     if (invalid.length > 0) return {ok: false, message: `Invalid fields: ${invalid.join(', ')}.`};
-    return {ok: true, update: body as Partial<StreamSettings>};
+    const update: Partial<StreamSettings> = {};
+    for (const key of STREAM_SETTINGS_KEYS) {
+        if (key in body) (update as Record<string, unknown>)[key] = pickKnownKeys(key, body[key] as StreamSettings[typeof key]);
+    }
+    return {ok: true, update};
 }
 
 /** 保存値を読む。壊れた・不正な項目は既定値にする（ほかの項目は残す） */
@@ -145,7 +164,7 @@ export function parseStoredStreamSettings(stored: unknown): StreamSettings {
     const settings = {...DEFAULT_STREAM_SETTINGS};
     for (const key of STREAM_SETTINGS_KEYS) {
         if (key in record && isValidStreamSetting(key, record[key])) {
-            (settings as Record<string, unknown>)[key] = record[key];
+            (settings as Record<string, unknown>)[key] = pickKnownKeys(key, record[key] as StreamSettings[typeof key]);
         }
     }
     return settings;
