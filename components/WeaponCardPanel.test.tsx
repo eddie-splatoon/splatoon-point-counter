@@ -4,7 +4,10 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { downloadBlob, renderWeaponCardImage } from '../lib/weaponCardImage';
 
-import WeaponCardPanel from './WeaponCardPanel';
+import WeaponCardPanel, { WeaponCardManual, useWeaponCard } from './WeaponCardPanel';
+
+// 配信中の画面の「埋める・外す」のダイアログの中身
+const Manual = () => <WeaponCardManual {...useWeaponCard()} />;
 
 
 import type { WeaponCard } from '../lib/salmonWeapons';
@@ -31,7 +34,7 @@ beforeEach(() => {
 
 describe('WeaponCardPanel', () => {
   it('shows the progress and the filled weapons', async () => {
-    render(<WeaponCardPanel />);
+    render(<Manual />);
 
     expect(await screen.findByTestId('weapon-card-count')).toHaveTextContent('2 / 71');
     expect(within(picker()).getByRole('button', { name: 'パブロ' })).toHaveAttribute('aria-pressed', 'true');
@@ -39,7 +42,7 @@ describe('WeaponCardPanel', () => {
   });
 
   it('does not let a weapon filled by a record be unfilled manually', async () => {
-    render(<WeaponCardPanel />);
+    render(<Manual />);
     await screen.findByTestId('weapon-card-count');
 
     expect(within(picker()).getByRole('button', { name: 'スプラシューター' })).toBeDisabled();
@@ -47,7 +50,7 @@ describe('WeaponCardPanel', () => {
 
   it('fills and unfills weapons manually', async () => {
     mockedAxios.patch.mockResolvedValue({ data: card([{ key: 'sshooter', at: 1, source: 'job' }]), status: 200 });
-    render(<WeaponCardPanel />);
+    render(<Manual />);
     await screen.findByTestId('weapon-card-count');
 
     await act(async () => fireEvent.click(within(picker()).getByRole('button', { name: 'パブロ' })));
@@ -56,6 +59,12 @@ describe('WeaponCardPanel', () => {
 
     await act(async () => fireEvent.click(within(picker()).getByRole('button', { name: 'ノヴァブラスター' })));
     expect(mockedAxios.patch).toHaveBeenLastCalledWith('/api/weapon-card', { weapon: 'nova', obtained: true });
+  });
+
+  it('does not offer filling weapons on the review screen', async () => {
+    render(<WeaponCardPanel />);
+    await screen.findByTestId('weapon-card-count');
+    expect(screen.queryByRole('group', { name: 'ブキ埋めカード' })).not.toBeInTheDocument();
   });
 
   it('starts a new card after confirming', async () => {
@@ -79,7 +88,7 @@ describe('WeaponCardPanel', () => {
 
   it('shows an error when saving fails', async () => {
     mockedAxios.patch.mockRejectedValue(new Error('500'));
-    render(<WeaponCardPanel />);
+    render(<Manual />);
     await screen.findByTestId('weapon-card-count');
 
     await act(async () => fireEvent.click(within(picker()).getByRole('button', { name: 'ノヴァブラスター' })));

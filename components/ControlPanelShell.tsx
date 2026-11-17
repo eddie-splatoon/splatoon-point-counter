@@ -100,6 +100,19 @@ const Header: React.FC = () => {
 };
 
 /** コントロールパネルの共通の外枠（テーマ・ヘッダー・休憩の帯・テロップの数字キー・保存の状態） */
+// 配信中の画面は 3 列のカードなので広く使う。ほかの画面は読みやすい幅にする
+const LIVE_MAX_WIDTH = 1600;
+const PAGE_MAX_WIDTH = 900;
+
+const Main: React.FC<{children: React.ReactNode}> = ({children}) => {
+    const pathname = usePathname();
+    return (
+        <Box component="main" sx={{px: 5, py: 4, maxWidth: pathname === '/control-panel' ? LIVE_MAX_WIDTH : PAGE_MAX_WIDTH, mx: 'auto'}}>
+            {children}
+        </Box>
+    );
+};
+
 const ControlPanelShell: React.FC<{children: React.ReactNode}> = ({children}) => (
     <ThemeProvider theme={theme}>
         <CssBaseline/>
@@ -108,9 +121,7 @@ const ControlPanelShell: React.FC<{children: React.ReactNode}> = ({children}) =>
                 <TelopHotkeys/>
                 <Box sx={{minHeight: '100vh', bgcolor: 'background.default', color: 'text.primary'}}>
                     <Header/>
-                    <Box component="main" sx={{p: 5, maxWidth: 900, mx: 'auto'}}>
-                        {children}
-                    </Box>
+                    <Main>{children}</Main>
                 </Box>
             </TelopPresetsProvider>
         </SaveStatusProvider>

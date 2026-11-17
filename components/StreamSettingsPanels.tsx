@@ -1,6 +1,5 @@
 'use client';
 
-import AutoAwesomeRoundedIcon from '@mui/icons-material/AutoAwesomeRounded';
 import ChatRoundedIcon from '@mui/icons-material/ChatRounded';
 import RemoveCircleIcon from '@mui/icons-material/RemoveCircle';
 import TextFieldsRoundedIcon from '@mui/icons-material/TextFieldsRounded';
@@ -21,15 +20,14 @@ import {
     TextField,
     Typography,
 } from '@mui/material';
-import axios from 'axios';
-import React, {useCallback, useMemo, useState} from 'react';
+import React, {useMemo, useState} from 'react';
 
 import {BurndownData, StreamSettings, TransitionEffect, isValidStreamSetting} from '../lib/streamSettingsTypes';
 
 import SectionTitle from './SectionTitle';
 import {StreamSettingsState} from './useStreamSettings';
 
-// /api/stream-data の設定（とエフェクト）を扱うコントロールパネルのカード。設定は useStreamSettings で、
+// /api/stream-data の設定を扱うコントロールパネルのカード。設定は useStreamSettings で、
 // 画面ごとに 1 回だけ読み込んで各カードに渡す
 
 const paperSx = {mb: 4, p: 4};
@@ -167,45 +165,3 @@ export const AppearanceSettingsCard: React.FC<CardProps> = ({settings, update}) 
         <TextField label="表示秒数 (秒)" type="number" value={settings.transitionDuration} onChange={(e) => update({transitionDuration: Number(e.target.value)})} error={!isValidStreamSetting('transitionDuration', settings.transitionDuration)} helperText={isValidStreamSetting('transitionDuration', settings.transitionDuration) ? undefined : NOT_SAVED_TEXT} fullWidth margin="normal" slotProps={{htmlInput: {min: 1}}} variant="outlined"/>
     </Paper>
 );
-
-const EFFECT_BUTTONS = [
-    {name: 'LOVE', label: '💖 LOVE', color: 'primary'},
-    {name: 'STAR', label: '⭐ STAR', color: 'secondary'},
-    {name: 'SPARKLE', label: '✨ SPARKLE', color: 'secondary'},
-    {name: 'BUBBLE', label: '🫧 BUBBLE', color: 'secondary'},
-] as const;
-
-/** エフェクトのボタン。エフェクトだけを PATCH で送る（設定は送らない） */
-export const EffectButtonsCard: React.FC = () => {
-    const [status, setStatus] = useState<'idle' | 'loading' | 'success' | 'error'>('idle');
-
-    const trigger = useCallback(async (name: string) => {
-        if (status === 'loading') return;
-        setStatus('loading');
-        try {
-            const res = await axios.patch('/api/stream-data', {event: name});
-            setStatus(res.status === 200 ? 'success' : 'error');
-        } catch {
-            setStatus('error');
-        } finally {
-            setTimeout(() => setStatus('idle'), 2000);
-        }
-    }, [status]);
-
-    return (
-        <Paper sx={paperSx}>
-            <SectionTitle icon={AutoAwesomeRoundedIcon}>演出効果</SectionTitle>
-            <Box sx={{display: 'flex', gap: 2, alignItems: 'center', flexWrap: 'wrap'}}>
-                {EFFECT_BUTTONS.map(({name, label, color}) => (
-                    <Button key={name} variant="contained" color={color} onClick={() => void trigger(name)} disabled={status === 'loading'}>{label}</Button>
-                ))}
-                {status === 'success' && <Typography variant="body2" sx={{color: 'success.main'}}>送信完了</Typography>}
-                {status === 'error' && <Typography variant="body2" sx={{color: 'error.main'}}>送信失敗</Typography>}
-            </Box>
-            <Typography variant="caption" sx={{display: 'block', mt: 2, color: 'text.secondary'}}>
-                ボタンを押すと、OBSのスコア表示オーバーレイにエフェクトが表示されます。
-                文字起こし（pnpm caption）の起動中は、話した言葉でも出ます: 「ナイス」→ ⭐, 「ありがとう」→ 💖, 「よっしゃ」→ ✨, 「やべぇ」→ 🫧
-            </Typography>
-        </Paper>
-    );
-};

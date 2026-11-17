@@ -1,15 +1,14 @@
-import {Typography} from '@mui/material';
-
+import {JoinHistoryCard} from '../../../components/JoinQueuePanel';
+import SalmonPastSessionsCard from '../../../components/SalmonPastSessionsCard';
 import WeaponCardPanel from '../../../components/WeaponCardPanel';
 
-/** 振り返りの画面（/control-panel/review）。配信の後に使うもの */
+/** 振り返りの画面（/control-panel/review）。配信の後に使うもの（並べ方は #131 で作り直す） */
 export default function ReviewPage() {
     return (
         <>
+            <SalmonPastSessionsCard/>
             <WeaponCardPanel/>
-            <Typography variant="body2" sx={{color: 'text.secondary'}}>
-                サーモンランの振り返りの画像と過去のセッションは、いまは配信中の画面のサーモンランのカードにあります。
-            </Typography>
+            <JoinHistoryCard/>
         </>
     );
 }

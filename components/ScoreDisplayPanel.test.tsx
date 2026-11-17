@@ -2,7 +2,10 @@ import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import axios from 'axios';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import ScoreDisplayPanel from './ScoreDisplayPanel';
+import { ScoreAutoUpdateCard, ScoreDisplayEditor, useScoreDisplay } from './ScoreDisplayPanel';
+
+// 配信中の画面の「直す」のダイアログと同じく、読み込み（定期的）と編集を組み合わせる
+const ScoreDisplayPanel = () => <ScoreDisplayEditor {...useScoreDisplay()} />;
 
 vi.mock('axios');
 const mockedAxios = vi.mocked(axios);
@@ -19,12 +22,12 @@ afterEach(() => {
   vi.useRealTimers();
 });
 
-describe('ScoreDisplayPanel', () => {
+describe('ScoreDisplayEditor', () => {
   it('shows the saved score display', async () => {
     render(<ScoreDisplayPanel />);
     await waitFor(() => expect(screen.getByLabelText('値')).toHaveValue('720'));
     expect(screen.getByLabelText('フィールド名')).toHaveValue('現在のバイト評価');
-    expect(screen.getByRole('switch', { name: 'リザルトの取り込みで自動更新する' })).toBeChecked();
+    expect(screen.getByText(/次の取り込みで書き換わります/)).toBeInTheDocument();
     expect(screen.getByRole('button', { name: '反映' })).toBeDisabled();
   });
 
@@ -71,8 +74,8 @@ describe('ScoreDisplayPanel', () => {
     expect(mockedAxios.patch).toHaveBeenCalledWith('/api/score-display', { scoreLabel: '評価' });
   });
 
-  it('turns off the auto update immediately', async () => {
-    render(<ScoreDisplayPanel />);
+  it('turns off the auto update immediately in the settings', async () => {
+    render(<ScoreAutoUpdateCard />);
     const toggle = await screen.findByRole('switch', { name: 'リザルトの取り込みで自動更新する' });
     await act(async () => fireEvent.click(toggle));
 

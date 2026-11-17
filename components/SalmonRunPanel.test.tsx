@@ -58,28 +58,63 @@ beforeEach(() => {
   mockGet(summaryOf([]));
 });
 
-describe('SalmonRunPanel', () => {
-  it('shows the current session and an empty history', async () => {
-    render(<SalmonRunPanel />);
+const renderLoaded = async () => {
+  render(<SalmonRunPanel />);
+  await screen.findByRole('button', { name: 'リザルトを取り込む' });
+};
 
-    expect(await screen.findByText(/今のセッション: #2 .* 水曜の配信/)).toBeInTheDocument();
-    expect(within(screen.getByTestId('salmon-history')).getByText('記録がありません')).toBeInTheDocument();
+// 手入力のダイアログを開く
+const openManual = async () => {
+  fireEvent.click(screen.getByRole('button', { name: '手入力' }));
+  return screen.findByRole('dialog', { name: /バイトを手で記録/ });
+};
+
+describe('SalmonRunPanel', () => {
+  it('shows the current session, the totals and that there are no records yet', async () => {
+    await renderLoaded();
+
+    expect(screen.getByText('#2 水曜の配信')).toBeInTheDocument();
+    expect(screen.getByText('記録がありません')).toBeInTheDocument();
+    expect(screen.getByText(/まだ取り込んでいません/)).toBeInTheDocument();
   });
 
   it('explains that a session is created on the first record', async () => {
     mockGet({ ...summaryOf([]), session: null }, []);
-    render(<SalmonRunPanel />);
+    await renderLoaded();
 
-    expect(await screen.findByText('今のセッション（最初の記録で自動作成）')).toBeInTheDocument();
-    expect(screen.getByText('過去のセッションはまだありません')).toBeInTheDocument();
+    expect(screen.getByText('セッションは最初の記録で作ります')).toBeInTheDocument();
   });
 
-  it('records a cleared job and clears the number fields', async () => {
-    mockedAxios.post.mockResolvedValue({ data: summaryOf([job()]), status: 200 });
-    render(<SalmonRunPanel />);
-    await screen.findByText(/今のセッション/);
+  it('shows today\'s totals with the last job and the three newest records', async () => {
+    const jobs = [4, 3, 2, 1].map((id) => job({ id, goldenEggs: 10 * id, cleared: id !== 4, waveReached: 2 }));
+    mockGet({ ...summaryOf(jobs), totals: totals({ jobs: 4, goldenEggs: 1055, bossKills: 561, deaths: 14, clears: 3, failures: 1 }) });
+    await renderLoaded();
 
-    const recordButton = screen.getByRole('button', { name: '記録' });
+    const tiles = screen.getByTestId('salmon-totals');
+    expect(tiles).toHaveTextContent('金イクラ1,055前回 40');
+    expect(tiles).toHaveTextContent('クリア3 / 4前回 WAVE2 失敗');
+    const recent = screen.getByTestId('salmon-recent');
+    expect(within(recent).getAllByRole('listitem')).toHaveLength(3);
+    expect(within(recent).getAllByRole('listitem')[0]).toHaveTextContent(/^4WAVE2 失敗金 40 · オオモノ 12 · デス 1/);
+    expect(screen.getByRole('button', { name: 'すべての記録（4）と修正・削除' })).toBeInTheDocument();
+  });
+
+  it('keeps the weapon palette closed until it is asked for', async () => {
+    await renderLoaded();
+    expect(screen.queryByRole('group', { name: '支給ブキ' })).not.toBeInTheDocument();
+
+    const dialog = await openManual();
+    expect(within(dialog).queryByRole('group', { name: '支給ブキ' })).not.toBeInTheDocument();
+    fireEvent.click(within(dialog).getByRole('button', { name: 'ブキを選ぶ' }));
+    expect(within(dialog).getByRole('group', { name: '支給ブキ' })).toBeInTheDocument();
+  });
+
+  it('records a cleared job by hand and keeps the stage for the next one', async () => {
+    mockedAxios.post.mockResolvedValue({ data: summaryOf([job()]), status: 200 });
+    await renderLoaded();
+    await openManual();
+
+    const recordButton = screen.getByRole('button', { name: '記録する' });
     expect(recordButton).toBeDisabled();
 
     fillNumbers('30', '12', '1');
@@ -89,15 +124,19 @@ describe('SalmonRunPanel', () => {
     expect(mockedAxios.post).toHaveBeenCalledWith('/api/salmon', {
       goldenEggs: 30, bossKills: 12, deaths: 1, cleared: true, waveReached: 3, stage: 'アラマキ砦', weapons: [], jobKind: 'regular',
     });
-    await waitFor(() => expect(within(screen.getByTestId('salmon-history')).getByText(/クリア \| 金イクラ 30/)).toBeInTheDocument());
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+    expect(within(screen.getByTestId('salmon-recent')).getByText(/金 30 · オオモノ 12/)).toBeInTheDocument();
+
+    await openManual();
     expect(screen.getByLabelText('金イクラ')).toHaveValue(null);
     expect(screen.getByLabelText('ステージ')).toHaveValue('アラマキ砦');
   });
 
-  it('records the supplied weapons, up to five, and clears them', async () => {
+  it('records the supplied weapons, up to five', async () => {
     mockedAxios.post.mockResolvedValue({ data: summaryOf([job({ weapons: ['sshooter', 'sshooter', 'pablo', 'kuma_blaster'] })]), status: 200 });
-    render(<SalmonRunPanel />);
-    await screen.findByText(/今のセッション/);
+    await renderLoaded();
+    await openManual();
+    fireEvent.click(screen.getByRole('button', { name: 'ブキを選ぶ' }));
 
     const picker = screen.getByRole('group', { name: '支給ブキ' });
     for (const name of ['スプラシューター', 'スプラシューター', 'ホクサイ', 'パブロ', 'ボールドマーカー']) {
@@ -111,51 +150,35 @@ describe('SalmonRunPanel', () => {
     fireEvent.click(within(picker).getByRole('button', { name: 'クマサン印のブラスター' }));
 
     fillNumbers('30', '12', '1');
-    await act(async () => fireEvent.click(screen.getByRole('button', { name: '記録' })));
+    await act(async () => fireEvent.click(screen.getByRole('button', { name: '記録する' })));
 
     expect(mockedAxios.post).toHaveBeenCalledWith('/api/salmon', expect.objectContaining({
       weapons: ['sshooter', 'sshooter', 'pablo', 'kuma_blaster'],
     }));
-    await waitFor(() => expect(within(screen.getByTestId('salmon-selected-weapons')).queryAllByRole('button')).toHaveLength(0));
-    expect(within(screen.getByTestId('salmon-history')).getAllByRole('img', { name: 'スプラシューター' })).toHaveLength(2);
     // 71 種のパレットから getByRole で何度も探すので、カバレッジ計測中の CI では既定の 5 秒を超えることがある
   }, 15_000);
 
   it('records a team contest job failed at WAVE 5', async () => {
-    render(<SalmonRunPanel />);
-    await screen.findByText(/今のセッション/);
+    await renderLoaded();
+    await openManual();
 
-    fireEvent.mouseDown(screen.getByRole('combobox', { name: 'バイトの種類' }));
-    fireEvent.click(await screen.findByRole('option', { name: 'バイトチームコンテスト' }));
+    await selectOption('バイトの種類', 'バイトチームコンテスト');
     fireEvent.click(screen.getByRole('button', { name: '失敗' }));
-    fireEvent.mouseDown(screen.getByRole('combobox', { name: '失敗した WAVE' }));
-    fireEvent.click(await screen.findByRole('option', { name: 'WAVE5' }));
+    await selectOption('失敗した WAVE', 'WAVE5');
     fillNumbers('30', '12', '1');
-    await act(async () => fireEvent.click(screen.getByRole('button', { name: '記録' })));
+    await act(async () => fireEvent.click(screen.getByRole('button', { name: '記録する' })));
 
     expect(mockedAxios.post).toHaveBeenCalledWith('/api/salmon', expect.objectContaining({ cleared: false, waveReached: 5, jobKind: 'teamContest' }));
   });
 
   it('fills the stage from the running schedule', async () => {
     mockGet(summaryOf([]), undefined, runningSchedule('ムニ・エール海洋発電所'));
-    render(<SalmonRunPanel />);
+    await renderLoaded();
+    await waitFor(() => expect(mockedAxios.get).toHaveBeenCalledWith('/api/salmon-schedule'));
+    await act(async () => {});
 
-    await waitFor(() => expect(screen.getByLabelText('ステージ')).toHaveValue('ムニ・エール海洋発電所'));
-  });
-
-  it('does not overwrite a stage typed before the schedule arrives', async () => {
-    let resolveSchedule: (value: unknown) => void = () => {};
-    mockGet(summaryOf([]));
-    const baseGet = mockedAxios.get.getMockImplementation()!;
-    mockedAxios.get.mockImplementation(async (url: string) =>
-      url === '/api/salmon-schedule' ? new Promise((resolve) => { resolveSchedule = resolve; }) : baseGet(url));
-    render(<SalmonRunPanel />);
-    await screen.findByText(/今のセッション/);
-
-    fireEvent.change(screen.getByLabelText('ステージ'), { target: { value: 'アラマキ砦' } });
-    await act(async () => resolveSchedule({ data: runningSchedule('ムニ・エール海洋発電所'), status: 200 }));
-
-    expect(screen.getByLabelText('ステージ')).toHaveValue('アラマキ砦');
+    await openManual();
+    expect(screen.getByLabelText('ステージ')).toHaveValue('ムニ・エール海洋発電所');
   });
 
   it('can still record when the schedule is unavailable', async () => {
@@ -166,24 +189,11 @@ describe('SalmonRunPanel', () => {
       if (url === '/api/salmon-schedule') throw new Error('502');
       return baseGet(url);
     });
-    render(<SalmonRunPanel />);
-    await screen.findByText(/今のセッション/);
+    await renderLoaded();
+    await openManual();
 
     expect(screen.getByLabelText('ステージ')).toHaveValue('');
     expect(screen.queryByRole('alert')).not.toBeInTheDocument();
-  });
-
-  it('records the wave of a failed job', async () => {
-    mockedAxios.post.mockResolvedValue({ data: summaryOf([job({ cleared: false, waveReached: 2 })]), status: 200 });
-    render(<SalmonRunPanel />);
-    await screen.findByText(/今のセッション/);
-
-    fireEvent.click(screen.getByRole('button', { name: '失敗' }));
-    await selectOption('失敗した WAVE', 'WAVE2');
-    fillNumbers('10', '5', '3');
-    await act(async () => fireEvent.click(screen.getByRole('button', { name: '記録' })));
-
-    expect(mockedAxios.post).toHaveBeenCalledWith('/api/salmon', expect.objectContaining({ cleared: false, waveReached: 2 }));
   });
 
   it.each([
@@ -192,44 +202,31 @@ describe('SalmonRunPanel', () => {
     ['a fraction', ['30', '12', '1.5']],
     ['a number over the limit', ['10000', '12', '1']],
   ])('does not allow recording %s', async (_, [goldenEggs, bossKills, deaths]) => {
-    render(<SalmonRunPanel />);
-    await screen.findByText(/今のセッション/);
+    await renderLoaded();
+    await openManual();
 
     fillNumbers(goldenEggs, bossKills, deaths);
-    expect(screen.getByRole('button', { name: '記録' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: '記録する' })).toBeDisabled();
   });
 
-  it('shows an error when recording fails', async () => {
+  it('shows an error when recording fails and keeps the input', async () => {
     mockedAxios.post.mockRejectedValue(new Error('500'));
-    render(<SalmonRunPanel />);
-    await screen.findByText(/今のセッション/);
+    await renderLoaded();
+    await openManual();
 
     fillNumbers('30', '12', '1');
-    await act(async () => fireEvent.click(screen.getByRole('button', { name: '記録' })));
+    await act(async () => fireEvent.click(screen.getByRole('button', { name: '記録する' })));
 
     expect(screen.getByText(/記録に失敗しました/)).toBeInTheDocument();
     expect(screen.getByLabelText('金イクラ')).toHaveValue(30);
   });
 
-  it('does not report a saved job as failed when only the session list fails to refresh', async () => {
-    mockedAxios.post.mockResolvedValue({ data: summaryOf([job()]), status: 200 });
-    render(<SalmonRunPanel />);
-    await screen.findByText(/今のセッション/);
-    mockedAxios.get.mockRejectedValue(new Error('500'));
-    vi.spyOn(console, 'error').mockImplementation(() => {});
-
-    fillNumbers('30', '12', '1');
-    await act(async () => fireEvent.click(screen.getByRole('button', { name: '記録' })));
-
-    expect(screen.queryByText(/記録に失敗しました/)).not.toBeInTheDocument();
-    expect(within(screen.getByTestId('salmon-history')).getByText(/金イクラ 30/)).toBeInTheDocument();
-  });
-
-  it('deletes a job from the history', async () => {
+  it('deletes a job from all the records', async () => {
     mockGet(summaryOf([job({ id: 5 })]));
     mockedAxios.delete.mockResolvedValue({ data: summaryOf([]), status: 200 });
-    render(<SalmonRunPanel />);
+    await renderLoaded();
 
+    fireEvent.click(screen.getByRole('button', { name: 'すべての記録（1）と修正・削除' }));
     const deleteButton = await screen.findByRole('button', { name: '記録 1 を削除' });
     await act(async () => fireEvent.click(deleteButton));
 
@@ -240,10 +237,10 @@ describe('SalmonRunPanel', () => {
   it('corrects a recorded job with PATCH instead of recording a new one', async () => {
     mockGet(summaryOf([job({ id: 5, goldenEggs: 3142, stage: 'ムニ・エール海洋発電所', jobKind: 'regular' })]));
     mockedAxios.patch.mockResolvedValue({ data: summaryOf([job({ id: 5, goldenEggs: 31 })]), status: 200 });
-    render(<SalmonRunPanel />);
+    await renderLoaded();
 
-    fireEvent.click(await screen.findByRole('button', { name: '記録 1 を修正' }));
-    expect(screen.getByText('記録 1 を修正しています')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: '記録 1 を修正' }));
+    expect(await screen.findByRole('dialog', { name: /記録 1 を修正/ })).toBeInTheDocument();
     expect(screen.getByLabelText('金イクラ')).toHaveValue(3142);
     expect(screen.getByLabelText('ステージ')).toHaveValue('ムニ・エール海洋発電所');
 
@@ -254,82 +251,36 @@ describe('SalmonRunPanel', () => {
       id: 5, goldenEggs: 31, bossKills: 12, deaths: 1, cleared: true, waveReached: 3, stage: 'ムニ・エール海洋発電所', weapons: [], jobKind: 'regular',
     });
     expect(mockedAxios.post).not.toHaveBeenCalled();
-    expect(screen.queryByText('記録 1 を修正しています')).not.toBeInTheDocument();
-    expect(screen.getByRole('button', { name: '記録' })).toBeDisabled();
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
   });
 
-  it('cancels a correction and empties the form', async () => {
+  it('cancels a correction', async () => {
     mockGet(summaryOf([job({ id: 5 })]));
-    render(<SalmonRunPanel />);
+    await renderLoaded();
 
-    fireEvent.click(await screen.findByRole('button', { name: '記録 1 を修正' }));
-    fireEvent.click(screen.getByRole('button', { name: 'キャンセル' }));
+    fireEvent.click(screen.getByRole('button', { name: '記録 1 を修正' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'やめる' }));
 
-    expect(screen.queryByText('記録 1 を修正しています')).not.toBeInTheDocument();
-    expect(screen.getByLabelText('金イクラ')).toHaveValue(null);
-    expect(screen.getByRole('button', { name: '記録' })).toBeDisabled();
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+    expect(mockedAxios.patch).not.toHaveBeenCalled();
   });
 
   it('shows an error when the correction fails', async () => {
     mockGet(summaryOf([job({ id: 5 })]));
     mockedAxios.patch.mockRejectedValue(new Error('network'));
-    render(<SalmonRunPanel />);
+    await renderLoaded();
 
-    fireEvent.click(await screen.findByRole('button', { name: '記録 1 を修正' }));
-    await act(async () => fireEvent.click(screen.getByRole('button', { name: '修正を保存' })));
+    fireEvent.click(screen.getByRole('button', { name: '記録 1 を修正' }));
+    const saveButton = await screen.findByRole('button', { name: '修正を保存' });
+    await act(async () => fireEvent.click(saveButton));
 
     expect(screen.getByText(/記録の修正に失敗しました/)).toBeInTheDocument();
-    expect(screen.getByText('記録 1 を修正しています')).toBeInTheDocument();
-  });
-
-  it('starts a new session with a title and reloads', async () => {
-    mockedAxios.post.mockResolvedValue({ data: {}, status: 200 });
-    render(<SalmonRunPanel />);
-    await screen.findByText(/今のセッション/);
-
-    fireEvent.change(screen.getByLabelText('新しいセッションのタイトル（任意）'), { target: { value: '木曜の配信' } });
-    await act(async () => fireEvent.click(screen.getByRole('button', { name: '新しいセッションを開始' })));
-
-    expect(mockedAxios.post).toHaveBeenCalledWith('/api/salmon/sessions', { title: '木曜の配信' });
-    await waitFor(() => expect(mockedAxios.get.mock.calls.filter(([url]) => url === '/api/salmon')).toHaveLength(2));
-  });
-
-  it('shows the records of a past session', async () => {
-    render(<SalmonRunPanel />);
-    await screen.findByText(/今のセッション/);
-
-    await selectOption('セッションを選択', /#1 .*1回 \/ 金イクラ 40/);
-
-    expect(mockedAxios.get).toHaveBeenCalledWith('/api/salmon?sessionId=1');
-    expect(await within(await screen.findByTestId('salmon-past-history')).findByText(/金イクラ 40/)).toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: /#2/ })).not.toBeInTheDocument();
-  });
-
-  it('ignores a stale response when the past session selection changes quickly', async () => {
-    const sessions = [{ ...session, totals: totals() }, pastSession, { ...pastSession, id: 3, title: '三番目' }];
-    mockGet(summaryOf([]), sessions);
-    let resolveFirst: (value: unknown) => void = () => {};
-    const baseGet = mockedAxios.get.getMockImplementation()!;
-    mockedAxios.get.mockImplementation(async (url: string) => {
-      if (url === '/api/salmon?sessionId=1') return new Promise((resolve) => { resolveFirst = resolve; });
-      if (url === '/api/salmon?sessionId=3') return { data: { ...summaryOf([job({ id: 30, sessionId: 3, goldenEggs: 77 })]), session: sessions[2] }, status: 200 };
-      return baseGet(url);
-    });
-    render(<SalmonRunPanel />);
-    await screen.findByText(/今のセッション/);
-
-    await selectOption('セッションを選択', /#1 /);
-    await selectOption('セッションを選択', /三番目/);
-    await screen.findByText(/金イクラ 77/);
-    await act(async () => resolveFirst({ data: { ...summaryOf([job({ id: 9, sessionId: 1, goldenEggs: 40 })]), session: pastSession }, status: 200 }));
-
-    const history = screen.getByTestId('salmon-past-history');
-    expect(within(history).getByText(/金イクラ 77/)).toBeInTheDocument();
-    expect(within(history).queryByText(/金イクラ 40/)).not.toBeInTheDocument();
+    expect(screen.getByRole('dialog', { name: /記録 1 を修正/ })).toBeInTheDocument();
   });
 
   it('shows an error when loading fails', async () => {
     mockedAxios.get.mockRejectedValue(new Error('500'));
+    vi.spyOn(console, 'error').mockImplementation(() => {});
     render(<SalmonRunPanel />);
 
     expect(await screen.findByText(/記録の読み込みに失敗しました/)).toBeInTheDocument();
@@ -352,7 +303,7 @@ describe('SalmonRunPanel result import', () => {
 
   it('requests an import, shows the progress and reloads the records when it is recorded', async () => {
     render(<SalmonRunPanel />);
-    const button = await screen.findByRole('button', { name: /最新のリザルトを取り込む/ });
+    const button = await screen.findByRole('button', { name: 'リザルトを取り込む' });
     mockedAxios.post.mockResolvedValue({ data: { import: importRequest() }, status: 200 });
     // 記録されたら読み直すので、以降の読み込みでは記録が 1 件ある
     mockGet(summaryOf([job()]));
@@ -364,13 +315,13 @@ describe('SalmonRunPanel result import', () => {
     expect(button).toBeDisabled();
     expect(await screen.findByText(/イカリング3から読み取り中/, {}, { timeout: 3000 })).toBeInTheDocument();
     expect(await screen.findByText('記録しました（2026/11/10 21:05 のバイト）', {}, { timeout: 3000 })).toBeInTheDocument();
-    await waitFor(() => expect(within(screen.getByTestId('salmon-history')).getByText(/金イクラ 30/)).toBeInTheDocument());
+    await waitFor(() => expect(within(screen.getByTestId('salmon-recent')).getByText(/金 30/)).toBeInTheDocument());
     expect(button).toBeEnabled();
   });
 
   it('shows how many jobs were recorded including the missed ones', async () => {
     render(<SalmonRunPanel />);
-    const button = await screen.findByRole('button', { name: /最新のリザルトを取り込む/ });
+    const button = await screen.findByRole('button', { name: 'リザルトを取り込む' });
     mockedAxios.post.mockResolvedValue({ data: { import: importRequest({ status: 'processing' }) }, status: 200 });
     mockImportStatus(importRequest({ status: 'succeeded', playedAt: '2026/11/10 21:05', jobId: 4, recordedCount: 3 }));
 
@@ -380,7 +331,7 @@ describe('SalmonRunPanel result import', () => {
 
   it('shows why the import failed', async () => {
     render(<SalmonRunPanel />);
-    const button = await screen.findByRole('button', { name: /最新のリザルトを取り込む/ });
+    const button = await screen.findByRole('button', { name: 'リザルトを取り込む' });
     mockedAxios.post.mockResolvedValue({ data: { import: importRequest({ status: 'processing' }) }, status: 200 });
     mockImportStatus(importRequest({ status: 'failed', error: 'iPhone ミラーリングが見つかりません' }));
 
@@ -388,10 +339,19 @@ describe('SalmonRunPanel result import', () => {
     expect(await screen.findByText('取り込めませんでした: iPhone ミラーリングが見つかりません', {}, { timeout: 3000 })).toBeInTheDocument();
   });
 
+  it('shows when the last import was and which job it was', async () => {
+    const completedAt = new Date(2026, 10, 10, 20, 47).getTime();
+    mockGet(summaryOf([job({ id: 2 }), job({ id: 1 })]));
+    mockImportStatus(importRequest({ id: 1, status: 'succeeded', completedAt, jobId: 2, recordedCount: 1 }));
+    render(<SalmonRunPanel />);
+
+    expect(await screen.findByText(/最後の取り込み 20:47（2 バイト目）/)).toBeInTheDocument();
+  });
+
   it('shows an error when the request cannot be sent', async () => {
     render(<SalmonRunPanel />);
     mockedAxios.post.mockRejectedValue(new Error('500'));
-    fireEvent.click(await screen.findByRole('button', { name: /最新のリザルトを取り込む/ }));
+    fireEvent.click(await screen.findByRole('button', { name: 'リザルトを取り込む' }));
     expect(await screen.findByText('取り込みを依頼できませんでした。サーバーを確認してください。')).toBeInTheDocument();
   });
 });
