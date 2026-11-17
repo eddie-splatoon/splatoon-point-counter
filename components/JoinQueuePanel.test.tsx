@@ -2,7 +2,7 @@ import { fireEvent, render, screen, waitFor, within } from '@testing-library/rea
 import axios from 'axios';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-import JoinQueuePanel from './JoinQueuePanel';
+import JoinQueuePanel, { JoinHistoryCard, JoinStreamerRatingCard } from './JoinQueuePanel';
 
 import type { JoinQueuePanelView } from '../lib/joinQueueTypes';
 
@@ -44,24 +44,35 @@ describe('JoinQueuePanel', () => {
     expect(mockedAxios.get).toHaveBeenCalledWith('/api/join-queue?view=panel');
   });
 
-  it('shows the room estimate, the recommendations and a warning about lower titles', async () => {
+  it('shows the room estimate in one line and the details when opened', async () => {
     render(<JoinQueuePanel />);
 
-    expect(await screen.findByText('通常のバイトなら 約 205%（でんせつ 225 相当）')).toBeInTheDocument();
+    expect(await screen.findByText('約 205%（でんせつ 225 相当）')).toBeInTheDocument();
+    expect(screen.getByText(/配信者より低い称号の人が 1 人います/)).toBeInTheDocument();
+    expect(screen.queryByRole('list', { name: 'おすすめのキケン度' })).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: /部屋の推定キケン度/ }));
     expect(screen.getByText('3 人で計算・不明 1 人を除く・古い評価 1 人')).toBeInTheDocument();
     expect(screen.getByRole('list', { name: 'おすすめのキケン度' })).toHaveTextContent(
       '練習: 90%（たつじん 50 相当）通常: 205%（でんせつ 225 相当）腕試し: 333%（でんせつ 865 相当）');
-    expect(screen.getByText(/配信者より低い称号の人が 1 人います/)).toBeInTheDocument();
-    expect(screen.getByText('取り込んだ記録')).toBeInTheDocument();
-    // 配信者（ratedAt 0）と ViewerA（ratedAt 1）はシフトの開始（2）より前
-    expect(screen.getAllByText('シフトが替わる前の評価（古い）')).toHaveLength(2);
+    // ViewerA（ratedAt 1）はシフトの開始（2）より前
+    expect(screen.getAllByText('シフトが替わる前の評価（古い）')).toHaveLength(1);
+  });
+
+  it('shows the streamer rating on the prepare screen', async () => {
+    render(<JoinStreamerRatingCard />);
+
+    expect(await screen.findByText('取り込んだ記録')).toBeInTheDocument();
+    // 配信者（ratedAt 0）はシフトの開始（2）より前
+    expect(screen.getByText('シフトが替わる前の評価（古い）')).toBeInTheDocument();
+    expect(mockedAxios.get).toHaveBeenCalledTimes(1);
   });
 
   it('sets the streamer rating and goes back to the record', async () => {
     mockedAxios.post.mockResolvedValue({
       data: view({ streamer: { rating: { tier: 7, points: 50, note: null }, ratedAt: 5, source: 'manual' } }), status: 200,
     });
-    render(<JoinQueuePanel />);
+    render(<JoinStreamerRatingCard />);
 
     fireEvent.change(await screen.findByLabelText('配信者の評価'), { target: { value: 'たつじん+3 50' } });
     fireEvent.click(screen.getByRole('button', { name: '入れる' }));
@@ -72,7 +83,7 @@ describe('JoinQueuePanel', () => {
 
   it('shows an error when the streamer rating cannot be read', async () => {
     mockedAxios.post.mockRejectedValue(new Error('400'));
-    render(<JoinQueuePanel />);
+    render(<JoinStreamerRatingCard />);
 
     fireEvent.change(await screen.findByLabelText('配信者の評価'), { target: { value: 'あいうえお' } });
     fireEvent.click(screen.getByRole('button', { name: '入れる' }));
@@ -83,7 +94,7 @@ describe('JoinQueuePanel', () => {
     mockedAxios.post.mockResolvedValue({ data: view(), status: 200 });
     render(<JoinQueuePanel />);
 
-    fireEvent.click(await screen.findByRole('button', { name: 'プライベートバイトのお知らせを流す' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'プラベのお知らせ' }));
     await waitFor(() => expect(mockedAxios.post).toHaveBeenCalledWith('/api/join-queue', { action: 'announce', kind: 'private' }));
     expect(await screen.findByText(/チャットに書き込んで読み上げます/)).toBeInTheDocument();
   });
@@ -93,10 +104,10 @@ describe('JoinQueuePanel', () => {
       data: view({ streamer: null, room: { estimate: null, counted: 0, unknown: 1, wild: 3, stale: 0, lowest: null, lowerTier: 0 }, recommended: null }),
       status: 200,
     });
-    render(<JoinQueuePanel />);
+    render(<><JoinQueuePanel /><JoinStreamerRatingCard /></>);
 
     expect(await screen.findByText('評価がわかる人がいないので出せません。')).toBeInTheDocument();
-    expect(screen.getByText('不明（取り込んだ記録に評価がありません）')).toBeInTheDocument();
+    expect(await screen.findByText('不明（取り込んだ記録に評価がありません）')).toBeInTheDocument();
   });
 
   it('shows the reconnect notice and dismisses it', async () => {
@@ -114,7 +125,7 @@ describe('JoinQueuePanel', () => {
       data: view({ history: [{ openedAt: Date.parse('2026-11-16T09:00:00Z'), closedAt: Date.parse('2026-11-16T10:00:00Z'), joined: 4, called: 3, repeated: 1 }] }),
       status: 200,
     });
-    render(<JoinQueuePanel />);
+    render(<JoinHistoryCard />);
 
     const table = await screen.findByRole('table', { name: 'これまでの受付' });
     expect(within(table).getAllByRole('row')[1]).toHaveTextContent(/431$/);
@@ -127,9 +138,9 @@ describe('JoinQueuePanel', () => {
     });
     render(<JoinQueuePanel />);
 
-    fireEvent.click(await screen.findByRole('button', { name: '次の人' }));
+    fireEvent.click(await screen.findByRole('button', { name: '次の人を呼ぶ' }));
     await waitFor(() => expect(mockedAxios.post).toHaveBeenCalledWith('/api/join-queue', { action: 'next' }));
-    expect(await screen.findByText('ViewerA')).toBeInTheDocument();
+    expect(within(await screen.findByTestId('join-current')).getByText('ViewerA')).toBeInTheDocument();
     expect(screen.getByText('まだ誰も並んでいません。')).toBeInTheDocument();
   });
 
@@ -145,11 +156,11 @@ describe('JoinQueuePanel', () => {
     mockedAxios.post.mockResolvedValue({ data: view({ open: false, entries: [] }), status: 200 });
     render(<JoinQueuePanel />);
 
-    fireEvent.click(await screen.findByRole('button', { name: '受付終了' }));
+    fireEvent.click(await screen.findByRole('button', { name: '受付を終わる' }));
     expect(mockedAxios.post).not.toHaveBeenCalled();
     fireEvent.click(await screen.findByRole('button', { name: '終了する' }));
     await waitFor(() => expect(mockedAxios.post).toHaveBeenCalledWith('/api/join-queue', { action: 'close' }));
-    expect(await screen.findByRole('button', { name: '受付開始' })).toBeInTheDocument();
+    expect(await screen.findByRole('button', { name: '受付を始める' })).toBeInTheDocument();
   });
 
   it('opens the queue', async () => {
@@ -157,9 +168,19 @@ describe('JoinQueuePanel', () => {
     mockedAxios.post.mockResolvedValue({ data: view({ entries: [] }), status: 200 });
     render(<JoinQueuePanel />);
 
-    fireEvent.click(await screen.findByRole('button', { name: '受付開始' }));
+    fireEvent.click(await screen.findByRole('button', { name: '受付を始める' }));
     await waitFor(() => expect(mockedAxios.post).toHaveBeenCalledWith('/api/join-queue', { action: 'open' }));
-    expect(await screen.findByText('受付中')).toBeInTheDocument();
+    expect(await screen.findByText('受付中 · 列 0 人')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '次の人を呼ぶ' })).toBeDisabled();
+  });
+
+  it('shows only the start button while closed', async () => {
+    mockedAxios.get.mockResolvedValue({ data: view({ open: false, entries: [] }), status: 200 });
+    render(<JoinQueuePanel />);
+
+    expect(await screen.findByText('受付していません')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: '次の人を呼ぶ' })).not.toBeInTheDocument();
+    expect(screen.queryByText(/部屋の推定キケン度/)).not.toBeInTheDocument();
   });
 
   it('shows an error when the queue cannot be loaded', async () => {

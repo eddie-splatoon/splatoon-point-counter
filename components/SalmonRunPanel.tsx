@@ -1,95 +1,26 @@
 'use client';
 
 import EditIcon from '@mui/icons-material/Edit';
-import HistoryRoundedIcon from '@mui/icons-material/HistoryRounded';
-import ImageRoundedIcon from '@mui/icons-material/ImageRounded';
-import RemoveCircleIcon from '@mui/icons-material/RemoveCircle';
+import EditNoteRoundedIcon from '@mui/icons-material/EditNoteRounded';
+import FileDownloadRoundedIcon from '@mui/icons-material/FileDownloadRounded';
 import SetMealRoundedIcon from '@mui/icons-material/SetMealRounded';
-import {
-    Alert,
-    Box,
-    Button,
-    FormControl,
-    IconButton,
-    InputLabel,
-    MenuItem,
-    Paper,
-    Select,
-    TextField,
-    ToggleButton,
-    ToggleButtonGroup,
-    Typography,
-} from '@mui/material';
+import {Alert, Box, Button, ButtonBase, Chip, IconButton, Typography} from '@mui/material';
 import axios from 'axios';
-import React, {useCallback, useEffect, useRef, useState} from 'react';
+import React, {useCallback, useEffect, useState} from 'react';
 
+import {tokens} from '../app/control-panel/theme';
 import {SalmonImportRequest} from '../lib/salmonImportTypes';
 import {SalmonScheduleData, pickCurrentSchedule} from '../lib/salmonSchedule';
-import {
-    MAX_COUNT,
-    SALMON_JOB_KINDS,
-    SALMON_JOB_KIND_LABELS,
-    SalmonJob,
-    SalmonJobKind,
-    SalmonSessionWithTotals,
-    SalmonSummary,
-    maxWaveFor,
-} from '../lib/salmonTypes';
-import {MAX_JOB_WEAPONS, findSalmonWeapon} from '../lib/salmonWeapons';
+import {SalmonJob, SalmonJobKind, SalmonSummary} from '../lib/salmonTypes';
 
-import SalmonReviewDownload from './SalmonReviewDownload';
-import SalmonStats from './SalmonStats';
-import SectionTitle from './SectionTitle';
-import WeaponIcon from './WeaponIcon';
-import WeaponPicker from './WeaponPicker';
-
-const paperSx = {mb: 4, p: 4};
-const listSx = {my: 2, maxHeight: 240, overflowY: 'auto', p: 1, bgcolor: 'rgba(255, 255, 255, 0.03)', borderRadius: '4px'};
-
-const NUMBER_FIELDS = [
-    {key: 'goldenEggs', label: '金イクラ'},
-    {key: 'bossKills', label: 'オオモノ'},
-    {key: 'deaths', label: 'デス'},
-] as const;
-
-type NumberKey = typeof NUMBER_FIELDS[number]['key'];
-
-const EMPTY_NUMBERS: Record<NumberKey, string> = {goldenEggs: '', bossKills: '', deaths: ''};
-
-const isCount = (value: string) => /^\d+$/.test(value) && Number(value) <= MAX_COUNT;
-
-const formatDateTime = (timestamp: number) =>
-    new Date(timestamp).toLocaleString('ja-JP', {month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hour12: false});
-
-const sessionLabel = (session: {id: number; startedAt: number; title: string}) =>
-    `#${session.id} ${formatDateTime(session.startedAt)}${session.title ? ` ${session.title}` : ''}`;
-
-const JobRow: React.FC<{job: SalmonJob; index: number; onEdit?: (job: SalmonJob, index: number) => void; onDelete?: (id: number) => void}> = ({job, index, onEdit, onDelete}) => (
-    <Box sx={{display: 'flex', justifyContent: 'space-between', alignItems: 'center', p: 0.5, borderBottom: '1px dotted rgba(255,255,255,0.2)'}}>
-        <Typography variant="body2">
-            {index} | {job.cleared ? 'クリア' : `WAVE${job.waveReached} 失敗`} | 金イクラ {job.goldenEggs} / オオモノ {job.bossKills} / デス {job.deaths}
-            {job.stage && ` | ${job.stage}`} | {formatDateTime(job.createdAt)}
-        </Typography>
-        <Box sx={{display: 'flex', ml: 'auto', mr: 1}}>
-            {job.weapons.map((key, i) => {
-                const weapon = findSalmonWeapon(key);
-                return weapon && <WeaponIcon key={i} weapon={weapon} size={24}/>;
-            })}
-        </Box>
-        {onEdit && (
-            <IconButton size="small" onClick={() => onEdit(job, index)} aria-label={`記録 ${index} を修正`}>
-                <EditIcon fontSize="small"/>
-            </IconButton>
-        )}
-        {onDelete && (
-            <IconButton size="small" color="error" onClick={() => onDelete(job.id)} aria-label={`記録 ${index} を削除`}>
-                <RemoveCircleIcon fontSize="small"/>
-            </IconButton>
-        )}
-    </Box>
-);
+import LiveCard from './LiveCard';
+import LiveDialog from './LiveDialog';
+import SalmonJobDialog, {EditingJob} from './SalmonJobDialog';
+import {JobRow, formatTime, jobResultLabel, salmonListSx} from './SalmonJobRow';
 
 const IMPORT_POLL_INTERVAL_MS = 1000;
+// カードに出す、このセッションの新しい記録の数
+const RECENT_JOBS = 3;
 
 const isActiveImport = (request: SalmonImportRequest | null) => request?.status === 'pending' || request?.status === 'processing';
 
@@ -108,13 +39,72 @@ const importStatusText = (request: SalmonImportRequest): string => {
     }
 };
 
+const loadLatestImport = async (): Promise<SalmonImportRequest | null> => {
+    const res = await axios.get<{imports?: SalmonImportRequest[]}>('/api/salmon/import');
+    return (res.data.imports ?? []).filter((i) => i.status === 'succeeded').sort((a, b) => (b.completedAt ?? 0) - (a.completedAt ?? 0))[0] ?? null;
+};
+
+/** 「最後の取り込み 20:47（30 バイト目）」。何バイト目かは、今のセッションの記録にあるときだけ */
+const lastImportText = (latest: SalmonImportRequest | null, jobs: SalmonJob[]): string => {
+    if (!latest?.completedAt) return 'まだ取り込んでいません';
+    const index = jobs.findIndex((j) => j.id === latest.jobId);
+    return `最後の取り込み ${formatTime(latest.completedAt)}${index >= 0 ? `（${jobs.length - index} バイト目）` : ''}`;
+};
+
+const StatTile: React.FC<{label: string; color: string; value: React.ReactNode; last: string}> = ({label, color, value, last}) => (
+    <Box sx={{bgcolor: 'background.default', borderRadius: `${tokens.radius.control}px`, px: 3, py: 2.5, minWidth: 0}}>
+        <Typography sx={{color, fontSize: 12, fontWeight: 600}}>{label}</Typography>
+        <Typography sx={{fontSize: 22, fontWeight: 700, fontVariantNumeric: 'tabular-nums', lineHeight: 1.3}}>{value}</Typography>
+        <Typography sx={{color: 'text.secondary', fontSize: 11, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis'}}>前回 {last}</Typography>
+    </Box>
+);
+
 /**
- * iPhone ミラーリングのイカリング3から最新のリザルトを取り込むボタン。読み取りと記録は取り込みスクリプト
- * （tools/salmon-result）が行うので、ここでは依頼して終わるまで状態を表示し、記録されたら onImported で読み直す
+ * 配信中の画面のサーモンランのカード。取り込み（大きいボタン）・手入力（ダイアログ）・本日の戦績・このセッションの新しい記録。
+ * すべての記録の修正・削除はダイアログで開く。セッションの開始は準備、過去のセッションと振り返りの画像は振り返りの画面
  */
-const SalmonImportButton: React.FC<{onImported: () => void}> = ({onImported}) => {
+const SalmonRunPanel: React.FC = () => {
+    const [summary, setSummary] = useState<SalmonSummary | null>(null);
+    const [error, setError] = useState('');
     const [request, setRequest] = useState<SalmonImportRequest | null>(null);
-    const [requestError, setRequestError] = useState('');
+    const [latestImport, setLatestImport] = useState<SalmonImportRequest | null>(null);
+    // 手入力のダイアログ。editing が null なら新しく記録する
+    const [dialog, setDialog] = useState<{editing: EditingJob | null} | null>(null);
+    const [allOpen, setAllOpen] = useState(false);
+    // 新しく記録するときのステージ・種類。開催中のスケジュールで埋め、記録したらその値を次に引き継ぐ
+    const [defaults, setDefaults] = useState<{stage: string; jobKind: SalmonJobKind}>({stage: '', jobKind: 'regular'});
+
+    const load = useCallback(async () => {
+        try {
+            setSummary((await axios.get<SalmonSummary>('/api/salmon')).data);
+        } catch {
+            setError('記録の読み込みに失敗しました。サーバーを確認してください。');
+        }
+    }, []);
+
+    const refreshLatestImport = useCallback(async () => {
+        try {
+            setLatestImport(await loadLatestImport());
+        } catch (e) {
+            // 「最後の取り込み」は表示の補助なので、取れなくても記録は続けられる
+            console.error('Failed to load the salmon imports', e);
+        }
+    }, []);
+
+    useEffect(() => {
+        // マウント時に API から記録・最後の取り込み・開催中のスケジュールを読み込む
+        // eslint-disable-next-line react-hooks/set-state-in-effect
+        void load();
+        void refreshLatestImport();
+        axios.get<SalmonScheduleData>('/api/salmon-schedule')
+            .then((res) => {
+                const current = pickCurrentSchedule(res.data.entries, Date.now());
+                if (current) setDefaults((prev) => ({stage: prev.stage || current.stage.name, jobKind: current.kind}));
+            })
+            // スケジュールは入力の補助なので、取れなくても手入力で記録できる
+            .catch((e) => console.error('Failed to load the salmon run schedule', e));
+    }, [load, refreshLatestImport]);
+
     const active = isActiveImport(request);
     const requestId = request?.id;
 
@@ -122,366 +112,171 @@ const SalmonImportButton: React.FC<{onImported: () => void}> = ({onImported}) =>
         if (!active) return;
         const timer = setInterval(async () => {
             try {
-                const res = await axios.get<{imports: SalmonImportRequest[]}>('/api/salmon/import');
-                const latest = res.data.imports.find((i) => i.id === requestId);
+                const res = await axios.get<{imports?: SalmonImportRequest[]}>('/api/salmon/import');
+                const latest = res.data.imports?.find((i) => i.id === requestId);
                 if (!latest) return;
                 setRequest(latest);
-                if (latest.status === 'succeeded') onImported();
+                if (latest.status === 'succeeded') {
+                    setLatestImport(latest);
+                    void load();
+                }
             } catch (e) {
                 // 一時的な失敗は次のポーリングでやり直す
                 console.error('Failed to load the salmon import status', e);
             }
         }, IMPORT_POLL_INTERVAL_MS);
         return () => clearInterval(timer);
-    }, [active, requestId, onImported]);
+    }, [active, requestId, load]);
 
     const handleImport = async () => {
-        setRequestError('');
+        setError('');
         try {
             setRequest((await axios.post<{import: SalmonImportRequest}>('/api/salmon/import', {})).data.import);
         } catch {
-            setRequestError('取り込みを依頼できませんでした。サーバーを確認してください。');
-        }
-    };
-
-    return (
-        <Box sx={{mb: 2}}>
-            <Button variant="outlined" color="secondary" onClick={handleImport} disabled={active} fullWidth>
-                📸 イカリング3から最新のリザルトを取り込む
-            </Button>
-            {requestError && <Alert severity="error" sx={{mt: 1}}>{requestError}</Alert>}
-            {request && (
-                <Alert severity={request.status === 'failed' ? 'error' : request.status === 'succeeded' ? 'success' : 'info'} sx={{mt: 1}}>
-                    {importStatusText(request)}
-                </Alert>
-            )}
-        </Box>
-    );
-};
-
-/** コントロールパネルの「サーモンラン」タブ。記録はボタンを押した時点で保存される */
-const SalmonRunPanel: React.FC = () => {
-    const [summary, setSummary] = useState<SalmonSummary | null>(null);
-    const [sessions, setSessions] = useState<SalmonSessionWithTotals[]>([]);
-    const [numbers, setNumbers] = useState(EMPTY_NUMBERS);
-    const [cleared, setCleared] = useState(true);
-    const [waveReached, setWaveReached] = useState(1);
-    const [jobKind, setJobKind] = useState<SalmonJobKind>('regular');
-    const [stage, setStage] = useState('');
-    const [weapons, setWeapons] = useState<string[]>([]);
-    const [newSessionTitle, setNewSessionTitle] = useState('');
-    const [pastSessionId, setPastSessionId] = useState<number | ''>('');
-    const [pastSummary, setPastSummary] = useState<SalmonSummary | null>(null);
-    const [error, setError] = useState('');
-    const [saving, setSaving] = useState(false);
-    // 修正中の記録（取り込みの読み間違いを直すとき）。null なら新しく記録する
-    const [editing, setEditing] = useState<{id: number; index: number} | null>(null);
-    // 過去セッションを素早く切り替えたとき、古い応答で表示を上書きしないための最新の選択
-    const latestPastSessionId = useRef<number | ''>('');
-
-    // 一覧は表示の補助なので、失敗しても記録や削除の失敗としては扱わない（再操作による二重記録を防ぐ）
-    const loadSessions = useCallback(async () => {
-        try {
-            const res = await axios.get<SalmonSessionWithTotals[]>('/api/salmon/sessions');
-            setSessions(res.data);
-        } catch (e) {
-            console.error('Failed to load salmon sessions', e);
-        }
-    }, []);
-
-    const load = useCallback(async () => {
-        try {
-            const res = await axios.get<SalmonSummary>('/api/salmon');
-            setSummary(res.data);
-            await loadSessions();
-        } catch {
-            setError('記録の読み込みに失敗しました。サーバーを確認してください。');
-        }
-    }, [loadSessions]);
-
-    // ステージ欄が空なら、いま開催中のスケジュールのステージ名を入れる（手入力した値は上書きしない）。バイトの種類も開催中のものにする
-    const fillStageFromSchedule = useCallback(async () => {
-        try {
-            const res = await axios.get<SalmonScheduleData>('/api/salmon-schedule');
-            const current = pickCurrentSchedule(res.data.entries, Date.now());
-            if (current) {
-                setStage((prev) => prev || current.stage.name);
-                setJobKind(current.kind);
-            }
-        } catch (e) {
-            // スケジュールは入力の補助なので、取れなくても手入力で記録できる
-            console.error('Failed to load the salmon run schedule', e);
-        }
-    }, []);
-
-    useEffect(() => {
-        // マウント時に API から記録を読み込む（burndown-overlay の初回取得と同じパターン）
-        // eslint-disable-next-line react-hooks/set-state-in-effect
-        void load();
-        void fillStageFromSchedule();
-    }, [load, fillStageFromSchedule]);
-
-    const canSubmit = !saving && NUMBER_FIELDS.every(({key}) => isCount(numbers[key]));
-
-    /** 入力欄を新しい記録用に戻す（ステージ・種類は開催中のものにする） */
-    const resetForm = () => {
-        setNumbers(EMPTY_NUMBERS);
-        setWeapons([]);
-        setCleared(true);
-        setEditing(null);
-    };
-
-    const handleEdit = (job: SalmonJob, index: number) => {
-        setError('');
-        setEditing({id: job.id, index});
-        setNumbers({goldenEggs: String(job.goldenEggs), bossKills: String(job.bossKills), deaths: String(job.deaths)});
-        setCleared(job.cleared);
-        setWaveReached(job.waveReached);
-        if (job.jobKind) setJobKind(job.jobKind);
-        setStage(job.stage);
-        setWeapons(job.weapons);
-    };
-
-    const handleCancelEdit = () => {
-        resetForm();
-        setStage('');
-        void fillStageFromSchedule();
-    };
-
-    const handleSubmit = async () => {
-        if (!canSubmit) return;
-        setSaving(true);
-        setError('');
-        try {
-            const job = {
-                goldenEggs: Number(numbers.goldenEggs),
-                bossKills: Number(numbers.bossKills),
-                deaths: Number(numbers.deaths),
-                cleared,
-                waveReached: cleared ? maxWaveFor(jobKind) : Math.min(waveReached, maxWaveFor(jobKind)),
-                stage,
-                weapons,
-                jobKind,
-            };
-            // 修正は日時（取り込んだバイトの played_at）を残すので、次の取り込みで同じバイトを二重に記録しない
-            const res = editing
-                ? await axios.patch<SalmonSummary>('/api/salmon', {...job, id: editing.id})
-                : await axios.post<SalmonSummary>('/api/salmon', job);
-            setSummary(res.data);
-            resetForm();
-            if (editing) {
-                setStage('');
-                void fillStageFromSchedule();
-            }
-            await loadSessions();
-        } catch {
-            setError(editing ? '記録の修正に失敗しました。入力内容とサーバーを確認してください。' : '記録に失敗しました。入力内容とサーバーを確認してください。');
-        } finally {
-            setSaving(false);
+            setError('取り込みを依頼できませんでした。サーバーを確認してください。');
         }
     };
 
     const handleDelete = async (id: number) => {
         setError('');
         try {
-            const res = await axios.delete<SalmonSummary>(`/api/salmon?id=${id}`);
-            setSummary(res.data);
-            if (editing?.id === id) handleCancelEdit();
-            await loadSessions();
+            setSummary((await axios.delete<SalmonSummary>(`/api/salmon?id=${id}`)).data);
         } catch {
             setError('記録の削除に失敗しました。');
         }
     };
 
-    const handleStartSession = async () => {
-        setError('');
-        try {
-            await axios.post('/api/salmon/sessions', {title: newSessionTitle});
-            setNewSessionTitle('');
-            await load();
-        } catch {
-            setError('セッションの開始に失敗しました。');
-        }
-    };
-
-    const handleSelectPastSession = async (id: number | '') => {
-        latestPastSessionId.current = id;
-        setPastSessionId(id);
-        setPastSummary(null);
-        if (id === '') return;
-        try {
-            const res = await axios.get<SalmonSummary>(`/api/salmon?sessionId=${id}`);
-            if (latestPastSessionId.current === id) setPastSummary(res.data);
-        } catch {
-            if (latestPastSessionId.current === id) setError('セッションの読み込みに失敗しました。');
-        }
-    };
+    const openEdit = (job: SalmonJob, index: number) => setDialog({editing: {job, index}});
 
     if (!summary) {
-        return error ? <Alert severity="error">{error}</Alert> : <Typography>読み込み中...</Typography>;
+        return (
+            <LiveCard icon={SetMealRoundedIcon} title="サーモンラン">
+                {error ? <Alert severity="error">{error}</Alert> : <Typography>読み込み中...</Typography>}
+            </LiveCard>
+        );
     }
 
-    const currentSessionId = summary.session?.id;
-    const pastSessions = sessions.filter((s) => s.id !== currentSessionId);
+    const {session, lastJob, totals, jobs} = summary;
 
     return (
-        <>
+        <LiveCard
+            icon={SetMealRoundedIcon}
+            title="サーモンラン"
+            aside={(
+                <Chip
+                    size="small"
+                    variant="outlined"
+                    label={session ? `#${session.id}${session.title ? ` ${session.title}` : ''}` : 'セッションは最初の記録で作ります'}
+                    sx={{maxWidth: '60%', color: 'text.secondary'}}
+                />
+            )}
+        >
             {error && <Alert severity="error" sx={{mb: 2}}>{error}</Alert>}
-
-            <Paper sx={paperSx}>
-                <SectionTitle icon={SetMealRoundedIcon}>バイトの記録</SectionTitle>
-                <SalmonImportButton onImported={load}/>
-                {editing && (
-                    <Alert severity="info" sx={{mb: 1}} action={<Button color="inherit" size="small" onClick={handleCancelEdit}>キャンセル</Button>}>
-                        記録 {editing.index} を修正しています
-                    </Alert>
-                )}
-                <Box sx={{display: 'flex', gap: 1}}>
-                    {NUMBER_FIELDS.map(({key, label}) => (
-                        <TextField
-                            key={key}
-                            label={label}
-                            type="number"
-                            value={numbers[key]}
-                            onChange={(e) => setNumbers({...numbers, [key]: e.target.value})}
-                            onKeyDown={(e) => e.key === 'Enter' && handleSubmit()}
-                            slotProps={{htmlInput: {min: 0, max: MAX_COUNT, step: 1}}}
-                            margin="normal"
-                            fullWidth
-                        />
-                    ))}
-                </Box>
-                <Box sx={{display: 'flex', gap: 2, alignItems: 'center', flexWrap: 'wrap', mt: 1}}>
-                    <FormControl sx={{minWidth: 200}}>
-                        <InputLabel id="salmon-kind-label">バイトの種類</InputLabel>
-                        <Select labelId="salmon-kind-label" label="バイトの種類" value={jobKind} onChange={(e) => setJobKind(e.target.value as SalmonJobKind)}>
-                            {SALMON_JOB_KINDS.map((kind) => (
-                                <MenuItem key={kind} value={kind}>{SALMON_JOB_KIND_LABELS[kind]}</MenuItem>
-                            ))}
-                        </Select>
-                    </FormControl>
-                    <ToggleButtonGroup value={cleared} exclusive onChange={(e, value) => value !== null && setCleared(value)} aria-label="結果">
-                        <ToggleButton value={true} color="success">クリア</ToggleButton>
-                        <ToggleButton value={false} color="error">失敗</ToggleButton>
-                    </ToggleButtonGroup>
-                    {!cleared && (
-                        <FormControl sx={{minWidth: 140}}>
-                            <InputLabel id="salmon-wave-label">失敗した WAVE</InputLabel>
-                            <Select
-                                labelId="salmon-wave-label"
-                                label="失敗した WAVE"
-                                value={Math.min(waveReached, maxWaveFor(jobKind))}
-                                onChange={(e) => setWaveReached(Number(e.target.value))}
-                            >
-                                {Array.from({length: maxWaveFor(jobKind)}, (_, i) => i + 1).map((wave) => (
-                                    <MenuItem key={wave} value={wave}>WAVE{wave}</MenuItem>
-                                ))}
-                            </Select>
-                        </FormControl>
-                    )}
-                    <TextField label="ステージ" value={stage} onChange={(e) => setStage(e.target.value)} sx={{flex: 1, minWidth: 160}}/>
-                </Box>
-                <Box sx={{mt: 2}}>
-                    <Box sx={{display: 'flex', alignItems: 'center', gap: 1, mb: 1, minHeight: 48}}>
-                        <Typography variant="body2" sx={{color: 'text.secondary'}}>支給ブキ（任意・{MAX_JOB_WEAPONS} つまで）</Typography>
-                        <Box data-testid="salmon-selected-weapons" sx={{display: 'flex', gap: 0.5}}>
-                            {weapons.map((key, i) => {
-                                const weapon = findSalmonWeapon(key);
-                                return weapon && (
-                                    <IconButton
-                                        key={i}
-                                        size="small"
-                                        onClick={() => setWeapons(weapons.filter((_, j) => j !== i))}
-                                        aria-label={`支給ブキ ${i + 1} つ目の${weapon.name}を外す`}
-                                    >
-                                        <WeaponIcon weapon={weapon} size={36}/>
-                                    </IconButton>
-                                );
-                            })}
-                        </Box>
-                    </Box>
-                    {/* 同じブキが続けて支給されることもあるので、押すたびに追加する（外すときは上の選んだブキを押す） */}
-                    <WeaponPicker
-                        label="支給ブキ"
-                        selected={weapons}
-                        onSelect={(key) => setWeapons((current) => current.length < MAX_JOB_WEAPONS ? [...current, key] : current)}
-                        isDisabled={() => weapons.length >= MAX_JOB_WEAPONS}
-                    />
-                </Box>
-                <Button variant="contained" onClick={handleSubmit} disabled={!canSubmit} fullWidth sx={{mt: 2}}>
-                    {saving ? '保存中...' : editing ? '修正を保存' : '記録'}
+            <Box sx={{display: 'flex', gap: 2}}>
+                <Button
+                    variant="contained"
+                    color="success"
+                    onClick={handleImport}
+                    disabled={active}
+                    startIcon={<FileDownloadRoundedIcon/>}
+                    sx={{flex: '1 1 auto', height: tokens.height.hero, borderRadius: `${tokens.radius.primary}px`, fontSize: 17}}
+                >
+                    リザルトを取り込む
                 </Button>
-                <Typography variant="caption" sx={{display: 'block', mt: 1, color: 'text.secondary'}}>
-                    記録はすぐに保存され、オーバーレイに反映されます。ステージは次の記録にも引き継がれます。支給ブキを選ぶと、ブキ埋めカードも埋まります。取り込みの読み間違いは、削除して手入力し直すのではなく ✏️ で修正してください（削除すると次の取り込みで同じバイトがもう一度記録されます）。
-                </Typography>
-            </Paper>
+                <ButtonBase
+                    onClick={() => setDialog({editing: null})}
+                    sx={{
+                        flex: 'none', flexDirection: 'column', gap: 0.5, width: 72, height: tokens.height.hero,
+                        borderRadius: `${tokens.radius.primary}px`, border: '1px solid', borderColor: 'divider', bgcolor: '#1B1F27',
+                        fontSize: 12, fontWeight: 600, '&:hover': {bgcolor: '#222833'},
+                        '&.Mui-focusVisible': {outline: `2px solid ${tokens.color.primary}`, outlineOffset: 2},
+                    }}
+                >
+                    <EditNoteRoundedIcon sx={{fontSize: 20}} aria-hidden/>
+                    手入力
+                </ButtonBase>
+            </Box>
+            <Typography role="status" variant="caption" sx={{display: 'block', mt: 2, mb: 3, color: request?.status === 'failed' ? 'error.main' : 'text.secondary'}}>
+                {request ? importStatusText(request) : `${lastImportText(latestImport, jobs)} · 取り込めなかったときだけ手入力`}
+            </Typography>
 
-            <Paper sx={paperSx}>
-                <Typography variant="h6" gutterBottom>
-                    今のセッション{summary.session ? `: ${sessionLabel(summary.session)}` : '（最初の記録で自動作成）'}
-                </Typography>
-                <Box sx={{display: 'flex', gap: 2, alignItems: 'flex-start', flexWrap: 'wrap'}}>
-                    <SalmonStats lastJob={summary.lastJob} totals={summary.totals}/>
-                    <Box data-testid="salmon-history" sx={{...listSx, my: 0, flex: 1, minWidth: 260}}>
-                        {summary.jobs.length === 0 ? (
-                            <Typography variant="body2" sx={{color: 'text.secondary', p: 1}}>記録がありません</Typography>
-                        ) : (
-                            summary.jobs.map((job, i) => (
-                                <JobRow key={job.id} job={job} index={summary.jobs.length - i} onEdit={handleEdit} onDelete={handleDelete}/>
-                            ))
-                        )}
-                    </Box>
+            <Box data-testid="salmon-totals" sx={{display: 'grid', gridTemplateColumns: 'repeat(4, minmax(0, 1fr))', gap: 2}}>
+                <StatTile label="金イクラ" color={tokens.color.gold} value={totals.goldenEggs.toLocaleString()} last={lastJob ? String(lastJob.goldenEggs) : '-'}/>
+                <StatTile label="オオモノ" color="#FF9F6B" value={totals.bossKills.toLocaleString()} last={lastJob ? String(lastJob.bossKills) : '-'}/>
+                <StatTile label="デス" color="#B5BCC8" value={totals.deaths.toLocaleString()} last={lastJob ? String(lastJob.deaths) : '-'}/>
+                <StatTile
+                    label="クリア"
+                    color={tokens.color.success}
+                    value={<>{totals.clears}<Box component="span" sx={{fontSize: 13, color: 'text.secondary', fontWeight: 500}}> / {totals.jobs}</Box></>}
+                    last={lastJob ? jobResultLabel(lastJob) : '-'}
+                />
+            </Box>
+
+            <Typography component="h3" sx={{mt: 4, mb: 1.5, fontSize: 12, fontWeight: 600, color: 'text.secondary'}}>このセッションの記録</Typography>
+            {jobs.length === 0 ? (
+                <Typography variant="body2" sx={{color: 'text.secondary'}}>記録がありません</Typography>
+            ) : (
+                <Box component="ul" data-testid="salmon-recent" sx={{listStyle: 'none', m: 0, p: 0}}>
+                    {jobs.slice(0, RECENT_JOBS).map((job, i) => {
+                        const index = jobs.length - i;
+                        return (
+                            <Box component="li" key={job.id} sx={{display: 'flex', alignItems: 'center', gap: 2.5, py: 1, borderTop: '1px solid #232832'}}>
+                                <Typography sx={{width: 28, color: 'text.secondary', fontVariantNumeric: 'tabular-nums'}}>{index}</Typography>
+                                <Box
+                                    component="span"
+                                    sx={{
+                                        px: 2, borderRadius: `${tokens.radius.badge}px`, fontSize: 12, fontWeight: 600, whiteSpace: 'nowrap',
+                                        bgcolor: job.cleared ? tokens.color.successSoft : tokens.color.warningSoft, color: job.cleared ? '#7FE3B0' : '#FFC977',
+                                    }}
+                                >
+                                    {jobResultLabel(job)}
+                                </Box>
+                                <Typography sx={{flex: '1 1 auto', minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontVariantNumeric: 'tabular-nums'}}>
+                                    金 {job.goldenEggs} · オオモノ {job.bossKills} · デス {job.deaths}
+                                </Typography>
+                                <Typography variant="caption" sx={{color: 'text.secondary', fontVariantNumeric: 'tabular-nums'}}>{formatTime(job.createdAt)}</Typography>
+                                <IconButton size="small" onClick={() => openEdit(job, index)} aria-label={`記録 ${index} を修正`}>
+                                    <EditIcon fontSize="small"/>
+                                </IconButton>
+                            </Box>
+                        );
+                    })}
                 </Box>
-                <Box sx={{display: 'flex', gap: 1, alignItems: 'center', mt: 2}}>
-                    <TextField label="新しいセッションのタイトル（任意）" value={newSessionTitle} onChange={(e) => setNewSessionTitle(e.target.value)} fullWidth/>
-                    <Button variant="outlined" color="secondary" onClick={handleStartSession} sx={{minWidth: 200}}>新しいセッションを開始</Button>
+            )}
+            {jobs.length > 0 && (
+                <Button size="small" onClick={() => setAllOpen(true)} sx={{mt: 1, minHeight: 32, color: '#FF7AA8'}}>
+                    すべての記録（{jobs.length}）と修正・削除
+                </Button>
+            )}
+
+            <LiveDialog open={allOpen} onClose={() => setAllOpen(false)} title={`このセッションの記録（${jobs.length}）`} maxWidth="md">
+                <Box data-testid="salmon-history" sx={salmonListSx}>
+                    {jobs.length === 0 ? (
+                        <Typography variant="body2" sx={{color: 'text.secondary', p: 1}}>記録がありません</Typography>
+                    ) : (
+                        jobs.map((job, i) => (
+                            <JobRow key={job.id} job={job} index={jobs.length - i} onEdit={openEdit} onDelete={handleDelete}/>
+                        ))
+                    )}
                 </Box>
-                <Typography variant="caption" sx={{display: 'block', mt: 1, color: 'text.secondary'}}>
-                    配信の開始時に押してください。「本日」の合計は新しいセッションから数え直します。
+                <Typography variant="caption" sx={{display: 'block', mt: 2, color: 'text.secondary'}}>
+                    取り込みの読み間違いは、削除して手入力し直すのではなく ✏️ で修正してください（削除すると次の取り込みで同じバイトがもう一度記録されます）。
                 </Typography>
-            </Paper>
+            </LiveDialog>
 
-            <Paper sx={paperSx}>
-                <SectionTitle icon={HistoryRoundedIcon}>過去のセッション</SectionTitle>
-                <FormControl fullWidth margin="normal">
-                    <InputLabel id="salmon-past-session-label">セッションを選択</InputLabel>
-                    <Select
-                        labelId="salmon-past-session-label"
-                        label="セッションを選択"
-                        value={pastSessionId}
-                        onChange={(e) => handleSelectPastSession(e.target.value as number | '')}
-                    >
-                        <MenuItem value="">選択しない</MenuItem>
-                        {pastSessions.map((s) => (
-                            <MenuItem key={s.id} value={s.id}>
-                                {sessionLabel(s)}（{s.totals.jobs}回 / 金イクラ {s.totals.goldenEggs}）
-                            </MenuItem>
-                        ))}
-                    </Select>
-                </FormControl>
-                {pastSessions.length === 0 && (
-                    <Typography variant="body2" sx={{color: 'text.secondary'}}>過去のセッションはまだありません</Typography>
-                )}
-                {pastSummary && (
-                    <Box sx={{display: 'flex', gap: 2, alignItems: 'flex-start', flexWrap: 'wrap', mt: 1}}>
-                        <SalmonStats lastJob={pastSummary.lastJob} totals={pastSummary.totals} title="セッションの戦績"/>
-                        <Box data-testid="salmon-past-history" sx={{...listSx, my: 0, flex: 1, minWidth: 260}}>
-                            {pastSummary.jobs.map((job, i) => (
-                                <JobRow key={job.id} job={job} index={pastSummary.jobs.length - i}/>
-                            ))}
-                        </Box>
-                    </Box>
-                )}
-            </Paper>
-
-            <Paper sx={paperSx}>
-                <SectionTitle icon={ImageRoundedIcon}>振り返りの画像</SectionTitle>
-                <Typography variant="body2" sx={{mb: 2}}>
-                    {pastSessionId !== '' ? '上で選んだセッション' : '現在のセッション'}の振り返り（/salmon-review-overlay と同じ画面）を、X・Bluesky などに投稿できる PNG 画像でダウンロードします。
-                </Typography>
-                <SalmonReviewDownload sessionId={pastSessionId !== '' ? pastSessionId : currentSessionId}/>
-            </Paper>
-        </>
+            {dialog && (
+                <SalmonJobDialog
+                    editing={dialog.editing}
+                    defaults={defaults}
+                    onClose={() => setDialog(null)}
+                    onSaved={(next, job) => {
+                        setSummary(next);
+                        if (!dialog.editing) setDefaults({stage: job.stage, jobKind: job.jobKind ?? defaults.jobKind});
+                        setDialog(null);
+                    }}
+                />
+            )}
+        </LiveCard>
     );
 };
 

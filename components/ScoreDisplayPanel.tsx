@@ -1,25 +1,27 @@
 'use client';
 
+import ScoreboardRoundedIcon from '@mui/icons-material/ScoreboardRounded';
 import {Alert, Box, Button, FormControlLabel, Paper, Switch, TextField, Typography} from '@mui/material';
 import axios from 'axios';
 import React, {useCallback, useEffect, useState} from 'react';
 
 import {MAX_SCORE_LABEL_LENGTH, MAX_SCORE_VALUE_LENGTH, ScoreDisplay, ScoreDisplaySettings} from '../lib/scoreDisplayTypes';
 
-const paperSx = {p: 4};
+import SectionTitle from './SectionTitle';
 
 // リザルトの取り込みで書き換わった値を見せるため、定期的に読み込み直す
 const POLL_INTERVAL_MS = 3000;
 
-/**
- * コントロールパネルの「スコア表示」タブ。スコアはリザルトの取り込みでも書き換わるので、ほかの設定と違って入力のたびには保存せず、このタブの「反映」で保存する
- * （リザルトの取り込みで自動で入れた値を、ほかのタブの保存で上書きしないため）
- */
-const ScoreDisplayPanel: React.FC = () => {
+export interface ScoreDisplayState {
+    saved: ScoreDisplaySettings | null;
+    error: string;
+    /** 送った項目だけを保存する（PATCH /api/score-display） */
+    save: (update: Partial<ScoreDisplaySettings>) => Promise<boolean>;
+}
+
+/** スコア表示（/obs-overlay のラベル・値と自動更新）の読み込み（定期的）と保存 */
+export const useScoreDisplay = (): ScoreDisplayState => {
     const [saved, setSaved] = useState<ScoreDisplaySettings | null>(null);
-    // 編集した項目だけ（null なら保存済みの値を表示する）。編集中は読み込み直しで入力を上書きせず、
-    // 「反映」では編集した項目だけを送る（触っていない項目を、取り込みで書き換わる前の値で書き戻さないため）
-    const [draft, setDraft] = useState<Partial<ScoreDisplay> | null>(null);
     const [error, setError] = useState('');
 
     const load = useCallback(async () => {
@@ -32,14 +34,14 @@ const ScoreDisplayPanel: React.FC = () => {
     }, []);
 
     useEffect(() => {
-        // マウント時と定期的に API から読み込む（ClipPanel と同じパターン）
+        // マウント時と定期的に API から読み込む
         // eslint-disable-next-line react-hooks/set-state-in-effect
         void load();
         const timer = setInterval(() => void load(), POLL_INTERVAL_MS);
         return () => clearInterval(timer);
     }, [load]);
 
-    const save = async (update: Partial<ScoreDisplaySettings>): Promise<boolean> => {
+    const save = useCallback(async (update: Partial<ScoreDisplaySettings>): Promise<boolean> => {
         try {
             setSaved((await axios.patch<ScoreDisplaySettings>('/api/score-display', update)).data);
             setError('');
@@ -48,10 +50,24 @@ const ScoreDisplayPanel: React.FC = () => {
             setError('スコア表示を保存できませんでした。');
             return false;
         }
-    };
+    }, []);
+
+    return {saved, error, save};
+};
+
+/**
+ * スコア表示のラベル・値を直す（配信中の画面の「直す」で開く）。スコアはリザルトの取り込みでも書き換わるので、ほかの設定と違って入力のたびには保存せず、
+ * 「反映」で編集した項目だけを保存する（取り込みで自動で入れた値を書き戻さないため）
+ */
+export const ScoreDisplayEditor: React.FC<ScoreDisplayState & {onApplied?: () => void}> = ({saved, error, save, onApplied}) => {
+    // 編集した項目だけ（null なら保存済みの値を表示する）。編集中は読み込み直しで入力を上書きしない
+    const [draft, setDraft] = useState<Partial<ScoreDisplay> | null>(null);
 
     const handleApply = async () => {
-        if (draft && await save(draft)) setDraft(null);
+        if (draft && await save(draft)) {
+            setDraft(null);
+            onApplied?.();
+        }
     };
 
     if (!saved) {
@@ -62,16 +78,8 @@ const ScoreDisplayPanel: React.FC = () => {
     const edit = (delta: Partial<ScoreDisplay>) => setDraft({...draft, ...delta});
 
     return (
-        <Paper sx={paperSx}>
+        <>
             {error && <Alert severity="error" sx={{mb: 2}}>{error}</Alert>}
-            <Typography variant="h6" gutterBottom>スコア設定</Typography>
-            <FormControlLabel
-                control={<Switch checked={saved.autoUpdate} onChange={(e) => void save({autoUpdate: e.target.checked})}/>}
-                label="リザルトの取り込みで自動更新する"
-            />
-            <Typography variant="caption" sx={{display: 'block', color: 'text.secondary'}}>
-                いつものバイトは「現在のバイト評価」、ビッグラン・バイトチームコンテストは今のシフトの「ハイスコア」（チームの金イクラ）を入れます。
-            </Typography>
             <TextField
                 label="フィールド名"
                 value={shown.scoreLabel}
@@ -79,7 +87,6 @@ const ScoreDisplayPanel: React.FC = () => {
                 slotProps={{htmlInput: {maxLength: MAX_SCORE_LABEL_LENGTH}}}
                 fullWidth
                 margin="normal"
-                variant="outlined"
                 multiline
                 rows={2}
             />
@@ -90,7 +97,6 @@ const ScoreDisplayPanel: React.FC = () => {
                 slotProps={{htmlInput: {maxLength: MAX_SCORE_VALUE_LENGTH}}}
                 fullWidth
                 margin="normal"
-                variant="outlined"
             />
             <Box sx={{display: 'flex', gap: 1, mt: 1}}>
                 <Button variant="contained" onClick={handleApply} disabled={draft === null} fullWidth>反映</Button>
@@ -98,9 +104,29 @@ const ScoreDisplayPanel: React.FC = () => {
             </Box>
             <Typography variant="caption" sx={{display: 'block', mt: 1, color: 'text.secondary'}}>
                 スコアは「反映」を押したときに保存されます（入力の途中では保存しません）。
+                {saved.autoUpdate && ' リザルトの取り込みで自動更新しているので、次の取り込みで書き換わります（設定の「見た目」で止められます）。'}
+            </Typography>
+        </>
+    );
+};
+
+/** 設定の、スコア表示の自動更新の ON/OFF */
+export const ScoreAutoUpdateCard: React.FC = () => {
+    const {saved, error, save} = useScoreDisplay();
+    return (
+        <Paper sx={{mb: 4, p: 4}}>
+            <SectionTitle icon={ScoreboardRoundedIcon}>スコア表示</SectionTitle>
+            {error && <Alert severity="error" sx={{mb: 2}}>{error}</Alert>}
+            {saved && (
+                <FormControlLabel
+                    control={<Switch checked={saved.autoUpdate} onChange={(e) => void save({autoUpdate: e.target.checked})}/>}
+                    label="リザルトの取り込みで自動更新する"
+                />
+            )}
+            <Typography variant="caption" sx={{display: 'block', color: 'text.secondary'}}>
+                いつものバイトは「現在のバイト評価」、ビッグラン・バイトチームコンテストは今のシフトの「ハイスコア」（チームの金イクラ）を入れます。
+                ラベル・値は配信中の画面の「直す」で変えられます。
             </Typography>
         </Paper>
     );
 };
-
-export default ScoreDisplayPanel;

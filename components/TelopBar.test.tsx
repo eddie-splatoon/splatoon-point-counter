@@ -2,7 +2,7 @@ import { act, fireEvent, render, screen, within } from '@testing-library/react';
 import axios from 'axios';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { TelopPreset, getDefaultTelopSettings } from '../lib/telopTypes';
+import { TELOP_DISPLAY_DURATION, TelopPreset, getDefaultTelopSettings } from '../lib/telopTypes';
 
 import { TelopPresetsProvider, useTelopPresets } from './controlPanelContext';
 import TelopBar from './TelopBar';
@@ -58,14 +58,26 @@ describe('TelopBar', () => {
   it('shows the shortcut key on each button', async () => {
     await renderLoaded();
 
-    expect(buttons().getByRole('button', { name: '2カタパッド残った…' })).toBeInTheDocument();
+    expect(buttons().getByRole('button', { name: /^2\s*カタパッド残った…$/ })).toBeInTheDocument();
   });
 
-  it('shows presets beyond the shortcut keys without a key', async () => {
-    await renderLoaded(Array.from({ length: 11 }, (_, i) => ({ id: i + 1, text: `p${i + 1}`, speak: false, followFont: true, display: true, chat: false })));
+  it('puts presets beyond the shortcut keys under "more" and remembers whether it is open', async () => {
+    localStorage.clear();
+    const presets = Array.from({ length: 12 }, (_, i) => ({ id: i + 1, text: `p${i + 1}`, speak: false, followFont: true, display: true, chat: false }));
+    const { unmount } = await renderLoaded(presets);
 
-    expect(buttons().getByRole('button', { name: '0p10' })).toBeInTheDocument();
-    expect(buttons().getByRole('button', { name: 'p11' })).toBeInTheDocument();
+    expect(buttons().getByRole('button', { name: /^0\s*p10$/ })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'p11' })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'ほかのテロップ（2）' }));
+    await act(async () => fireEvent.click(within(screen.getByTestId('telop-more')).getByRole('button', { name: 'p11' })));
+    expect(mockedAxios.post).toHaveBeenCalledWith('/api/telop', { presetId: 11 });
+
+    // 開き直しても開いたまま
+    unmount();
+    await renderLoaded(presets);
+    expect(screen.getByRole('button', { name: 'たたむ' })).toHaveAttribute('aria-expanded', 'true');
+    expect(within(screen.getByTestId('telop-more')).getByRole('button', { name: 'p12' })).toBeInTheDocument();
+    localStorage.clear();
   });
 
   it('marks comment-only presets', async () => {
@@ -74,8 +86,30 @@ describe('TelopBar', () => {
       { id: 2, text: 'おつかれ', speak: false, followFont: true, display: false, chat: true },
     ]);
 
-    expect(buttons().getByRole('button', { name: /ナイス!/ })).not.toContainElement(screen.queryByRole('img', { name: 'コメントだけ' }));
-    expect(within(buttons().getByRole('button', { name: /おつかれ/ })).getByRole('img', { name: 'コメントだけ' })).toBeInTheDocument();
+    expect(buttons().getByRole('button', { name: /ナイス!/ })).not.toContainElement(screen.queryByRole('img', { name: 'チャットだけ' }));
+    expect(within(buttons().getByRole('button', { name: /おつかれ/ })).getByRole('img', { name: 'チャットだけ' })).toBeInTheDocument();
+  });
+
+  it('marks the telop on screen while it is shown, also when shown with a number key', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    await renderLoaded();
+
+    await act(async () => fireEvent.keyDown(document.body, { key: '2' }));
+    expect(buttons().getByRole('button', { name: /カタパッド残った…/ })).toHaveTextContent('表示中');
+
+    await act(async () => { await vi.advanceTimersByTimeAsync(TELOP_DISPLAY_DURATION); });
+    expect(buttons().getByRole('button', { name: /カタパッド残った…/ })).not.toHaveTextContent('表示中');
+    vi.useRealTimers();
+  });
+
+  it('does not mark a telop that could not be shown or that only goes to the chat', async () => {
+    await renderLoaded([{ id: 1, text: 'おつかれ', speak: false, followFont: true, display: false, chat: true }]);
+    await act(async () => fireEvent.keyDown(document.body, { key: '1' }));
+    expect(screen.queryByText('表示中')).not.toBeInTheDocument();
+
+    mockedAxios.post.mockRejectedValueOnce(new Error('network'));
+    await act(async () => fireEvent.click(buttons().getByRole('button', { name: /おつかれ/ })));
+    expect(screen.queryByText('表示中')).not.toBeInTheDocument();
   });
 
   it('shows the preset assigned to a number key', async () => {
@@ -140,7 +174,7 @@ describe('TelopBar', () => {
     respondWith([]);
     render(<Harness />);
 
-    expect(await screen.findByText(/設定の「テロップ」で追加できます/)).toBeInTheDocument();
+    expect(await screen.findByText(/設定の「テロップと読み上げ」で追加できます/)).toBeInTheDocument();
   });
 
   it('shows an error when the presets cannot be loaded', async () => {

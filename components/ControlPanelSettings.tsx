@@ -8,6 +8,7 @@ import {SETTINGS_SECTIONS, SettingsSectionId} from '../app/control-panel/setting
 import {monoFontFamily, tokens} from '../app/control-panel/theme';
 
 import {useTelopPresets} from './controlPanelContext';
+import {ScoreAutoUpdateCard} from './ScoreDisplayPanel';
 import {AppearanceSettingsCard, StreamSettingsGate} from './StreamSettingsPanels';
 import TelopPanel from './TelopPanel';
 import {useStreamSettings} from './useStreamSettings';
@@ -30,9 +31,12 @@ const TelopSection: React.FC = () => {
 const AppearanceSection: React.FC = () => {
     const state = useStreamSettings();
     return (
-        <StreamSettingsGate state={state}>
-            {(settings) => <AppearanceSettingsCard settings={settings} update={state.update}/>}
-        </StreamSettingsGate>
+        <>
+            <StreamSettingsGate state={state}>
+                {(settings) => <AppearanceSettingsCard settings={settings} update={state.update}/>}
+            </StreamSettingsGate>
+            <ScoreAutoUpdateCard/>
+        </>
     );
 };
 
