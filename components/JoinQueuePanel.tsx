@@ -299,50 +299,69 @@ const JoinQueuePanel: React.FC = () => {
     );
 };
 
-/** 準備の画面の、配信者の評価（部屋の推定キケン度に使う）。入れなければ取り込んだ記録の評価を使う */
+/** 準備の画面の「参加型の準備」。配信者の評価（部屋の推定キケン度に使う）。ふだんは取り込んだ記録の値で、「手で入れる」で入力する */
 export const JoinStreamerRatingCard: React.FC = () => {
     const {queue, error, send} = useJoinQueue();
+    const [editing, setEditing] = useState(false);
     const [input, setInput] = useState('');
 
     const handleSet = async () => {
-        if (await send({action: 'streamer', rating: input}, '配信者の評価を読めませんでした（例: でんせつ820）。')) setInput('');
+        if (await send({action: 'streamer', rating: input}, '配信者の評価を読めませんでした（例: でんせつ820）。')) {
+            setInput('');
+            setEditing(false);
+        }
     };
 
     return (
-        <Paper sx={{mb: 4, p: 4}}>
-            <SectionTitle icon={StarRateRoundedIcon}>配信者の評価（視聴者参加）</SectionTitle>
+        <LiveCard icon={StarRateRoundedIcon} title="参加型の準備">
+            <Typography variant="caption" sx={{display: 'block', mb: 2.5}}>
+                部屋の推定キケン度に使います。ふだんは取り込んだ記録の評価が入ります。
+            </Typography>
             {error && <Alert severity="error" sx={{mb: 2}}>{error}</Alert>}
             {queue && (
-                <Box sx={{display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 2, mb: 3}}>
-                    <Typography variant="body2">いまの評価:</Typography>
+                <Box sx={{display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 2}}>
+                    <Typography variant="body2">配信者</Typography>
                     {queue.streamer ? (
                         <>
-                            <RatingText rating={queue.streamer.rating} unreadable={false} stale={isStaleRating(queue.streamer.ratedAt, queue.shiftStart)}/>
+                            <Typography component="strong" sx={{fontWeight: 700}}>{formatJoinRating(queue.streamer.rating)}</Typography>
                             <Chip size="small" label={queue.streamer.source === 'manual' ? '手入力' : '取り込んだ記録'}/>
+                            {isStaleRating(queue.streamer.ratedAt, queue.shiftStart) && (
+                                <Typography component="span" variant="caption" sx={{color: 'warning.main'}}>{STALE_TEXT}</Typography>
+                            )}
+                            {queue.streamer.rating?.note && <Typography component="span" variant="caption">{queue.streamer.rating.note}</Typography>}
                         </>
                     ) : (
                         <Typography variant="body2" sx={{color: 'text.secondary'}}>不明（取り込んだ記録に評価がありません）</Typography>
                     )}
+                    <Box sx={{flex: 1}}/>
+                    {queue.streamer?.source === 'manual' && (
+                        <Button size="small" onClick={() => send({action: 'streamer', rating: null}, '取り込んだ記録に戻せませんでした。')}>取り込んだ記録に戻す</Button>
+                    )}
+                    {!editing && <Button size="small" variant="outlined" onClick={() => setEditing(true)}>手で入れる</Button>}
                 </Box>
             )}
-            <Box sx={{display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 2}}>
-                <TextField
-                    size="small"
-                    label="配信者の評価"
-                    placeholder="でんせつ820"
-                    value={input}
-                    onChange={(e) => setInput(e.target.value)}
-                    slotProps={{htmlInput: {maxLength: JOIN_ARGS_MAX_LENGTH}}}
-                />
-                <Button variant="outlined" onClick={handleSet} disabled={input.trim() === ''}>入れる</Button>
-                {queue?.streamer?.source === 'manual' && (
-                    <Button onClick={() => send({action: 'streamer', rating: null}, '取り込んだ記録に戻せませんでした。')}>取り込んだ記録に戻す</Button>
-                )}
-            </Box>
-            <Typography variant="caption" sx={{display: 'block', mt: 2, color: 'text.secondary'}}>
-                入れた評価は、それより後のバイトを取り込むまで使います（サーバーを再起動すると消えます）。
-            </Typography>
-        </Paper>
+            {editing && (
+                <Box sx={{display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 2, mt: 3}}>
+                    <TextField
+                        size="small"
+                        label="配信者の評価"
+                        placeholder="でんせつ820"
+                        value={input}
+                        onChange={(e) => setInput(e.target.value)}
+                        onKeyDown={(e) => {
+                            if (e.key === 'Enter' && !e.nativeEvent.isComposing && input.trim() !== '') void handleSet();
+                        }}
+                        slotProps={{htmlInput: {maxLength: JOIN_ARGS_MAX_LENGTH}}}
+                        autoFocus
+                    />
+                    <Button variant="outlined" onClick={handleSet} disabled={input.trim() === ''}>入れる</Button>
+                    <Button onClick={() => setEditing(false)}>やめる</Button>
+                    <Typography variant="caption" sx={{flexBasis: '100%'}}>
+                        入れた評価は、それより後のバイトを取り込むまで使います（サーバーを再起動すると消えます）。
+                    </Typography>
+                </Box>
+            )}
+        </LiveCard>
     );
 };
 

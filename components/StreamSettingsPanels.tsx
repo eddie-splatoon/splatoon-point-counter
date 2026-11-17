@@ -1,9 +1,8 @@
 'use client';
 
 import ChatRoundedIcon from '@mui/icons-material/ChatRounded';
-import RemoveCircleIcon from '@mui/icons-material/RemoveCircle';
+import CloseRoundedIcon from '@mui/icons-material/CloseRounded';
 import TextFieldsRoundedIcon from '@mui/icons-material/TextFieldsRounded';
-import TrendingDownRoundedIcon from '@mui/icons-material/TrendingDownRounded';
 import {
     Alert,
     AlertTitle,
@@ -15,8 +14,6 @@ import {
     MenuItem,
     Paper,
     Select,
-    Tab,
-    Tabs,
     TextField,
     Typography,
 } from '@mui/material';
@@ -24,6 +21,8 @@ import React, {useMemo, useState} from 'react';
 
 import {BurndownData, StreamSettings, TransitionEffect, isValidStreamSetting} from '../lib/streamSettingsTypes';
 
+import ChoiceChip from './ChoiceChip';
+import LiveCard from './LiveCard';
 import SectionTitle from './SectionTitle';
 import {StreamSettingsState} from './useStreamSettings';
 
@@ -53,58 +52,10 @@ export const StreamSettingsGate: React.FC<{state: StreamSettingsState; children:
     return <Typography sx={{color: 'text.secondary'}}>読み込み中...</Typography>;
 };
 
-export const BurndownSettingsCard: React.FC<CardProps> = ({settings, update}) => {
-    const [newScore, setNewScore] = useState('');
-    const total = useMemo(() => settings.burndown.entries.reduce((sum, e) => sum + e.score, 0), [settings.burndown.entries]);
-    const updateBurndown = (delta: Partial<BurndownData>) => update({burndown: {...settings.burndown, ...delta}});
+const subheadSx = {fontSize: 12, fontWeight: 700, color: 'text.secondary', mt: 5, mb: 3.5} as const;
+const listRowSx = {display: 'flex', alignItems: 'center', gap: 2, minHeight: 40, borderTop: '1px solid #232832'} as const;
 
-    const handleAdd = () => {
-        const score = Number(newScore);
-        if (isNaN(score) || score <= 0) return;
-        updateBurndown({entries: [...settings.burndown.entries, {score, timestamp: Date.now()}]});
-        setNewScore('');
-    };
-
-    return (
-        <Paper sx={paperSx}>
-            <SectionTitle icon={TrendingDownRoundedIcon}>バーンダウンチャート設定</SectionTitle>
-            <TextField label="フィールド名" value={settings.burndown.label} onChange={(e) => updateBurndown({label: e.target.value})} fullWidth margin="normal" variant="outlined" multiline rows={2}/>
-            <TextField label="目標値" type="number" value={settings.burndown.targetValue} onChange={(e) => updateBurndown({targetValue: Number(e.target.value)})} fullWidth margin="normal" variant="outlined"/>
-
-            <Typography variant="h6" gutterBottom sx={{mt: 4}}>ポイント履歴</Typography>
-            <Box data-testid="burndown-history" sx={{my: 4, maxHeight: 200, overflowY: 'auto', p: 2, bgcolor: 'background.default', borderRadius: 1}}>
-                {settings.burndown.entries.length === 0 ? (
-                    <Typography variant="body2" sx={{color: 'text.secondary', p: 2}}>履歴がありません</Typography>
-                ) : (
-                    settings.burndown.entries.map((entry, index) => (
-                        <Box key={entry.timestamp} sx={{display: 'flex', justifyContent: 'space-between', alignItems: 'center', p: 1, borderBottom: 1, borderColor: 'divider'}}>
-                            <Typography variant="body1">{index + 1} | {entry.score} | {new Date(entry.timestamp).toLocaleString('ja-JP', {year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false})}</Typography>
-                            <IconButton size="small" color="error" onClick={() => updateBurndown({entries: settings.burndown.entries.filter((e) => e.timestamp !== entry.timestamp)})} aria-label={`remove entry ${entry.score}`}><RemoveCircleIcon fontSize="small"/></IconButton>
-                        </Box>
-                    ))
-                )}
-            </Box>
-            <Box sx={{display: 'flex', gap: 2, alignItems: 'center', mb: 4}}>
-                <TextField
-                    label="新しいポイント"
-                    type="number"
-                    value={newScore}
-                    onChange={(e) => setNewScore(e.target.value)}
-                    onKeyDown={(e) => e.key === 'Enter' && handleAdd()}
-                    fullWidth
-                    variant="outlined"
-                />
-                <Button variant="contained" onClick={handleAdd} disabled={newScore.trim() === ''} sx={{minWidth: '100px'}}>追加</Button>
-            </Box>
-            <Box sx={{display: 'flex', flexDirection: 'column', alignItems: 'center', bgcolor: 'background.default', borderRadius: 1, p: 2}}>
-                <Typography variant="h6" color="primary">合計</Typography>
-                <Typography variant="h4" sx={{fontWeight: 'bold'}}>{total.toLocaleString()}</Typography>
-            </Box>
-        </Paper>
-    );
-};
-
-export const MessageSettingsCard: React.FC<CardProps> = ({settings, update}) => {
+const MessageSettings: React.FC<CardProps> = ({settings, update}) => {
     const [message, setMessage] = useState('');
     const activePreset = settings.messagePresets.find((p) => p.name === settings.activePresetName);
 
@@ -122,32 +73,105 @@ export const MessageSettingsCard: React.FC<CardProps> = ({settings, update}) => 
     };
 
     return (
-        <Paper sx={paperSx}>
-            <SectionTitle icon={ChatRoundedIcon}>視聴者向け概要メッセージ</SectionTitle>
-            <Box sx={{borderBottom: 1, borderColor: 'divider', mb: 2}}>
-                <Tabs value={settings.activePresetName} onChange={(e, value) => update({activePresetName: value})} variant="scrollable" scrollButtons="auto" aria-label="メッセージプリセット">
-                    {settings.messagePresets.map((preset) => <Tab key={preset.name} label={preset.name} value={preset.name}/>)}
-                </Tabs>
+        <>
+            <Box role="radiogroup" aria-label="メッセージのプリセット" sx={{display: 'flex', flexWrap: 'wrap', gap: 1.5}}>
+                {settings.messagePresets.map((preset) => (
+                    <ChoiceChip key={preset.name} kind="radio" selected={preset.name === settings.activePresetName} onClick={() => update({activePresetName: preset.name})}>
+                        {preset.name}
+                    </ChoiceChip>
+                ))}
             </Box>
-            <Box sx={{my: 4, maxHeight: 150, overflowY: 'auto', p: 2, bgcolor: 'background.default', borderRadius: 1}}>
+            <Box component="ul" aria-label="流すメッセージ" sx={{listStyle: 'none', m: 0, mt: 3, p: 0, maxHeight: 200, overflowY: 'auto'}}>
                 {!activePreset || activePreset.messages.length === 0 ? (
-                    <Typography variant="body2" sx={{color: 'text.secondary', p: 2}}>メッセージがありません</Typography>
+                    <Typography component="li" variant="body2" sx={{color: 'text.secondary', py: 2}}>メッセージがありません</Typography>
                 ) : (
                     activePreset.messages.map((msg) => (
-                        <Box key={msg.id} sx={{display: 'flex', justifyContent: 'space-between', alignItems: 'center', p: 1, borderBottom: 1, borderColor: 'divider'}}>
-                            <Typography variant="body1">{msg.text}</Typography>
-                            <IconButton size="small" color="error" aria-label={`${msg.text} を消す`} onClick={() => setMessages(activePreset.messages.filter((m) => m.id !== msg.id))}><RemoveCircleIcon fontSize="small"/></IconButton>
+                        <Box component="li" key={msg.id} sx={listRowSx}>
+                            <Typography component="span" sx={{flex: 1, fontSize: 14}}>{msg.text}</Typography>
+                            <IconButton size="small" aria-label={`${msg.text} を消す`} onClick={() => setMessages(activePreset.messages.filter((m) => m.id !== msg.id))} sx={{color: 'text.secondary'}}>
+                                <CloseRoundedIcon fontSize="small"/>
+                            </IconButton>
                         </Box>
                     ))
                 )}
             </Box>
-            <Box sx={{display: 'flex', gap: 2, alignItems: 'center'}}>
-                <TextField label="新しいメッセージ" value={message} onChange={(e) => setMessage(e.target.value)} fullWidth variant="outlined"/>
-                <Button variant="contained" onClick={handleAdd} disabled={message.trim() === ''} sx={{minWidth: '100px'}}>追加</Button>
+            <Box sx={{display: 'flex', gap: 2, alignItems: 'center', mt: 2}}>
+                <TextField
+                    size="small"
+                    label="新しいメッセージ"
+                    value={message}
+                    onChange={(e) => setMessage(e.target.value)}
+                    onKeyDown={(e) => e.key === 'Enter' && !e.nativeEvent.isComposing && handleAdd()}
+                    fullWidth
+                />
+                <Button variant="outlined" onClick={handleAdd} disabled={message.trim() === ''} sx={{flex: 'none'}}>追加</Button>
             </Box>
-        </Paper>
+        </>
     );
 };
+
+const BurndownSettings: React.FC<CardProps> = ({settings, update}) => {
+    const [newScore, setNewScore] = useState('');
+    const total = useMemo(() => settings.burndown.entries.reduce((sum, e) => sum + e.score, 0), [settings.burndown.entries]);
+    const updateBurndown = (delta: Partial<BurndownData>) => update({burndown: {...settings.burndown, ...delta}});
+
+    const handleAdd = () => {
+        const score = Number(newScore);
+        if (isNaN(score) || score <= 0) return;
+        updateBurndown({entries: [...settings.burndown.entries, {score, timestamp: Date.now()}]});
+        setNewScore('');
+    };
+
+    return (
+        <>
+            <Box sx={{display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: 2.5}}>
+                <TextField size="small" label="バーンダウンの名前" placeholder="例: 金イクラ" value={settings.burndown.label} onChange={(e) => updateBurndown({label: e.target.value})} multiline maxRows={2}/>
+                <TextField size="small" label="目標値" type="number" value={settings.burndown.targetValue} onChange={(e) => updateBurndown({targetValue: Number(e.target.value)})}/>
+            </Box>
+            <Box sx={{display: 'flex', gap: 2, alignItems: 'center', mt: 3}}>
+                <TextField
+                    size="small"
+                    label="新しいポイント"
+                    type="number"
+                    value={newScore}
+                    onChange={(e) => setNewScore(e.target.value)}
+                    onKeyDown={(e) => e.key === 'Enter' && handleAdd()}
+                    fullWidth
+                />
+                <Button variant="outlined" onClick={handleAdd} disabled={newScore.trim() === ''} sx={{flex: 'none'}}>ポイントを追加</Button>
+            </Box>
+            <Box sx={{display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', mt: 3}}>
+                <Typography sx={{fontSize: 12, color: 'text.secondary'}}>ポイントの履歴</Typography>
+                <Typography sx={{fontSize: 13}}>合計 <Box component="strong" sx={{fontSize: 18}}>{total.toLocaleString()}</Box> / {settings.burndown.targetValue.toLocaleString()}</Typography>
+            </Box>
+            <Box data-testid="burndown-history" sx={{maxHeight: 160, overflowY: 'auto'}}>
+                {settings.burndown.entries.length === 0 ? (
+                    <Typography variant="body2" sx={{color: 'text.secondary', py: 2}}>履歴がありません</Typography>
+                ) : (
+                    settings.burndown.entries.map((entry, index) => (
+                        <Box key={entry.timestamp} sx={listRowSx}>
+                            <Typography component="span" sx={{flex: 1, fontSize: 13}}>
+                                {index + 1}. {entry.score.toLocaleString()}（{new Date(entry.timestamp).toLocaleString('ja-JP', {month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hour12: false})}）
+                            </Typography>
+                            <IconButton size="small" aria-label={`ポイント ${entry.score} を消す`} onClick={() => updateBurndown({entries: settings.burndown.entries.filter((e) => e.timestamp !== entry.timestamp)})} sx={{color: 'text.secondary'}}>
+                                <CloseRoundedIcon fontSize="small"/>
+                            </IconButton>
+                        </Box>
+                    ))
+                )}
+            </Box>
+        </>
+    );
+};
+
+/** 準備の画面の「流すメッセージ・バーンダウン」（メッセージのプリセットの選択・メッセージの追加・削除、バーンダウンの名前・目標値・ポイント） */
+export const MessageBurndownCard: React.FC<CardProps> = (props) => (
+    <LiveCard icon={ChatRoundedIcon} title="流すメッセージ・バーンダウン">
+        <MessageSettings {...props}/>
+        <Typography sx={subheadSx}>バーンダウン</Typography>
+        <BurndownSettings {...props}/>
+    </LiveCard>
+);
 
 /** オーバーレイの見た目（フォント・メッセージの切り替え） */
 export const AppearanceSettingsCard: React.FC<CardProps> = ({settings, update}) => (

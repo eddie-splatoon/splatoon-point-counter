@@ -74,9 +74,15 @@ describe('JoinQueuePanel', () => {
     });
     render(<JoinStreamerRatingCard />);
 
-    fireEvent.change(await screen.findByLabelText('配信者の評価'), { target: { value: 'たつじん+3 50' } });
+    // 入力欄は「手で入れる」で開く
+    expect(await screen.findByText('でんせつ 820')).toBeInTheDocument();
+    expect(screen.queryByLabelText('配信者の評価')).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: '手で入れる' }));
+    fireEvent.change(screen.getByLabelText('配信者の評価'), { target: { value: 'たつじん+3 50' } });
     fireEvent.click(screen.getByRole('button', { name: '入れる' }));
     await waitFor(() => expect(mockedAxios.post).toHaveBeenCalledWith('/api/join-queue', { action: 'streamer', rating: 'たつじん+3 50' }));
+    expect(await screen.findByText('手入力')).toBeInTheDocument();
+    expect(screen.queryByLabelText('配信者の評価')).not.toBeInTheDocument();
     fireEvent.click(await screen.findByRole('button', { name: '取り込んだ記録に戻す' }));
     await waitFor(() => expect(mockedAxios.post).toHaveBeenCalledWith('/api/join-queue', { action: 'streamer', rating: null }));
   });
@@ -85,7 +91,8 @@ describe('JoinQueuePanel', () => {
     mockedAxios.post.mockRejectedValue(new Error('400'));
     render(<JoinStreamerRatingCard />);
 
-    fireEvent.change(await screen.findByLabelText('配信者の評価'), { target: { value: 'あいうえお' } });
+    fireEvent.click(await screen.findByRole('button', { name: '手で入れる' }));
+    fireEvent.change(screen.getByLabelText('配信者の評価'), { target: { value: 'あいうえお' } });
     fireEvent.click(screen.getByRole('button', { name: '入れる' }));
     expect(await screen.findByText('配信者の評価を読めませんでした（例: でんせつ820）。')).toBeInTheDocument();
   });
