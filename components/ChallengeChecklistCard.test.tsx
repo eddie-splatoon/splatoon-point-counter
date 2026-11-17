@@ -75,6 +75,38 @@ describe('ChallengeChecklistCard', () => {
     await waitFor(() => expect(screen.getByRole('checkbox', { name: /WAVE 3 まで/ })).not.toBeChecked());
   });
 
+  it('shows challenges added on the prepare screen while it stays open', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    render(<ChallengeChecklistCard />);
+    await screen.findByText('1 / 2 達成');
+
+    mockedAxios.get.mockResolvedValue({ data: settings({ challenges: [...settings().challenges, { id: 3, text: 'オオモノ 30 体', done: false }] }), status: 200 });
+    await act(async () => { await vi.advanceTimersByTimeAsync(5000); });
+
+    expect(screen.getByRole('checkbox', { name: 'オオモノ 30 体' })).toBeInTheDocument();
+    expect(screen.getByText('1 / 3 達成')).toBeInTheDocument();
+    vi.useRealTimers();
+  });
+
+  it('does not undo a check with a reload that started before it was saved', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    render(<ChallengeChecklistCard />);
+    await screen.findByText('1 / 2 達成');
+
+    // 読み込み直しの応答が遅れているあいだにチェックする
+    let resolveStale: (value: unknown) => void = () => {};
+    mockedAxios.get.mockReturnValueOnce(new Promise((resolve) => { resolveStale = resolve; }));
+    await act(async () => { await vi.advanceTimersByTimeAsync(5000); });
+    mockedAxios.get.mockResolvedValue({ data: settings(), status: 200 });
+    const checkbox = screen.getByRole('checkbox', { name: /WAVE 3 まで/ });
+    await act(async () => fireEvent.click(checkbox));
+    await waitFor(() => expect(mockedAxios.post).toHaveBeenCalled());
+    await act(async () => resolveStale({ data: settings(), status: 200 }));
+
+    expect(screen.getByRole('checkbox', { name: /WAVE 3 まで/ })).toBeChecked();
+    vi.useRealTimers();
+  });
+
   it('guides to the prepare screen when there are no challenges', async () => {
     mockedAxios.get.mockResolvedValue({ data: settings({ challenges: [] }), status: 200 });
     render(<ChallengeChecklistCard />);

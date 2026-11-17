@@ -19,6 +19,25 @@ beforeEach(() => {
 });
 
 describe('TimelyFixesCard', () => {
+  it('does not show a stale reload over a weapon just filled', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    render(<TimelyFixesCard />);
+    await screen.findByText('2 / 71');
+    fireEvent.click(screen.getByRole('button', { name: '埋める・外す' }));
+    const dialog = await screen.findByRole('dialog', { name: /ブキ埋めカードを埋める・外す/ });
+
+    // 埋める操作を送っているあいだに、読み込み直し（まだ反映前の状態）が走る
+    let resolvePatch: (value: unknown) => void = () => {};
+    mockedAxios.patch.mockReturnValueOnce(new Promise((resolve) => { resolvePatch = resolve; }));
+    const nova = within(within(dialog).getByRole('group', { name: 'ブキ埋めカード' })).getByRole('button', { name: 'ノヴァブラスター' });
+    fireEvent.click(nova);
+    await act(async () => { await vi.advanceTimersByTimeAsync(5000); });
+    await act(async () => resolvePatch({ data: { ...card, obtained: [...card.obtained, { key: 'nova', at: 3, source: 'manual' }] }, status: 200 }));
+
+    expect(screen.getByTestId('weapon-card-summary')).toHaveTextContent('3 / 71');
+    vi.useRealTimers();
+  });
+
   it('shows the score display and the weapon card in one line each', async () => {
     render(<TimelyFixesCard />);
 

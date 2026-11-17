@@ -43,9 +43,12 @@ export const useWeaponCard = (pollMs?: number): WeaponCardState => {
     const [error, setError] = useState('');
     // 素早く続けて押したとき、古い応答で新しい状態を戻さないための通し番号
     const latestRequest = useRef(0);
+    // 定期的な読み込みは、操作の応答を古い状態で上書きしないよう、操作が無いあいだに始まって終わったときだけ使う
+    const inFlight = useRef(0);
 
     const request = useCallback(async (send: () => Promise<{data: WeaponCard}>, message: string) => {
         const id = ++latestRequest.current;
+        inFlight.current += 1;
         try {
             const res = await send();
             if (latestRequest.current === id) {
@@ -54,15 +57,28 @@ export const useWeaponCard = (pollMs?: number): WeaponCardState => {
             }
         } catch {
             if (latestRequest.current === id) setError(message);
+        } finally {
+            inFlight.current -= 1;
         }
     }, []);
 
     useEffect(() => {
-        const load = () => request(() => axios.get<WeaponCard>('/api/weapon-card'), 'ブキ埋めカードの読み込みに失敗しました。サーバーを確認してください。');
-        // マウント時に API から読み込む（記録で埋まるのを見せるときは定期的に）
-        void load();
+        const failure = 'ブキ埋めカードの読み込みに失敗しました。サーバーを確認してください。';
+        // マウント時に API から読み込む（ほかのカードと同じパターン）
+        // eslint-disable-next-line react-hooks/set-state-in-effect
+        void request(() => axios.get<WeaponCard>('/api/weapon-card'), failure);
         if (!pollMs) return;
-        const timer = setInterval(() => void load(), pollMs);
+        // 記録で埋まるのを見せるときは定期的に読み込み直す（操作の通し番号は進めない）
+        const timer = setInterval(async () => {
+            if (inFlight.current > 0) return;
+            const startedAt = latestRequest.current;
+            try {
+                const res = await axios.get<WeaponCard>('/api/weapon-card');
+                if (inFlight.current === 0 && latestRequest.current === startedAt) setCard(res.data);
+            } catch {
+                // 一時的な失敗は次の読み込みでやり直す（操作のエラー表示を消さない）
+            }
+        }, pollMs);
         return () => clearInterval(timer);
     }, [request, pollMs]);
 
