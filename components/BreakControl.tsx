@@ -1,10 +1,12 @@
 'use client';
 
+import FreeBreakfastRoundedIcon from '@mui/icons-material/FreeBreakfastRounded';
 import {Alert, Box, Button, Typography} from '@mui/material';
 import {keyframes} from '@mui/material/styles';
 import axios from 'axios';
 import React, {useCallback, useEffect, useRef, useState} from 'react';
 
+import {tokens} from '../app/control-panel/theme';
 import {BREAK_LONG_MS, BreakState, formatBreakElapsed, localBreakStart} from '../lib/breakTypes';
 
 // 声で解除されたときにすぐ戻るよう、オーバーレイと同じ間隔で問い合わせる
@@ -16,6 +18,21 @@ const blink = keyframes`
     50% { opacity: 0.35; }
 `;
 
+export interface BreakView {
+    /** 休憩中か */
+    active: boolean;
+    /** 経過時間（m:ss）。休憩中でなければ空 */
+    label: string;
+    /** 解除忘れの注意（休憩中に声を拾った・BREAK_LONG_MS を超えた）を出すか */
+    needsAttention: boolean;
+    voiceHeard: boolean;
+    isLong: boolean;
+    sending: boolean;
+    error: string;
+    start: () => void;
+    end: () => void;
+}
+
 interface Shown {
     /** 休憩を始めた時刻（ブラウザの時計） */
     startedAt: number;
@@ -23,10 +40,10 @@ interface Shown {
 }
 
 /**
- * コントロールパネル上部（テロップバー）の「休憩する」ボタン。休憩中は経過時間と「休憩を終わる」を目立たせ、
- * 解除忘れ（休憩中に声を拾った・BREAK_LONG_MS を超えた）を注意する。タブのタイトルにも出す
+ * 休憩の状態。コントロールパネルの共通の外枠で 1 回だけ使い、ヘッダーのボタン（BreakButton）と帯（BreakBanner）に渡す。
+ * 休憩中はタブのタイトルにも出す（別のウインドウを見ていても気づけるように）
  */
-const BreakControl: React.FC = () => {
+export function useBreak(): BreakView {
     const [shown, setShown] = useState<Shown | null>(null);
     const [now, setNow] = useState(0);
     const [error, setError] = useState('');
@@ -72,10 +89,10 @@ const BreakControl: React.FC = () => {
 
     const elapsed = shown ? now - shown.startedAt : 0;
     const isLong = shown !== null && elapsed >= BREAK_LONG_MS;
-    const needsAttention = shown !== null && (isLong || shown.voiceHeard);
+    const voiceHeard = shown?.voiceHeard ?? false;
+    const needsAttention = shown !== null && (isLong || voiceHeard);
     const label = shown ? formatBreakElapsed(elapsed) : '';
 
-    // 別のウインドウを見ていても気づけるよう、休憩中はタブのタイトルにも出す
     useEffect(() => {
         originalTitleRef.current ??= document.title;
         const original = originalTitleRef.current;
@@ -85,39 +102,67 @@ const BreakControl: React.FC = () => {
         if (originalTitleRef.current !== null) document.title = originalTitleRef.current;
     }, []);
 
-    return (
-        <Box data-testid="break-control" sx={{mb: 1}}>
-            {error && <Alert severity="error" sx={{mb: 1}}>{error}</Alert>}
-            {shown ? (
-                <Box
-                    data-testid="break-active"
-                    data-attention={needsAttention ? 'true' : 'false'}
-                    sx={{
-                        display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 1.5, p: 1, borderRadius: 1,
-                        bgcolor: needsAttention ? '#C62828' : '#E65100',
-                        animation: needsAttention ? `${blink} 1.2s ease-in-out infinite` : 'none',
-                    }}
-                >
-                    <Typography sx={{fontWeight: 'bold', color: '#fff', fontVariantNumeric: 'tabular-nums'}}>
-                        ☕ 休憩中 {label}（配信画面に表示中）
-                    </Typography>
-                    <Button variant="contained" size="small" color="inherit" disabled={sending} onClick={() => void send('end')} sx={{color: '#000'}}>
-                        休憩を終わる
-                    </Button>
-                    {shown.voiceHeard && (
-                        <Typography variant="body2" sx={{color: '#fff'}}>休憩中に話し声を拾いました。戻っていたら休憩を終わってください</Typography>
-                    )}
-                    {isLong && !shown.voiceHeard && (
-                        <Typography variant="body2" sx={{color: '#fff'}}>{BREAK_LONG_MS / 60000} 分を超えました。戻っていたら休憩を終わってください</Typography>
-                    )}
-                </Box>
-            ) : (
-                <Button variant="outlined" size="small" color="warning" disabled={sending} onClick={() => void send('start')}>
-                    ☕ 休憩する
-                </Button>
-            )}
-        </Box>
-    );
-};
+    return {
+        active: shown !== null, label, needsAttention, voiceHeard, isLong, sending, error,
+        start: () => void send('start'),
+        end: () => void send('end'),
+    };
+}
 
-export default BreakControl;
+const attentionSx = (needsAttention: boolean) => needsAttention ? {animation: `${blink} 1.2s ease-in-out infinite`} : {};
+
+/** ヘッダーの休憩のボタン。休憩していなければ「休憩する」、休憩中は塗りの「休憩を終わる m:ss」 */
+export const BreakButton: React.FC<{view: BreakView}> = ({view}) => view.active ? (
+    <Button
+        variant="contained"
+        color={view.needsAttention ? 'error' : 'warning'}
+        disabled={view.sending}
+        onClick={view.end}
+        data-attention={view.needsAttention ? 'true' : 'false'}
+        sx={{fontVariantNumeric: 'tabular-nums', ...attentionSx(view.needsAttention)}}
+    >
+        休憩を終わる {view.label}
+    </Button>
+) : (
+    <Button
+        variant="outlined"
+        color="warning"
+        disabled={view.sending}
+        onClick={view.start}
+        startIcon={<FreeBreakfastRoundedIcon/>}
+        sx={{bgcolor: tokens.color.warningSoft, borderColor: tokens.color.warning, color: tokens.color.warning}}
+    >
+        休憩する
+    </Button>
+);
+
+/** 休憩中にヘッダーの下に全幅で出す帯。休憩の操作に失敗したときもここに出す */
+export const BreakBanner: React.FC<{view: BreakView}> = ({view}) => (
+    <>
+        {view.error && <Alert severity="error" sx={{borderRadius: 0}}>{view.error}</Alert>}
+        {view.active && (
+            <Box
+                data-testid="break-active"
+                data-attention={view.needsAttention ? 'true' : 'false'}
+                role="status"
+                sx={{
+                    px: 5, py: 2, display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 3,
+                    bgcolor: view.needsAttention ? tokens.color.error : tokens.color.warning,
+                    color: view.needsAttention ? tokens.color.onError : tokens.color.onWarning,
+                    ...attentionSx(view.needsAttention),
+                }}
+            >
+                <Typography sx={{fontWeight: 700, fontVariantNumeric: 'tabular-nums'}}>
+                    休憩中 {view.label}
+                </Typography>
+                <Typography variant="body2" sx={{color: 'inherit'}}>
+                    {view.voiceHeard
+                        ? '休憩中に話し声を拾いました。戻っていたら休憩を終わってください'
+                        : view.isLong
+                            ? `${BREAK_LONG_MS / 60000} 分を超えました。戻っていたら休憩を終わってください`
+                            : '―「ただいま」と話すか、右上のボタンで終わります'}
+                </Typography>
+            </Box>
+        )}
+    </>
+);

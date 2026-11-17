@@ -32,13 +32,13 @@ import SectionTitle from './SectionTitle';
 const paperSx = {mb: 4, p: 4};
 
 interface TelopPanelProps {
-    /** プリセットを保存（または保存に失敗して読み込み直）したとき。上部のテロップバーに反映するのに使う */
+    /** プリセットを保存（または保存に失敗して読み込み直）したとき。配信中の画面のボタンと数字キーに反映するのに使う */
     onPresetsChange?: () => void;
 }
 
 /**
- * コントロールパネルの「テロップ」タブ。自由入力でテロップを出し、プリセットを編集する（変更はその場で保存される）。
- * プリセットのボタンとキーボードの 1〜9, 0 は、どのタブでも使えるよう TelopBar にある
+ * コントロールパネルの設定の「テロップと読み上げ」。自由入力でテロップを出し、プリセットを編集する（変更はその場で保存される）。
+ * プリセットのボタンは配信中の画面の TelopBar、キーボードの 1〜9, 0 は共通の外枠（どの画面でも効く）にある
  */
 const TelopPanel: React.FC<TelopPanelProps> = ({onPresetsChange}) => {
     const [presets, setPresets] = useState<TelopPreset[] | null>(null);
@@ -128,7 +128,7 @@ const TelopPanel: React.FC<TelopPanelProps> = ({onPresetsChange}) => {
             <Paper sx={paperSx}>
                 <SectionTitle icon={CampaignRoundedIcon}>自由入力でテロップを出す</SectionTitle>
                 <Typography variant="body2" sx={{color: 'text.secondary'}}>
-                    プリセットは、画面上部のボタンか、キーボードの 1〜9, 0 でどのタブからでも出せます（入力欄にカーソルがあるときは効きません）。
+                    プリセットは、配信中の画面のボタンか、キーボードの 1〜9, 0 でどの画面からでも出せます（入力欄にカーソルがあるときは効きません）。
                 </Typography>
                 <Box sx={{display: 'flex', gap: 1, alignItems: 'flex-start', mt: 2}}>
                     <TextField

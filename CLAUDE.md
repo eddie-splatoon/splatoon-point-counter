@@ -54,9 +54,18 @@
 │   ├── layout.tsx                # ルートレイアウト
 │   ├── icon.svg                  # ファビコン（16px 用に簡略化した金イクラ）
 │   ├── control-panel/
-│   │   ├── layout.tsx            # コントロールパネルのフォント（next/font）
+│   │   ├── layout.tsx            # コントロールパネルのフォント（next/font）と共通の外枠
 │   │   ├── theme.ts              # コントロールパネルの MUI テーマ（色・角丸・文字・ボタンの高さ）
-│   │   └── page.tsx              # コントロールパネル
+│   │   ├── page.tsx              # 配信中の画面
+│   │   ├── prepare/
+│   │   │   └── page.tsx          # 準備の画面
+│   │   ├── review/
+│   │   │   └── page.tsx          # 振り返りの画面
+│   │   └── settings/
+│   │       ├── page.tsx          # 設定（最初のメニューへ移る）
+│   │       ├── sections.ts       # 設定のメニュー
+│   │       └── [section]/
+│   │           └── page.tsx      # 設定の画面
 │   ├── obs-overlay/
 │   │   └── page.tsx              # メインオーバーレイ
 │   ├── burndown-overlay/
@@ -136,28 +145,34 @@
 │   ├── FireworksEffect.tsx       # 花火エフェクト
 │   ├── SalmonStats.tsx           # サーモンランの前回・本日合計（タイトルは「本日の戦績」）
 │   ├── BossRanking.tsx           # オオモノ討伐TOP3（サイドパネルのスロット）
-│   ├── SalmonRunPanel.tsx        # コントロールパネルのサーモンランタブ
+│   ├── SalmonRunPanel.tsx        # コントロールパネルのサーモンランのカード（配信中の画面）
 │   ├── SidePanelOverlay.tsx      # サイドパネルの本体（2 つのレイアウトで共通）
-│   ├── SidePanelSettingsPanel.tsx # コントロールパネルのサイドパネルタブ
+│   ├── SidePanelSettingsPanel.tsx # コントロールパネルのサイドパネルのカード（準備の画面）
 │   ├── InkTankGauge.tsx          # インクタンク型フォロワーゲージ
 │   ├── ChallengeList.tsx         # 本日のお題（サイドパネルのスロット）
 │   ├── SalmonSchedule.tsx        # サーモンランのスケジュール（サイドパネルのスロット）
-│   ├── ScoreDisplayPanel.tsx     # コントロールパネルのスコア表示タブ
-│   ├── TelopBar.tsx              # コントロールパネル上部のテロップのボタン（どのタブでも表示）
-│   ├── TelopPanel.tsx            # コントロールパネルのテロップタブ
+│   ├── ScoreDisplayPanel.tsx     # コントロールパネルのスコア表示のカード（配信中の画面）
+│   ├── TelopBar.tsx              # 配信中の画面のテロップのボタン（プリセットは controlPanelContext で共有）
+│   ├── TelopPanel.tsx            # 設定の「テロップと読み上げ」の自由入力・プリセットの編集
 │   ├── TelopOverlay.tsx          # 実況テロップのオーバーレイの本体（横長 / 縦型配信用で共通）
-│   ├── VoiceSettingsPanel.tsx    # 読み上げ（VOICEVOX）の設定（テロップタブ内）
+│   ├── VoiceSettingsPanel.tsx    # 読み上げ（VOICEVOX）の設定（設定の「テロップと読み上げ」）
 │   ├── WeaponIcon.tsx            # ブキの画像（読み込めなければブキ名）
-│   ├── WeaponPicker.tsx          # カテゴリごとのブキのパレット（記録・ブキ埋めタブで使う）
+│   ├── WeaponPicker.tsx          # カテゴリごとのブキのパレット（記録・ブキ埋めのカードで使う）
 │   ├── WeaponCard.tsx            # ブキ埋めカード（オーバーレイ）
-│   ├── WeaponCardPanel.tsx       # コントロールパネルのブキ埋めタブ
+│   ├── WeaponCardPanel.tsx       # コントロールパネルのブキ埋めのカード（振り返りの画面）
 │   ├── SalmonReview.tsx          # サーモンランの振り返り（横長 / 縦長のレイアウト）
 │   ├── SalmonReviewOverlay.tsx   # 振り返りのオーバーレイ（ポーリング。2 つのページで共通）
-│   ├── SalmonReviewDownload.tsx  # 振り返りを SNS 用の PNG にしてダウンロード（サーモンランタブ）
-│   ├── ClipPanel.tsx             # コントロールパネルのクリップタブ
-│   ├── JoinQueuePanel.tsx        # コントロールパネルの参加タブ
-│   ├── BreakControl.tsx          # テロップバーの「休憩する」ボタン・解除忘れの注意
+│   ├── SalmonReviewDownload.tsx  # 振り返りを SNS 用の PNG にしてダウンロード（サーモンランのカード）
+│   ├── ClipPanel.tsx             # コントロールパネルのクリップのカード（配信中の画面）
+│   ├── JoinQueuePanel.tsx        # コントロールパネルの参加のカード（配信中の画面）
+│   ├── BreakControl.tsx          # 休憩の状態（useBreak）とヘッダーのボタン・帯・解除忘れの注意
 │   ├── SectionTitle.tsx          # コントロールパネルのカードの見出し（アイコン + 文字）
+│   ├── ControlPanelShell.tsx     # コントロールパネルの共通の外枠（ヘッダー・フェーズの切り替え・休憩・数字キー）
+│   ├── controlPanelContext.tsx   # 画面をまたいで共有するもの（保存の状態・テロップのプリセット）
+│   ├── useTelopHotkeys.ts        # テロップの数字キー（1〜9, 0）
+│   ├── useStreamSettings.ts      # オーバーレイの設定の読み込み・その場で保存
+│   ├── StreamSettingsPanels.tsx  # バーンダウン・メッセージ・見た目の設定とエフェクトのボタンのカード
+│   ├── ControlPanelSettings.tsx  # 設定の画面（左のメニューと中身）
 │   └── BreakOverlay.tsx          # 休憩中オーバーレイの本体（横長 / 縦型配信用で共通）
 ├── lib/
 │   ├── localStorage.ts           # ローカルストレージのラッパー
@@ -279,20 +294,27 @@ export interface StreamData extends StreamSettings {
 - `getInitialStreamData()` - 初期データを返す（テストでも使用）
 - `__TEST_ONLY_setStreamData()` - テスト用のデータセッター（`settingsStored` が false なら保存した設定を消す）
 
-### `/app/control-panel/page.tsx`
+### `/app/control-panel/`（コントロールパネル）
 
-タブ形式のコントロールパネル。以下の機能を提供：
+配信のフェーズ（準備 → 配信中 → 振り返り）で画面を切り替える。設定は歯車の奥（親 Issue #125。設計書は `docs/design/control-panel/README.md`）。
 
-1. **スコア表示タブ** - `components/ScoreDisplayPanel.tsx`。`/api/score-display` に「反映」で保存する（取り込みでも書き換わるので、ほかの設定と違って入力のたびには保存しない）。取り込みでの自動更新の ON/OFF
-2. **バーンダウンタブ** - バーンダウンチャートの管理
-3. **メッセージタブ** - メッセージプリセットの管理
-4. **共通設定タブ** - フォント設定、エフェクトのボタン
+| 画面 | URL | 今の中身 |
+|---|---|---|
+| 配信中 | `/control-panel`（既定。配信中に開き直しても 1 手で戻れるように） | テロップのボタン（`TelopBar`）・エフェクト（`EffectButtonsCard`）・サーモンラン・参加・クリップ・スコア表示 |
+| 準備 | `/control-panel/prepare` | サイドパネル・メッセージ・バーンダウン |
+| 振り返り | `/control-panel/review` | ブキ埋め |
+| 設定 | `/control-panel/settings/[section]`（`settings/sections.ts` のメニュー。`/control-panel/settings` は最初のメニューへ移る） | テロップと読み上げ・見た目（フォント・メッセージの切り替え）・OBS のブラウザソース |
 
-#### 重要な機能
+各画面の並べ方と、カードの置き場所の整理は #129〜#133 で作り直す（今は以前のタブの中身を振り分けただけ）。
 
-- **見た目**: テーマは `app/control-panel/theme.ts`（`docs/design/control-panel/theme.ts` と同じ値。フォントだけ `app/control-panel/layout.tsx` の `next/font` が設定する CSS 変数を使う）。色・角丸・余白は `tokens` から取り、カードは面の色と 1px の枠だけ（影・グラデーション・すりガラスは使わない）。`spacing` は 4px 単位（`p: 4` = 16px）。カードの見出しは `components/SectionTitle.tsx`（MUI の Rounded のアイコン + 文字。見出しに絵文字は使わない）。今の画面は配信のフェーズ（準備・配信中・振り返り）で作り直している途中（親 Issue #125。設計書は `docs/design/control-panel/README.md`）
-- **保存**: すべて「その場で保存」（「OBSに反映」ボタンは無い）。バーンダウン・メッセージ・フォント・切り替えエフェクトは、変えてから `SAVE_DELAY_MS`（500ms）待って、保存済みの値と比べて変わった項目だけを `POST /api/stream-data` で送る（入力途中の不正な値、たとえば数値の欄を空にした 0 は送らない。`isValidStreamSetting`）。保存は 1 つずつ順に送り、失敗したら赤い表示を出して次の保存で送り直す。画面を離れるとき（アンマウント・`pagehide` は `fetch` の `keepalive`）は待っている変更をすぐに送る。応答で入力欄を上書きしない（打っている途中の文字を戻さない）
-- **ローカルストレージ**: `'control-panel-state'` キーに開いているタブ（`{activeTab}`）だけを残す。以前は設定も入れていたので、残っていればサーバーに保存が無いとき（`settingsStored` が false）だけ 1 回送り、どちらでも設定は消す。壊れていたら無視する
+- **共通の外枠**: `app/control-panel/layout.tsx` が `components/ControlPanelShell.tsx` で包む。テーマ（`ThemeProvider`・`CssBaseline`）、ヘッダー（アイコン・フェーズの切り替え（`usePathname` で今の画面を塗る）・「変更はすぐ保存」・休憩のボタン・設定の歯車）、休憩中の帯、テロップの数字キーを持つ。画面をまたいで共有するものは `components/controlPanelContext.tsx` の `SaveStatusProvider`（保存の失敗をヘッダーに出す）と `TelopPresetsProvider`（テロップのプリセットを 1 回だけ読み込み、ボタン・数字キー・設定の編集で共有する。編集したら `reload`）
+- **数字キー**: `components/useTelopHotkeys.ts` を外枠で 1 回だけ使い、どの画面でも 1〜9, 0 で先頭 10 個を出す（入力欄・プルダウン（`role=combobox` / `option`）にフォーカスがあるとき・IME 変換中・修飾キー付き・キーリピートは無視。`isEditableTarget`）
+- **休憩**: `components/BreakControl.tsx` の `useBreak` を外枠で 1 回だけ使い、ヘッダーのボタン（`BreakButton`。休憩中は塗りの「休憩を終わる m:ss」）とヘッダーの下の帯（`BreakBanner`）に渡す。点滅は帯とボタンの両方
+- **テストのモック**: `vitest.setup.ts` の `next/navigation` のモックは `usePathname` が `/control-panel` を返す。外枠ごと描くテストでは、`/api/break`・`/api/telop` も `axios.get` に答えさせる。外枠の休憩の問い合わせを止めようと `setInterval` を差し替えると、Testing Library の `waitFor` も DOM が変わるまで待ち直さなくなるので差し替えない
+
+- **見た目**: テーマは `app/control-panel/theme.ts`（`docs/design/control-panel/theme.ts` と同じ値。フォントだけ `app/control-panel/layout.tsx` の `next/font` が設定する CSS 変数を使う）。色・角丸・余白は `tokens` から取り、カードは面の色と 1px の枠だけ（影・グラデーション・すりガラスは使わない）。`spacing` は 4px 単位（`p: 4` = 16px）。カードの見出しは `components/SectionTitle.tsx`（MUI の Rounded のアイコン + 文字。見出しに絵文字は使わない）
+- **保存**: すべて「その場で保存」（「OBSに反映」ボタンは無い）。設定を扱う画面は `components/useStreamSettings.ts` を 1 回だけ使い、カード（`components/StreamSettingsPanels.tsx`）に渡す。バーンダウン・メッセージ・フォント・切り替えエフェクトは、変えてから `SAVE_DELAY_MS`（500ms）待って、保存済みの値と比べて変わった項目だけを `POST /api/stream-data` で送る（入力途中の不正な値、たとえば数値の欄を空にした 0 は送らない。`isValidStreamSetting`）。保存は 1 つずつ順に送り、失敗したらヘッダーの「変更はすぐ保存」を赤い「保存できませんでした」に変えて、次の保存で送り直す。画面を離れるとき（アンマウント・`pagehide` は `fetch` の `keepalive`）は待っている変更をすぐに送る。応答で入力欄を上書きしない（打っている途中の文字を戻さない）
+- **ローカルストレージ**: 使わない。以前は `'control-panel-state'` キーに設定（と開いていたタブ）を入れていたので、残っていればサーバーに保存が無いとき（`settingsStored` が false）だけ設定を 1 回送り、どちらでもキーを消す（`useStreamSettings`）。壊れていたら消す
 - **エフェクトのトリガー**: `PATCH /api/stream-data {event}` でエフェクトだけを送る（ほかの設定は送らない。話した言葉で出すのは文字起こしスクリプト）
 
 ### `/app/obs-overlay/page.tsx`
@@ -349,7 +371,7 @@ Twitch のフォロワー数とフォロワー目標を受け取る機能と、�
 - 集計は **配信セッション単位**。最後に開始したセッションが「現在のセッション」。記録時にセッションが無ければ自動作成
 - `GET /api/salmon`（`?sessionId=` で過去分）、`POST /api/salmon`（記録）、`PATCH /api/salmon {id, ...記録}`（修正。取り込んだバイトの日時・詳細は残し、詳細があれば自分の行の金イクラ・オオモノ・被救助数も合わせる）、`DELETE /api/salmon?id=`（取り消し）、`GET/POST /api/salmon/sessions`（一覧・開始）。POST は `Content-Type: application/json` 必須
 - `lib/salmon.ts` は `node:sqlite` に依存するのでクライアントコンポーネントから import しない。型と定数は `lib/salmonTypes.ts` から import する
-- コントロールパネルの「サーモンラン」タブ（`components/SalmonRunPanel.tsx`）は API に直接保存する
+- コントロールパネルの配信中の画面のサーモンランのカード（`components/SalmonRunPanel.tsx`）は API に直接保存する
 - テストは `vite.config.mts` の `OVERLAY_DB_PATH=:memory:` で実データに触れない。各テストで `__TEST_ONLY_setDb(openDb(':memory:'))` してから使う
 
 ### `/app/api/salmon/import/route.ts` と `tools/salmon-result/`
@@ -357,7 +379,7 @@ Twitch のフォロワー数とフォロワー目標を受け取る機能と、�
 サーモンランのリザルトの手入力を減らすため、iPhone ミラーリングに映した NSO アプリ（イカリング3）から最新のリザルトを読み取って記録する機能。
 
 - イカリング3の API は直接呼ばない（以前、非公式の API の利用でイカリングを BAN されたため）。公式アプリの画面をタップ・スクロールし、撮影して OCR するだけ。キャプチャ映像の OCR ではオオモノ討伐数が取れないので使わない
-- 流れ: コントロールパネルの「サーモンラン」タブのボタン → `POST /api/salmon/import` → 取り込みスクリプト（`pnpm salmon-result`）が 1 秒ごとに `GET ?status=pending` で拾い `PATCH {id, status: 'processing'}` → `GET ?view=recorded`（記録済みのバイトの日時と今のセッションの開始時刻）→ バイトの詳細画面の「最新のバイトへ」で最新を表示して撮影・OCR → 「前のバイト」で取りこぼしを遡る → `PATCH {id, status: 'succeeded', jobs: [{job, playedAt}]（古い順）, captures}`（サーバーが `addJob` で今のセッションに記録）／ `{status: 'failed', error, captures}` → `POST /api/telop {text}` で知らせる
+- 流れ: コントロールパネルの配信中の画面のサーモンランのカードのボタン → `POST /api/salmon/import` → 取り込みスクリプト（`pnpm salmon-result`）が 1 秒ごとに `GET ?status=pending` で拾い `PATCH {id, status: 'processing'}` → `GET ?view=recorded`（記録済みのバイトの日時と今のセッションの開始時刻）→ バイトの詳細画面の「最新のバイトへ」で最新を表示して撮影・OCR → 「前のバイト」で取りこぼしを遡る → `PATCH {id, status: 'succeeded', jobs: [{job, playedAt}]（古い順）, captures}`（サーバーが `addJob` で今のセッションに記録）／ `{status: 'failed', error, captures}` → `POST /api/telop {text}` で知らせる
 - 最新の表示: ヒストリーはタブを移っても読み込み直されない（ホーム → サーモンランでは新しいバイトが出ない）。詳細画面の「最新のバイトへ」で読み込み直す。押した直後は前の画面のままなので、「次のバイト」が押せなくなる（文字が灰色になる。`is_latest_job`）まで待つ。詳細画面でなければヒストリーのいちばん上を開いてから押す
 - 取りこぼし: 最新のバイトから「前のバイト」で、記録済みのバイト・今のセッションの開始より前のバイト・`MAX_BACKFILL_JOBS`（20）件のどれかに着くまで遡る（`should_stop_backfill`。セッションが無ければ遡らない）。読めないバイトがあればそこでやめ、読めた分を記録する。「前回」が最新のバイトになるよう古い順に送る
 - 依頼は SQLite の `salmon_imports`（`pending` / `processing` / `succeeded` / `failed`）。処理待ち・取り込み中の依頼があれば新しく作らずにそれを返す。拾われない依頼は `SALMON_IMPORT_REQUEST_TTL_MS`（30 秒）、取り込み中のまま止まった依頼は `SALMON_IMPORT_PROCESSING_TTL_MS`（6 分）で失敗にする（`expireStaleImports`）
@@ -386,9 +408,9 @@ Twitch のフォロワー数とフォロワー目標を受け取る機能と、�
 - 戦績の記録（`SalmonJob`）に `weapons`（支給されたブキの key、最大 `MAX_JOB_WEAPONS` = 5 = バイトチームコンテストの 5 WAVE（通常は 3 WAVE + EX の 4）、重複可、省略可）を追加した。`salmon_jobs.weapons` は後から追加した列なので、`openDb` の `migrate` で既存の DB に `ALTER TABLE` で足す（列を足すときは同じようにする）。保存値の壊れた JSON・未知の key は読み込み時に捨てる
 - カードの状態は `app_state`（キー `weaponCard`）の `{startedAt, manual}`。埋まっているブキは「`startedAt` 以降に記録したバイトのブキ」と「手動で埋めたブキ」を合わせたもの（`getWeaponCard`）。記録から導出するので、記録を取り消すとマスも戻る。カードの区切りはサーモンランのセッションとは独立（セッションをまたいで続けられる）。両方で埋まったものは記録由来（`source: 'job'`）として扱い、手動では外せない
 - `GET /api/weapon-card`（`{startedAt, total, obtained: {key, at, source}[]}`、埋まった順）、`PATCH {weapon, obtained}`（手動で埋める / 外す）、`POST`（新しいカードを始める）。PATCH / POST は `Content-Type: application/json` 必須
-- コントロールパネルの「サーモンラン」タブでは記録フォームの `WeaponPicker` で支給ブキを選ぶ（押すたびに追加。外すときは選んだブキを押す）。「ブキ埋め」タブ（`components/WeaponCardPanel.tsx`）は進捗・手動の埋める / 外す・新しいカード（確認ダイアログ付き）。どちらもその場で保存
+- コントロールパネルの配信中の画面のサーモンランのカードでは記録フォームの `WeaponPicker` で支給ブキを選ぶ（押すたびに追加。外すときは選んだブキを押す）。振り返りの画面のブキ埋めのカード（`components/WeaponCardPanel.tsx`）は進捗・手動の埋める / 外す・新しいカード（確認ダイアログ付き）。どちらもその場で保存
 - サイドパネルの `weaponCard` スロットにも出せる（`<WeaponCard compact/>`。幅 250px に 12 列で縮めた、試合中に埋まり具合がなんとなくわかる程度の表示。スケジュールなどと並べても下段に収まる高さにしている）。`/weapon-card-overlay` は試合の合間などにたまに出す拡大表示という位置づけ
-- 「ブキ埋め」タブの「画像をダウンロード」で、今のカードを SNS 投稿用の PNG（12 列 × 6 行の横長）にする（`lib/weaponCardImage.ts` の `renderWeaponCardImage`。DOM のキャプチャではなく Canvas に直接描く）。ブキの画像は `crossOrigin = 'anonymous'` で読み込み（raw.githubusercontent.com は CORS を許可している）、読み込めないブキはブキ名を文字で描く（Canvas を汚して書き出せなくならないように）。フォントはオーバーレイと同じく共通設定のもの（`/api/stream-data` の `fontFamily`）。Canvas は書式が不正な font を黙って無視するので `canvasFontFamily` でフォント名を引用符で囲み、そのフォントに無い文字用に日本語のシステムフォントを後ろに足す。描く前に `document.fonts.load` で読み込む
+- 振り返りの画面のブキ埋めのカードの「画像をダウンロード」で、今のカードを SNS 投稿用の PNG（12 列 × 6 行の横長）にする（`lib/weaponCardImage.ts` の `renderWeaponCardImage`。DOM のキャプチャではなく Canvas に直接描く）。ブキの画像は `crossOrigin = 'anonymous'` で読み込み（raw.githubusercontent.com は CORS を許可している）、読み込めないブキはブキ名を文字で描く（Canvas を汚して書き出せなくならないように）。フォントはオーバーレイと同じく共通設定のもの（`/api/stream-data` の `fontFamily`）。Canvas は書式が不正な font を黙って無視するので `canvasFontFamily` でフォント名を引用符で囲み、そのフォントに無い文字用に日本語のシステムフォントを後ろに足す。描く前に `document.fonts.load` で読み込む
 - オーバーレイは 2 秒ごとに `/api/weapon-card` と `/api/stream-data`（フォント）をポーリングする。`components/WeaponCard.tsx` は `ChallengeList` と同じく前回の状態と比べ、ポーリング中に新しく埋まったマスだけスタンプを押す演出をし、71 種そろった瞬間だけ花火を出す（表示した時点の状態・新しいカードの開始では演出しない）
 
 ### `/app/salmon-review-overlay/page.tsx` と `/app/api/salmon/review/route.ts`
@@ -400,7 +422,7 @@ Twitch のフォロワー数とフォロワー目標を受け取る機能と、�
 - 本体は `components/SalmonReview.tsx`。グラフは依存を増やさず SVG・div で描く（dataviz スキルの作法: ダークの配色だけ、クリア / 失敗はどのグラフでも青 / オレンジ（色覚の違いでも見分けられることを検証済み）、棒は細く根元は四角・先は丸く、値は最多のバイトにだけ出す、目盛りはきりのいい数（`niceTicks`）、2 つの値を 1 つのグラフの左右の軸に出さない）。OBS ではマウスを使わないので、ツールチップは付けない
 - 開いたときにカードを上から順に出す motion の演出（初回だけ。`animate={false}` で無し）。5 秒ごとにポーリングし、フォントは `/api/stream-data` の `fontFamily`。ポーリングは `components/SalmonReviewOverlay.tsx`（`layout` を受ける）で、2 つのページはこれを置くだけ
 - レイアウトは `layout: 'landscape' | 'portrait'`（`REVIEW_SIZES`）。portrait（`/salmon-review-overlay/vertical`、1080x1920）はカードを縦に積み、最後にハイスコアとブキを横に並べる。カードの中身は共通で、外側の並びだけを分けている。カードを足すときは両方の並びに入れる。横長は高さに余裕が無く、中段は「結果」カードの高さで決まるので、行を足すと下段（オオモノ 7 行・ブキ）がはみ出す。足したら横長の見た目で下段が収まることを確かめる
-- SNS 用の画像: コントロールパネルの「サーモンラン」タブ（`components/SalmonReviewDownload.tsx`）で、選んだ過去のセッション（選ばなければ今のセッション）の振り返りを横長 / 縦長の PNG でダウンロードする。オーバーレイと見た目を一致させるため、ブキ埋めカードと違い Canvas で描き直さず、画面外に実寸で描いた DOM を `html-to-image` の `toBlob` で画像にする（演出なし・不透明な背景）。ブキ・オオモノの画像は raw.githubusercontent.com（CORS 許可）なので埋め込める
+- SNS 用の画像: コントロールパネルの配信中の画面のサーモンランのカード（`components/SalmonReviewDownload.tsx`）で、選んだ過去のセッション（選ばなければ今のセッション）の振り返りを横長 / 縦長の PNG でダウンロードする。オーバーレイと見た目を一致させるため、ブキ埋めカードと違い Canvas で描き直さず、画面外に実寸で描いた DOM を `html-to-image` の `toBlob` で画像にする（演出なし・不透明な背景）。ブキ・オオモノの画像は raw.githubusercontent.com（CORS 許可）なので埋め込める
 
 ### `/app/side-panel-overlay/page.tsx` と `/app/api/side-panel/route.ts`
 
@@ -415,7 +437,7 @@ Twitch のフォロワー数とフォロワー目標を受け取る機能と、�
 - 固定枠が多いとローテーション枠の高さが足りず見切れる。`estimateSlotHeight` / `exceedsSlotArea` でスロットの高さの目安を合計し、下段（`SLOT_AREA_HEIGHT` = 約 440px、ゲージ表示時）に収まらない見込みならコントロールパネルで警告する（保存は止めない）。スロットの見た目を変えたら目安の値も見直す
 - 以前の保存形式（`visibleSlots`、さらに前は `activeSlot` と、`autoRotate` / `enabledSlots`）は、自動ローテーション ON ならローテーション枠だけ、OFF なら固定枠だけとして読み込む（既存の設定を既定値に戻さない）
 - オーバーレイのテストは `motion/react` を単純な要素に置き換えている（クロスフェード中に古いスロットが残ると、待ち時間内に消えずに不安定になるため）
-- コントロールパネルの「サイドパネル」タブ（`components/SidePanelSettingsPanel.tsx`）は変更をその場で保存する
+- コントロールパネルの準備の画面のサイドパネルのカード（`components/SidePanelSettingsPanel.tsx`）は変更をその場で保存する
 - 既存の `/burndown-overlay` はそのまま残している（サイドパネルのバーンダウンスロットは花火エフェクトを出さない）
 - フォロワーゲージは `/api/twitch` もポーリングして表示する。値は `getFollowerProgress`（`lib/sidePanelTypes.ts`）で決める: Twitch のクリエイターゴール（フォロワー型）を優先し、無ければフォロワー総数と手入力の `followerGoal`（設定に保存、`null` は未設定）。どちらも無い、または Twitch 連携スクリプトが未起動（`followerTotal: null`）ならゲージを出さない
 - ゲージはフォローを受信すると（`lastFollowAt` の変化）インクを波打たせて `BubbleEffect` を出し、目標を変えずにフォロワー数が目標に届いたときだけ `FireworksEffect` を出す（目標の編集だけでは出さない。達成のたびに `key` で作り直して再生）。表示した時点の値では演出しない（オーバーレイの再読み込みで演出が出ないように）。泡と花火は vw / vh 基準なので、`absolute inset-0 z-50` でサイドパネルのルート（`relative`）全体を覆い、下段スロットより手前に出す
@@ -427,7 +449,7 @@ Twitch のフォロワー数とフォロワー目標を受け取る機能と、�
 
 スコア表示（`/obs-overlay` の `scoreLabel` / `scoreValue`）を、サーモンランのリザルトの取り込みのたびに自動で入れる機能。
 
-- 値と設定 `{scoreLabel, scoreValue, autoUpdate}` は SQLite の `app_state`（キー `scoreDisplay`）。`GET /api/stream-data` は `StreamData` に合わせて返す。以前はコントロールパネルが `StreamData` を丸ごと POST していたので、サーバーで書き換えても次の保存で戻っていた。いまはパネルの POST に含めず、スコア表示タブ（`components/ScoreDisplayPanel.tsx`）が `PATCH /api/score-display`（送った項目だけ書き換える。`Content-Type: application/json` 必須）で「反映」したときだけ保存する。編集中は 3 秒ごとの読み込み直しで入力を上書きしない
+- 値と設定 `{scoreLabel, scoreValue, autoUpdate}` は SQLite の `app_state`（キー `scoreDisplay`）。`GET /api/stream-data` は `StreamData` に合わせて返す。以前はコントロールパネルが `StreamData` を丸ごと POST していたので、サーバーで書き換えても次の保存で戻っていた。いまはパネルの POST に含めず、スコア表示のカード（`components/ScoreDisplayPanel.tsx`）が `PATCH /api/score-display`（送った項目だけ書き換える。`Content-Type: application/json` 必須）で「反映」したときだけ保存する。編集中は 3 秒ごとの読み込み直しで入力を上書きしない
 - 自動更新（`updateScoreDisplayFromImport`）: `PATCH /api/salmon/import` が succeeded で記録したあと、最新のバイト（`jobs` の最後）で決める。`autoUpdate` が false・値を決められないときは変えない。失敗しても取り込みは成功として返す
   - いつものバイト: 「現在のバイト評価」と評価（`formatGrade`。でんせつは `720` のように数字だけ、それ以外は `たつじん+3 450`）
   - ビッグラン / バイトチームコンテスト: 「ハイスコア」と、そのバイトの日時を含むスケジュールの枠（同じ種類）で記録したバイトのチームの金イクラの最大（`getShiftHighScore`。ビッグランは失敗も数え、チームコンテストはクリアだけ。ゲーム内のハイスコアに合わせた）。日時はイカリング3の表示（日本時間）なので `parsePlayedAt` でエポックミリ秒に直す。スケジュール（非公式 API）が取れない・過去の枠で見つからないときは変えない
@@ -442,7 +464,7 @@ Twitch のフォロワー数とフォロワー目標を受け取る機能と、�
 - 外部 API の取得は 10 秒（`FETCH_TIMEOUT_MS`）で打ち切り、応答は 1 MB（`MAX_RESPONSE_BYTES`）を超えた時点で読むのをやめる（`readLimitedText`）。画像 URL は https のものだけ受け付ける
 - 非公式 API の仕様変更に備え、`parseScheduleResults` は形が想定と違う要素を捨てる。開催中のものは `pickCurrentSchedule` で選び、同じ時間帯ならバイトチームコンテスト > ビッグラン > 通常の順に優先する
 - サイドパネルの `schedule` スロット（`components/SalmonSchedule.tsx`）で表示する。画像は外部の署名付き URL なので `next/image` を通さず `<img>` で表示する
-- コントロールパネルの「サーモンラン」タブは、ステージ欄が空なら開催中のステージ名を入れる（手入力した値は上書きしない。取れなくても記録はできる）
+- コントロールパネルの配信中の画面のサーモンランのカードは、ステージ欄が空なら開催中のステージ名を入れる（手入力した値は上書きしない。取れなくても記録はできる）
 - 取得・キャッシュは `lib/salmonScheduleFetch.ts` の `getSalmonSchedule()`（サーバー専用。スコア表示の自動更新でシフトの区切りにも使う）。ルートはこれを返すだけ
 - テストでは `fetch` を `vi.stubGlobal` で差し替え、`__TEST_ONLY_resetSalmonScheduleCache()` でキャッシュを消す
 
@@ -458,8 +480,8 @@ Twitch のフォロワー数とフォロワー目標を受け取る機能と、�
 - `chat` は Twitch のチャットにも配信者のコメントとして書き込むか（後から追加した項目なので、無ければ false）。chat のプリセットを出すと（ボタン・キーボード・声のどれでも）、インメモリの書き込み待ち `{id, text, speak, picked, createdAt}` に入れ、テロップ側では読み上げない（書き込んだコメントは Twitch 連携スクリプトの配信者のコメントの読み上げで読まれるので、二重にしない。読み上げない設定（`speak` が false。声で出したときの既定も）なら、スクリプトが書き込む前に本文を `MutedOwnMessages` に登録し、戻ってきた自分のコメントを 1 回だけ読まない）。`speak` は本来読み上げる予定だったか（フォールバック用）。Twitch 連携スクリプトの `createChatPostProcessor` が 1 秒ごとに `GET /api/telop?view=chat` で拾い、`PATCH {chatId, status: 'picked'}` → Helix の `POST /chat/messages` → `PATCH {chatId, status: 'sent' | 'failed'}`（結果は picked のものだけ受け付け、それ以外は 409）。`failed`、または `CHAT_PICKUP_TTL_MS`（3 秒）以内に拾われなかった（スクリプト未起動）ものは、`speak` ならテロップ側で読み上げる。拾った後に結果が来ないものは `CHAT_RESULT_TTL_MS`（30 秒）で読み上げずに捨てる。期限切れは `GET`（オーバーレイが 0.5 秒ごとに呼ぶ）・`PATCH` のたびに判定する。自由入力はコメントにしない
 - オーバーレイの本体は `components/TelopOverlay.tsx`（`layout: 'landscape' | 'portrait'`。`LAYOUT_STYLES` で置き方を分ける）。2 つのページはこれを置くだけ。portrait（`/telop-overlay/vertical`、1080x1920）は上部のサイドパネル（縦型配信用）と重ならないよう、画面の下から 440px の位置に中央揃えで、少し大きな文字で出して長い文は折り返す
 - オーバーレイは 0.5 秒ごとにポーリングし（フォントは 2 秒ごとに `/api/stream-data` から取得）、出してから表示時間（`telopDisplayDuration`。通常は `TELOP_DISPLAY_DURATION`（4 秒）、フォローのお礼は `FOLLOW_TELOP_DISPLAY_DURATION`（8 秒）、記録のお祝いは `RECORD_TELOP_DISPLAY_DURATION`（8 秒））以内のものだけ表示する（開き直したときに古いテロップを出さない）。landscape（`/telop-overlay`）の位置は配信画面のゲーム画面の右下（右端揃え。右下の角に重なる立ち絵の左。`TELOP_RIGHT` / `TELOP_BOTTOM` の px で決め打ち。配信画面のレイアウトを変えたら見直す）。テロップごとにインクの色を変える。フォローのお礼は大きめの虹色の帯をバウンスさせて出し、`FireworksEffect`（`key` で作り直して再生。20 秒で自分で消えるので、テロップが消えても・別のテロップに置き換わっても続く）と `SparkleEffect` を重ねる。記録のお祝いは金色の帯で同じ演出をする（`white-space: pre-line` で 2 行に出す）。開いた時点で出ていたお礼・お祝いでは演出しない（OBS の再読み込みで演出が出ないように）
-- プリセットのボタンは、コントロールパネルのタイトルとタブの間の `components/TelopBar.tsx`（テロップバー）に置き、どのタブでも表示する（サーモンランタブで戦績を入力しながら出せるように。スクロールしても見えるよう `position: sticky`。そのためコントロールパネルのルートは `overflow: hidden` ではなく `clip`）。テロップバーは `window` の keydown で 1〜9, 0 を受け、並び順のプリセットを出す（キーの無い 11 個目以降のボタンは outlined）（入力欄・プルダウン（MUI の Select の `role=combobox` / `option`）にフォーカスがあるとき・IME 変換中・修飾キー付き・キーリピートは無視）
-- 「テロップ」タブ（`components/TelopPanel.tsx`）は、自由入力とプリセットの編集（変更はその場で保存）。保存のたびに（失敗して読み込み直したときも）`onPresetsChange` を呼び、コントロールパネルがテロップバーの `reloadKey` を進めてプリセットを読み込み直させる
+- プリセットのボタンは、配信中の画面の `components/TelopBar.tsx` に置く（キーの無い 11 個目以降のボタンは outlined。コメントだけのプリセットに 💬）。キーボードの 1〜9, 0 はコントロールパネルの共通の外枠の `useTelopHotkeys` が受けるので、どの画面（準備・振り返り・設定も）でも効く。プリセットは `controlPanelContext.tsx` の `TelopPresetsProvider` が 1 回だけ読み込んで、ボタンと数字キーで共有する
+- 設定の「テロップと読み上げ」（`components/TelopPanel.tsx`）は、自由入力とプリセットの編集（変更はその場で保存）。保存のたびに（失敗して読み込み直したときも）`onPresetsChange` を呼び、`TelopPresetsProvider` の `reload` でプリセットを読み込み直させる
 
 ### `/app/voice-overlay/page.tsx` と `/app/api/speech/` / `/app/api/voice/`
 
@@ -469,14 +491,14 @@ Twitch のフォロワー数とフォロワー目標を受け取る機能と、�
 - `/api/speech/audio?id=` はキューにある id だけを受け付け、VOICEVOX の `audio_query` → `synthesis` を中継して wav を返す（任意の文を読ませないため）。合成は ID ごとに 1 回だけ（`synthesizeSpeech` が結果をキャッシュし、失敗したら次の要求で合成し直す。合成後に速度・音量を変えても、合成済みのものはそのまま）。VOICEVOX との通信は 10 秒（`VOICEVOX_TIMEOUT_MS`）で打ち切り、応答は `audio_query` 1 MB・wav 20 MB を超えた時点で読むのをやめる。失敗したら 502
 - 設定 `{enabled, speakerId, speakerName, speedScale, volumeScale}` は SQLite の `app_state`（キー `voice`）。既定は無効。`speakerId` は VOICEVOX のスタイル ID、`speakerName` はクレジット表記（`voiceCredit` → `VOICEVOX:キャラ名`）用のキャラクター名。`/api/voice/speakers` は VOICEVOX の `/speakers` の中継で、歌唱用（`type` が `talk` 以外）のスタイルは除く（`parseSpeakers`）
 - オーバーレイは 0.5 秒ごとにキューを取得し、開いた時点でキューにあったものは再生しない。新しいものを 1 件ずつ順に `Audio` で再生し、再生できなかったとき（VOICEVOX 未起動・自動再生の拒否など）も止まらずに次へ進む
-- コントロールパネルの「テロップ」タブの下に `components/VoiceSettingsPanel.tsx`（有効/無効・話者・速度・音量・テスト再生・クレジット表記）。VOICEVOX に接続できなくても保存済みの話者は表示する
+- コントロールパネルの設定の「テロップと読み上げ」に `components/VoiceSettingsPanel.tsx`（有効/無効・話者・速度・音量・テスト再生・クレジット表記）。VOICEVOX に接続できなくても保存済みの話者は表示する
 - テストでは `fetch` を `vi.stubGlobal` で差し替える（実際の VOICEVOX には接続しない）
 
 ### `/app/api/clip/route.ts` と `lib/clips.ts`
 
 配信中にゲームをしていてボタンを押せないので、声で Twitch のクリップを作る機能。
 
-- 流れ: 文字起こしスクリプトが合言葉（`CLIP_PATTERN`。「クリップ」＋「撮って / して / お願い」など、または「今の（とこ）クリップ」。「クリップ」単体では雑談で誤爆するので作らない）を聞くと `POST /api/clip {source: 'voice'}` → Twitch 連携スクリプトが 1 秒ごとに `GET /api/clip?status=pending` で拾い、Helix の `POST /clips` で作って `PATCH /api/clip {id, status, clipId, editUrl | error}` → `POST /api/telop {text, speak: true}` で「クリップしました！」/「クリップできませんでした」をテロップ＋読み上げで知らせる。コントロールパネルの「クリップ」タブ（`components/ClipPanel.tsx`）のボタンも同じ依頼を送る（`source: 'button'`）
+- 流れ: 文字起こしスクリプトが合言葉（`CLIP_PATTERN`。「クリップ」＋「撮って / して / お願い」など、または「今の（とこ）クリップ」。「クリップ」単体では雑談で誤爆するので作らない）を聞くと `POST /api/clip {source: 'voice'}` → Twitch 連携スクリプトが 1 秒ごとに `GET /api/clip?status=pending` で拾い、Helix の `POST /clips` で作って `PATCH /api/clip {id, status, clipId, editUrl | error}` → `POST /api/telop {text, speak: true}` で「クリップしました！」/「クリップできませんでした」をテロップ＋読み上げで知らせる。コントロールパネルの配信中の画面のクリップのカード（`components/ClipPanel.tsx`）のボタンも同じ依頼を送る（`source: 'button'`）
 - Twitch のトークンは Twitch 連携スクリプトだけが持つ（Public クライアントのリフレッシュトークンは使い捨てなので、別のプロセスと共有しない）。そのため依頼は API を介して受け渡す。スコープ `clips:edit` を追加した（保存済みのトークンは承認し直し）
 - 依頼は SQLite の `twitch_clips`（`pending` / `created` / `failed`）。処理待ちの依頼があれば新しく作らずにそれを返す（連呼・連打で同じ場面を重ねて作らない）。`CLIP_REQUEST_TTL_MS`（30 秒）以内に処理されなかった依頼は、一覧・取得のたびに `expireStaleRequests` で期限切れ（失敗）にする（スクリプトを後から起動したときに、別の場面のクリップを作らないように）。作成中に期限切れにされたものも、結果は書き込める
 - Twitch 連携スクリプトの `createClipProcessor` は前回の処理中なら何もせず、一度試した依頼はやり直さない（結果を送れなくても同じ依頼から 2 つ作らない）。文字起こし側（`ClipTrigger`）も 30 秒は依頼し直さず、合言葉を言った発話は字幕・テロップにしない。`CLIP_MATCH=off` で無効
@@ -484,7 +506,7 @@ Twitch のフォロワー数とフォロワー目標を受け取る機能と、�
 
 ### `/app/api/join-queue/route.ts` と `lib/joinQueue.ts`
 
-視聴者参加型（18:00 からのプライベートバイト中心）の受付。チャットの `!参加 でんせつ820` で列に入り、配信者がコントロールパネルの「参加」タブの「次の人」で呼ぶ（Issue #116。仕様はナレッジベースの `workspaces/personal/output/twitch/handoff/join-queue.md`）。
+視聴者参加型（18:00 からのプライベートバイト中心）の受付。チャットの `!参加 でんせつ820` で列に入り、配信者がコントロールパネルの配信中の画面の参加のカードの「次の人」で呼ぶ（Issue #116。仕様はナレッジベースの `workspaces/personal/output/twitch/handoff/join-queue.md`）。
 
 - 流れ: Twitch 連携スクリプトの `handleJoinCommand` が `channel.chat.message` の `message.fragments` の text だけを NFKC・ゼロ幅 / 方向制御文字の除去のうえ `parseJoinCommand` で `!参加` / `!取消` を見つけ、`POST /api/join-queue {action: 'join', userId, userName, messageId, args}` / `{action: 'cancel', userId}` → 応答の `reply` を `reply_parent_message_id` 付きで返信（`sendChatMessage(message, replyParentId)`）。`!参加でんせつ820` のように続けて書いてもよいが、続けて書いて評価として読めないもの（`!参加したい` など。`attached`）は雑談とみなして受け付けない（`ignored`）。配信者自身・`TWITCH_SPEECH_IGNORE` のボット・共有チャットのほかのチャンネルは除く
 - **本人だけに見える返信は Twitch の API ではできない**（Whisper は 1 日 40 人・黙って捨てられるなどで使わない）。返信は全員に見えるので評価はくり返さない。`ReplyThrottle` で同じ人へは 5 分・全体では 15 秒に 1 回まで（抑えている間は返さない。配信画面に書き方を出しておく。書き込めなかったら記録を戻す）。文面には表示名を入れる（同じ文面の連投は Twitch に捨てられることがあるため。仕様どおり）。返信は `MutedOwnMessages` に入れて読み上げない（返信は先頭に「@相手 」が付いて戻ることがあるので、`consume` は外したものとも比べる）。ログには user_id と結果だけ（本文・名前は出さない）
@@ -494,7 +516,7 @@ Twitch のフォロワー数とフォロワー目標を受け取る機能と、�
 - 表示名は `sanitizeDisplayName`（NFKC・制御 / 書式文字の除去・25 文字まで）で整え、React の描画（textContent 相当）で出す。`dangerouslySetInnerHTML` は使わない
 - オーバーレイ（`/join-queue-overlay`、420x600）は 1 秒ごとにポーリングし、受付中だけ書き方・部屋の推定キケン度・いまの人・列（10 人まで。残りは「ほか n 人」）を出す。フォントは `/api/stream-data` の `fontFamily`
 - 部屋の推定キケン度（#118。`lib/joinQueueTypes.ts` の `estimateRoomHazard`）: 累計評価値 = `tier*100 + 評価値`（でんせつは `800 + 評価値`。評価値が無ければ tier の中央 +50、でんせつは 400 で近似）の平均 ÷ 5、上限 333%（攻略 Wiki の解析値）。部屋は配信者と、いまの人・列の先頭から合わせて 4 人（`ROOM_SIZE`）。評価が不明の人は除き（`unknown`）、足りない分は野良として含まない（`wild`）。キケン度には相当する評価（`ratingOfHazard`。キケン度 × 5 を累計評価値に戻す。230% → でんせつ 350）を添える（`formatHazardWithRating`）。配信画面（`JoinQueuePublicView.hazard`）は 10% ごとに丸めた値と人数だけ（誰の評価かは出さない）。手元は推定値（5% ごと）・おすすめ（`recommendHazards`。練習: いちばん低い人、通常: 推定値、腕試し: 333%）・配信者より低い称号の参加者の注意（`lowerTier`）
-- 配信者の評価は、取り込んだ最新の記録（`salmon_jobs.grade_name` / `grade_point`、`getRecordedStreamerRating`）から取る。「参加」タブで入力すると（`POST {action: 'streamer', rating}`。null で記録に戻す）それを優先する（メモリだけ。受付終了でも消さない）。入力より後のバイトを取り込んだら記録のほうを使う
+- 配信者の評価は、取り込んだ最新の記録（`salmon_jobs.grade_name` / `grade_point`、`getRecordedStreamerRating`）から取る。参加のカードで入力すると（`POST {action: 'streamer', rating}`。null で記録に戻す）それを優先する（メモリだけ。受付終了でも消さない）。入力より後のバイトを取り込んだら記録のほうを使う
 - 評価は申告の時刻（`ratedAt`。書き直すと変わる。配信者の記録はバイトの日時）を持ち、いまのいつものバイトのシフトの開始（`loadHazardContext`）より前なら「古い」と手元に出す（シフトが替わると評価は「称号 40」に戻るため）。スケジュールが取れなければ古い扱いにしない。GET / POST の応答のたびに記録とスケジュールを読む。スケジュールは `peekSalmonSchedule`（`lib/salmonScheduleFetch.ts`）で待たずにキャッシュを使い、期限切れなら裏で取り直す（外部 API の応答を待って配信画面のポーリングを止めないため）
 - お知らせ（`POST {action: 'announce', kind: 'merge' | 'private'}`、`formatJoinAnnouncement`）: 通常のバイトへの合流・プライベートバイト（おすすめの通常の値と、相当する評価つき。読み上げるので括弧は使わない）の文を、テロップのコメントと同じ書き込み待ち（`queueChatPost(text, true)`）に入れる。チャットに書き込めれば配信者のコメントとして読み上げられ、書き込めなければテロップ側で読み上げる
 - 列から外す（#119）: 並んだメッセージの削除（`channel.chat.message_delete` → `POST {action: 'removeMessage', messageId}`。`removeByMessageId`。書き直した人は最後のメッセージで照合）・BAN / タイムアウト（`channel.chat.clear_user_messages` → `{action: 'removeUser', userId}`）で列といまの人から外す（いなくても `{removed: false}` でエラーにしない）。チャットの全消去（`channel.chat.clear`）はログだけ。配信の終了（`stream.offline` → `{action: 'offline'}`）は受付終了と同じ。スクリプト側は `moderationRequest`（純粋関数）/ `handleModerationEvent`。ログは user_id と結果だけ
@@ -508,7 +530,7 @@ Twitch のフォロワー数とフォロワー目標を受け取る機能と、�
 
 - 状態は `lib/break.ts` が `globalThis` にインメモリで持つ（`{startedAt, voiceHeardAt, lastReminderAt}`。再起動で解除されてよい）。型・定数は `lib/breakTypes.ts`
 - `GET /api/break`（`{active, startedAt, voiceHeardAt, serverTime}`）、`POST {action: 'start' | 'end'}`（休憩中に start しても開始時刻は変えない）、`POST {action: 'heard', resume}`（文字起こしスクリプトが発話のたびに送る。休憩中でなければ何もしない。`resume` なら終わる。開始から `BREAK_VOICE_GRACE_MS`（1 分）以内は離れる前のひとこととみなして無視し、それ以降は `voiceHeardAt` を記録して `BREAK_REMINDER_TEXT` を読み上げキューに入れる。読み上げは `BREAK_REMINDER_COOLDOWN_MS`（1 分）に 1 回）。`Content-Type: application/json` 必須
-- コントロールパネルのボタンは `components/BreakControl.tsx`（テロップバーの中に置き、どのタブでも押せる）。1 秒ごとにポーリングし、休憩中は経過時間と「休憩を終わる」を出す。`BREAK_LONG_MS`（10 分）を超えたか声を拾ったら赤く点滅させ、タブのタイトルにも出す（`⚠️ 休憩中 m:ss | 元のタイトル`）
+- コントロールパネルのボタンは `components/BreakControl.tsx`（`useBreak` を共通の外枠で 1 回だけ使い、ヘッダーのボタン `BreakButton` と、ヘッダーの下の帯 `BreakBanner` に渡す。どの画面でも押せる）。1 秒ごとにポーリングし、休憩中は経過時間と「休憩を終わる」を出す。`BREAK_LONG_MS`（10 分）を超えたか声を拾ったら赤く点滅させ、タブのタイトルにも出す（`⚠️ 休憩中 m:ss | 元のタイトル`）
 - オーバーレイの本体は `components/BreakOverlay.tsx`（`layout: 'landscape' | 'portrait'`）。1 秒ごとにポーリングし、休憩中だけ半透明の暗幕に「休憩中」「ちょっと待っててね🐟️」と経過時間を出す。経過時間はサーバーの時計どうしで測る（`localBreakStart`）。フォントは `/api/stream-data` の `fontFamily`
 - 文字起こしスクリプトは `BreakNotifier` が字幕のフィルタを通った発話ごとに `heard` を送る（合言葉は `BREAK_END_PATTERN`。「ただいま」「休憩終わり」「戻りました」など）。字幕・テロップ・エフェクトは止めない。`BREAK_MATCH=off` で無効
 
@@ -596,20 +618,7 @@ GitHub Actionsで以下のワークフローが実行されます：
 
 ## ローカルストレージ
 
-### 使用箇所
-
-- **コントロールパネル** (`/control-panel`): 開いているタブだけを覚える（設定はサーバーの SQLite に保存する）
-
-### データ構造
-
-- **キー**: `'control-panel-state'`
-- **データ**: `{activeTab}`
-
-### 動作
-
-- **保存**: タブを切り替えたとき
-- **読み込み**: コンポーネントマウント時。壊れていたら無視する
-- **移行**: 以前の設定（`burndown` など）が入っていれば、サーバーに保存が無いときだけ 1 回送り、どちらでも消す
+コントロールパネルは使わない（設定はサーバーの SQLite に保存する）。以前は `'control-panel-state'` キーに設定を入れていたので、残っていればサーバーに保存が無いときだけ 1 回送り、どちらでも消す（`components/useStreamSettings.ts`）。
 
 ## ESLint規約とトラブルシューティング
 
@@ -640,7 +649,7 @@ pnpm run lint --fix
 
 - **原因**: `useEffect` 内で直接 `setState` を呼び出している
 - **対応**: アニメーション起動など正当な理由がある場合はコメント付きで無効化
-- **該当箇所**: `ScoreDisplay.tsx`, `BurndownChart.tsx`, `FireworksEffect.tsx`, `app/burndown-overlay/page.tsx`, `app/control-panel/page.tsx`
+- **該当箇所**: `ScoreDisplay.tsx`, `BurndownChart.tsx`, `FireworksEffect.tsx`, `app/burndown-overlay/page.tsx`, `components/ControlPanelSettings.tsx`
 
 #### 4. `react-hooks/purity`
 
@@ -713,7 +722,6 @@ docker-compose down
 ### コントロールパネルの設定を読み込めない・保存できない
 
 - 設定はサーバーの SQLite（`data/overlay.db` の `app_state`、キー `streamSettings`）にある。サーバーが起動しているか確認する
-- localStorage には開いているタブしか無いので、消しても設定は失われない（`localStorage.removeItem('control-panel-state')`）
 
 ### テスト失敗
 

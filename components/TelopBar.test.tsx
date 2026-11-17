@@ -4,17 +4,34 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { TelopPreset, getDefaultTelopSettings } from '../lib/telopTypes';
 
+import { TelopPresetsProvider, useTelopPresets } from './controlPanelContext';
 import TelopBar from './TelopBar';
+import { useTelopHotkeys } from './useTelopHotkeys';
 
 vi.mock('axios');
 const mockedAxios = vi.mocked(axios);
+
+// コントロールパネルの外枠と同じく、プリセットの共有・数字キー・読み込み直し（設定でプリセットを編集したとき）を組み合わせる
+const Hotkeys = () => {
+  const { presets, show } = useTelopPresets();
+  useTelopHotkeys(presets, show);
+  return null;
+};
+const ReloadButton = () => <button onClick={useTelopPresets().reload}>読み込み直す</button>;
+const Harness = () => (
+  <TelopPresetsProvider>
+    <Hotkeys />
+    <TelopBar />
+    <ReloadButton />
+  </TelopPresetsProvider>
+);
 
 const respondWith = (presets: TelopPreset[]) =>
   mockedAxios.get.mockResolvedValue({ data: { presets, current: null, revision: 0 }, status: 200 });
 
 const renderLoaded = async (presets: TelopPreset[] = getDefaultTelopSettings().presets) => {
   respondWith(presets);
-  const view = render(<TelopBar />);
+  const view = render(<Harness />);
   await screen.findByTestId('telop-buttons');
   // findBy の待機中の描画は act の外なので、キーボードのリスナーを登録する effect がまだ走っていないことがある（CI で不安定になる）。
   // 残りの effect を流し切ってからキーを押す
@@ -108,27 +125,27 @@ describe('TelopBar', () => {
     expect(screen.getByText('テロップを出せませんでした。')).toBeInTheDocument();
   });
 
-  it('reloads the presets when reloadKey changes', async () => {
-    const { rerender } = await renderLoaded();
+  it('reloads the presets when they are edited in the settings', async () => {
+    await renderLoaded();
     respondWith([{ id: 7, text: 'カンスト!', speak: false, followFont: true, display: true, chat: false }]);
 
-    rerender(<TelopBar reloadKey={1} />);
+    fireEvent.click(screen.getByRole('button', { name: '読み込み直す' }));
 
     expect(await buttons().findByRole('button', { name: /カンスト!/ })).toBeInTheDocument();
     await act(async () => fireEvent.keyDown(document.body, { key: '1' }));
     expect(mockedAxios.post).toHaveBeenCalledWith('/api/telop', { presetId: 7 });
   });
 
-  it('guides to the telop tab when there are no presets', async () => {
+  it('guides to the settings when there are no presets', async () => {
     respondWith([]);
-    render(<TelopBar />);
+    render(<Harness />);
 
-    expect(await screen.findByText(/「テロップ」タブで追加できます/)).toBeInTheDocument();
+    expect(await screen.findByText(/設定の「テロップ」で追加できます/)).toBeInTheDocument();
   });
 
   it('shows an error when the presets cannot be loaded', async () => {
     mockedAxios.get.mockRejectedValue(new Error('network'));
-    render(<TelopBar />);
+    render(<Harness />);
 
     expect(await screen.findByText('テロップのプリセットを読み込めませんでした。')).toBeInTheDocument();
   });
