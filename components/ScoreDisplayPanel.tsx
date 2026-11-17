@@ -12,7 +12,7 @@ const paperSx = {p: 4};
 const POLL_INTERVAL_MS = 3000;
 
 /**
- * コントロールパネルの「スコア表示」タブ。スコアは「OBSに反映」の保存とは別に、このタブの「反映」でその場で保存する
+ * コントロールパネルの「スコア表示」タブ。スコアはリザルトの取り込みでも書き換わるので、ほかの設定と違って入力のたびには保存せず、このタブの「反映」で保存する
  * （リザルトの取り込みで自動で入れた値を、ほかのタブの保存で上書きしないため）
  */
 const ScoreDisplayPanel: React.FC = () => {
@@ -97,7 +97,7 @@ const ScoreDisplayPanel: React.FC = () => {
                 <Button variant="outlined" onClick={() => setDraft(null)} disabled={draft === null}>取り消し</Button>
             </Box>
             <Typography variant="caption" sx={{display: 'block', mt: 1, color: 'text.secondary'}}>
-                スコアは「反映」でその場で保存されます（下の「OBSに反映」には含まれません）。
+                スコアは「反映」を押したときに保存されます（入力の途中では保存しません）。
             </Typography>
         </Paper>
     );

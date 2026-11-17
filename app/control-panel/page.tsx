@@ -22,7 +22,7 @@ import {
 import {ThemeProvider} from '@mui/material/styles';
 import axios from 'axios';
 import Image from 'next/image';
-import React, {useState, useEffect, useMemo, useCallback} from 'react';
+import React, {useState, useEffect, useMemo, useCallback, useRef} from 'react';
 
 import ClipPanel from '../../components/ClipPanel';
 import JoinQueuePanel from '../../components/JoinQueuePanel';
@@ -34,41 +34,68 @@ import TelopBar from '../../components/TelopBar';
 import TelopPanel from '../../components/TelopPanel';
 import VoiceSettingsPanel from '../../components/VoiceSettingsPanel';
 import WeaponCardPanel from '../../components/WeaponCardPanel';
-import {getItem, setItem, removeItem} from '../../lib/localStorage';
-import {StreamData, MessagePreset, BurndownData} from '../api/stream-data/route';
+import {getItem, setItem} from '../../lib/localStorage';
+import {BurndownData, STREAM_SETTINGS_KEYS, StreamSettings, TransitionEffect, isValidStreamSetting} from '../../lib/streamSettingsTypes';
+import {StreamData} from '../api/stream-data/route';
 
 import {monoFontFamily, theme, tokens} from './theme';
 
 // OBS のブラウザソースの URL
 const codeStyle: React.CSSProperties = {backgroundColor: tokens.color.surface2, padding: '2px 6px', borderRadius: tokens.radius.badge, fontFamily: monoFontFamily};
 
+// localStorage には開いているタブだけを残す（設定はサーバーの SQLite に保存する）。
+// 以前は設定もここに入れていたので、残っていれば 1 回だけサーバーに移して消す
 const LOCAL_STORAGE_KEY = 'control-panel-state';
+// 入力が止まってから保存するまでの時間
+const SAVE_DELAY_MS = 500;
 
-// スコア表示（scoreLabel / scoreValue）はリザルトの取り込みで自動で書き換えるので、ここでは持たずに ScoreDisplayPanel が /api/score-display で保存する
-interface FormData {
-    burndown: BurndownData;
-    fontFamily: string;
-    fontSize: number;
-    transitionEffect: string;
-    transitionDuration: number;
-    messagePresets: MessagePreset[];
-    activePresetName: string;
-    activeTab: string;
+interface StoredPanelState {
+    activeTab?: unknown;
 }
 
+const pickSettings = (data: StreamSettings): StreamSettings =>
+    Object.fromEntries(STREAM_SETTINGS_KEYS.map((key) => [key, data[key]])) as unknown as StreamSettings;
+
+/** 保存済みの値と比べて変わった項目のうち、送れる値のものだけ（入力途中の不正な値は送らない） */
+const changedSettings = (current: StreamSettings, saved: StreamSettings): Partial<StreamSettings> =>
+    Object.fromEntries(STREAM_SETTINGS_KEYS
+        .filter((key) => JSON.stringify(current[key]) !== JSON.stringify(saved[key]) && isValidStreamSetting(key, current[key]))
+        .map((key) => [key, current[key]]));
+
+/** 以前 localStorage に入れていた設定のうち、形が正しいものだけ */
+const legacySettings = (stored: unknown): Partial<StreamSettings> => {
+    if (typeof stored !== 'object' || stored === null) return {};
+    const record = stored as Record<string, unknown>;
+    return Object.fromEntries(STREAM_SETTINGS_KEYS
+        .filter((key) => key in record && isValidStreamSetting(key, record[key]))
+        .map((key) => [key, record[key]]));
+};
+
+const readStoredPanelState = (): StoredPanelState | null => {
+    try {
+        return getItem<StoredPanelState>(LOCAL_STORAGE_KEY);
+    } catch {
+        // 壊れていたら捨てる（入っているのはタブだけなので、読めなくても困らない）
+        return null;
+    }
+};
 
 const ControlPanelPage: React.FC = () => {
-    // General state
-    const [status, setStatus] = useState<'idle' | 'loading' | 'success' | 'error'>('idle');
     const [effectStatus, setEffectStatus] = useState<'idle' | 'loading' | 'success' | 'error'>('idle');
     // テロップタブでプリセットを編集したら、上部のテロップバーに読み込み直させる
     const [telopPresetsRevision, setTelopPresetsRevision] = useState(0);
     const [origin, setOrigin] = useState<string>('');
-    const [isInitialized, setIsInitialized] = useState(false);
-    const [storageError, setStorageError] = useState(false);
+    const [activeTab, setActiveTab] = useState('score');
+    const [loadError, setLoadError] = useState(false);
+    const [saveError, setSaveError] = useState(false);
 
-    // All form data in a single state object
-    const [formData, setFormData] = useState<FormData | null>(null);
+    // オーバーレイの設定。変えるとその場で（少し待って）保存する
+    const [settings, setSettings] = useState<StreamSettings | null>(null);
+    // サーバーに保存済みの値（変わった項目だけを送るために比べる）
+    const savedRef = useRef<StreamSettings | null>(null);
+    const settingsRef = useRef<StreamSettings | null>(null);
+    // 保存は 1 つずつ順に送る（前の保存の結果で savedRef を更新してから次を比べる）
+    const savingRef = useRef<Promise<void>>(Promise.resolve());
 
     // Temp state for burndown new entry
     const [newBurndownScore, setNewBurndownScore] = useState('');
@@ -78,31 +105,15 @@ const ControlPanelPage: React.FC = () => {
 
     // Helper to parse burndown entries and calculate total
     const totalEntries = useMemo(() => {
-        return formData?.burndown.entries.reduce((sum, current) => sum + current.score, 0) || 0;
-    }, [formData?.burndown.entries]);
-    
-    const getPayload = useCallback(() => {
-        if (!formData) return {};
-        return {
-            transitionEffect: formData.transitionEffect,
-            transitionDuration: Number(formData.transitionDuration),
-            fontFamily: formData.fontFamily,
-            fontSize: Number(formData.fontSize),
-            messagePresets: formData.messagePresets,
-            activePresetName: formData.activePresetName,
-            burndown: formData.burndown,
-        };
-    }, [formData]);
+        return settings?.burndown.entries.reduce((sum, current) => sum + current.score, 0) || 0;
+    }, [settings?.burndown.entries]);
 
     const handleTriggerEffect = useCallback(async (effectName: string) => {
         if (effectStatus === 'loading') return; // Prevent spamming
         setEffectStatus('loading');
         try {
-            const payload = {
-                ...getPayload(),
-                lastEvent: {name: effectName, timestamp: Date.now()},
-            };
-            const res = await axios.post('/api/stream-data', payload);
+            // エフェクトだけを送る（ほかの設定は送らない）
+            const res = await axios.patch('/api/stream-data', {event: effectName});
             if (res.status === 200) setEffectStatus('success');
             else setEffectStatus('error');
         } catch {
@@ -110,140 +121,152 @@ const ControlPanelPage: React.FC = () => {
         } finally {
             setTimeout(() => setEffectStatus('idle'), 2000);
         }
-    }, [effectStatus, getPayload]);
-    
+    }, [effectStatus]);
+
     // --- Handlers ---
-    const updateFormData = (delta: Partial<FormData>) => {
-        setFormData(prev => prev ? {...prev, ...delta} : null);
+    const updateSettings = (delta: Partial<StreamSettings>) => {
+        setSettings(prev => prev ? {...prev, ...delta} : null);
     };
 
     const updateBurndown = (delta: Partial<BurndownData>) => {
-        if (!formData) return;
-        updateFormData({ burndown: { ...formData.burndown, ...delta } });
-    }
-    
+        if (!settings) return;
+        updateSettings({burndown: {...settings.burndown, ...delta}});
+    };
+
+    const changeTab = (tab: string) => {
+        setActiveTab(tab);
+        setItem(LOCAL_STORAGE_KEY, {activeTab: tab});
+    };
+
+    // 保存していない変更を送る
+    const save = useCallback(() => {
+        savingRef.current = savingRef.current.then(async () => {
+            const current = settingsRef.current;
+            const saved = savedRef.current;
+            if (!current || !saved) return;
+            const update = changedSettings(current, saved);
+            if (Object.keys(update).length === 0) return;
+            try {
+                await axios.post('/api/stream-data', update);
+                savedRef.current = {...saved, ...update};
+                setSaveError(false);
+            } catch {
+                setSaveError(true);
+            }
+        });
+    }, []);
+
     // --- Effects ---
     // Initialization Effect
     useEffect(() => {
-        if (typeof window !== 'undefined') {
-            // eslint-disable-next-line react-hooks/set-state-in-effect
-            setOrigin(window.location.origin);
+        // eslint-disable-next-line react-hooks/set-state-in-effect
+        setOrigin(window.location.origin);
+        const stored = readStoredPanelState();
+        if (typeof stored?.activeTab === 'string') setActiveTab(stored.activeTab);
 
-            try {
-                const savedState = getItem<FormData>(LOCAL_STORAGE_KEY);
-                if (savedState) {
-                    // Quick validation for robustness
-                    if (savedState.burndown && Array.isArray(savedState.burndown.entries)) {
-                         setFormData(savedState);
-                    } else {
-                        throw new Error("Invalid burndown entries format in saved state.");
-                    }
-                } else {
-                    // Fetch from API only if no local data exists
-                    axios.get<StreamData>('/api/stream-data').then(res => {
-                        if (res.status === 200) {
-                            const apiData = res.data;
-                            setFormData({
-                                transitionEffect: apiData.transitionEffect,
-                                transitionDuration: apiData.transitionDuration,
-                                fontFamily: apiData.fontFamily,
-                                fontSize: apiData.fontSize,
-                                messagePresets: apiData.messagePresets,
-                                activePresetName: apiData.activePresetName,
-                                burndown: apiData.burndown,
-                                activeTab: 'score', // Add default
-                            });
-                        }
-                    }).catch(e => console.error("Failed to fetch initial data", e));
+        const load = async () => {
+            const res = await axios.get<StreamData>('/api/stream-data');
+            let loaded = pickSettings(res.data);
+            const legacy = legacySettings(stored);
+            if (Object.keys(legacy).length > 0) {
+                // サーバーに保存が無いときだけ、以前の localStorage の設定を移す（保存済みなら、そちらのほうが新しい）
+                if (!res.data.settingsStored) {
+                    const migrated = await axios.post<StreamData>('/api/stream-data', legacy);
+                    loaded = pickSettings(migrated.data);
                 }
-            } catch (error) {
-                console.error("Failed to load or parse state from localStorage", error);
-                setStorageError(true);
-            } finally {
-                setIsInitialized(true);
+                setItem(LOCAL_STORAGE_KEY, {activeTab: stored?.activeTab});
             }
-        }
+            savedRef.current = loaded;
+            settingsRef.current = loaded;
+            setSettings(loaded);
+        };
+        load().catch((e) => {
+            console.error('Failed to load the settings', e);
+            setLoadError(true);
+        });
     }, []);
 
-    // State Persistence Effect
+    // 変えたら少し待って保存する（入力のたびには送らない）
     useEffect(() => {
-        if (isInitialized && formData && !storageError) {
-            setItem(LOCAL_STORAGE_KEY, formData);
-        }
-    }, [formData, isInitialized, storageError]);
+        settingsRef.current = settings;
+        if (!settings) return;
+        const timer = setTimeout(save, SAVE_DELAY_MS);
+        return () => clearTimeout(timer);
+    }, [settings, save]);
+
+    // 画面を離れるときは、待っている変更をすぐに送る
+    useEffect(() => {
+        // タブを閉じる・再読み込みするとき。ページが消えても送り終えるよう keepalive で送る
+        const handlePageHide = () => {
+            const current = settingsRef.current;
+            const saved = savedRef.current;
+            if (!current || !saved) return;
+            const update = changedSettings(current, saved);
+            if (Object.keys(update).length === 0) return;
+            void fetch('/api/stream-data', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify(update),
+                keepalive: true,
+            }).catch(() => undefined);
+        };
+        window.addEventListener('pagehide', handlePageHide);
+        return () => {
+            window.removeEventListener('pagehide', handlePageHide);
+            // アプリの中でほかの画面に移るとき
+            save();
+        };
+    }, [save]);
 
     const handleAddMessage = () => {
-        if (currentMessage.trim() !== '' && formData) {
-            const activePreset = formData.messagePresets.find(p => p.name === formData.activePresetName);
+        if (currentMessage.trim() !== '' && settings) {
+            const activePreset = settings.messagePresets.find(p => p.name === settings.activePresetName);
             if (!activePreset) return;
             const updatedMessages = [...activePreset.messages, {id: Date.now(), text: currentMessage.trim()}];
-            const updatedPresets = formData.messagePresets.map(preset =>
-                preset.name === formData.activePresetName ? {...preset, messages: updatedMessages} : preset
+            const updatedPresets = settings.messagePresets.map(preset =>
+                preset.name === settings.activePresetName ? {...preset, messages: updatedMessages} : preset
             );
-            updateFormData({messagePresets: updatedPresets});
+            updateSettings({messagePresets: updatedPresets});
             setCurrentMessage('');
         }
     };
 
     const handleRemoveMessage = (id: number) => {
-        if (!formData) return;
-        const activePreset = formData.messagePresets.find(p => p.name === formData.activePresetName);
+        if (!settings) return;
+        const activePreset = settings.messagePresets.find(p => p.name === settings.activePresetName);
         if (!activePreset) return;
         const updatedMessages = activePreset.messages.filter(msg => msg.id !== id);
-        const updatedPresets = formData.messagePresets.map(preset =>
-            preset.name === formData.activePresetName ? {...preset, messages: updatedMessages} : preset
+        const updatedPresets = settings.messagePresets.map(preset =>
+            preset.name === settings.activePresetName ? {...preset, messages: updatedMessages} : preset
         );
-        updateFormData({messagePresets: updatedPresets});
+        updateSettings({messagePresets: updatedPresets});
     };
 
     const handleAddBurndownEntry = () => {
         const score = Number(newBurndownScore);
-        if (isNaN(score) || score <= 0 || !formData) return;
+        if (isNaN(score) || score <= 0 || !settings) return;
         const newEntry = { score, timestamp: Date.now() };
-        updateBurndown({ entries: [...formData.burndown.entries, newEntry] });
+        updateBurndown({ entries: [...settings.burndown.entries, newEntry] });
         setNewBurndownScore('');
     };
 
     const handleRemoveBurndownEntry = (timestamp: number) => {
-        if (!formData) return;
-        updateBurndown({ entries: formData.burndown.entries.filter(e => e.timestamp !== timestamp) });
+        if (!settings) return;
+        updateBurndown({ entries: settings.burndown.entries.filter(e => e.timestamp !== timestamp) });
     };
 
-    const handleSubmit = async () => {
-        setStatus('loading');
-        try {
-            const payload = {
-                ...getPayload(),
-                lastEvent: null,
-            };
-            const res = await axios.post('/api/stream-data', payload);
-            if (res.status === 200) setStatus('success');
-            else setStatus('error');
-        } catch {
-            setStatus('error');
-        } finally {
-            setTimeout(() => setStatus('idle'), 3000);
-        }
-    };
-
-    const handleClearCache = () => {
-        removeItem(LOCAL_STORAGE_KEY);
-        window.location.reload();
-    };
-
-    if (!isInitialized || !formData) {
+    if (!settings) {
         return (
              <ThemeProvider theme={theme}>
                  <Box sx={{ minHeight: '100vh', bgcolor: 'background.default', color: 'text.primary', display: 'flex', justifyContent: 'center', alignItems: 'center' }}>
-                    {storageError ? (
+                    {loadError ? (
                         <Alert severity="error" action={
-                            <Button color="inherit" size="small" onClick={handleClearCache}>
-                                キャッシュをクリア
+                            <Button color="inherit" size="small" onClick={() => window.location.reload()}>
+                                読み込み直す
                             </Button>
                         }>
                             <AlertTitle>エラー</AlertTitle>
-                            設定の読み込みに失敗しました。ローカルストレージのデータが破損している可能性があります。
-                            キャッシュをクリアしてリロードしてください。
+                            設定を読み込めませんでした。サーバーが起動しているか確認してください。
                         </Alert>
                     ) : (
                         <Typography>読み込み中...</Typography>
@@ -257,17 +280,7 @@ const ControlPanelPage: React.FC = () => {
         <ThemeProvider theme={theme}>
             {/* hidden だとスクロール領域になり、テロップバーの sticky が効かないので clip ではみ出しだけ切る */}
             <Box sx={{minHeight: '100vh', bgcolor: 'background.default', color: 'text.primary', position: 'relative', overflow: 'clip'}}>
-                <Box sx={{p: 5, maxWidth: 700, margin: 'auto', position: 'relative', zIndex: 1, pb: '120px'}}>
-                    {storageError && (
-                        <Alert severity="error" sx={{mb: 4}} action={
-                            <Button color="inherit" size="small" onClick={handleClearCache}>
-                                キャッシュをクリア
-                            </Button>
-                        }>
-                            <AlertTitle>エラー</AlertTitle>
-                            設定の読み込みに失敗しました。データが破損している可能性があります。キャッシュをクリアしてください。
-                        </Alert>
-                    )}
+                <Box sx={{p: 5, maxWidth: 700, margin: 'auto', position: 'relative', zIndex: 1}}>
                     <Box sx={{display: 'flex', alignItems: 'center', gap: 3, mb: 4}}>
                         <Image src="/favicon.svg" alt="icon" width={32} height={32}/>
                         <Typography variant="h1" sx={{color: 'text.primary'}}>
@@ -275,9 +288,16 @@ const ControlPanelPage: React.FC = () => {
                         </Typography>
                     </Box>
 
+                    {/* 設定は変えるとその場で保存する。失敗したときだけ知らせる（次に変えたときに送り直す） */}
+                    {saveError && (
+                        <Alert severity="error" role="status" sx={{mb: 4}}>
+                            設定を保存できませんでした。サーバーが起動しているか確認してください（次に変えたときに送り直します）。
+                        </Alert>
+                    )}
+
                     <TelopBar reloadKey={telopPresetsRevision}/>
 
-                    <Tabs value={formData.activeTab} onChange={(e, newValue) => updateFormData({ activeTab: newValue })} variant="scrollable" scrollButtons="auto" sx={{mb: 4}}>
+                    <Tabs value={activeTab} onChange={(e, newValue) => changeTab(newValue)} variant="scrollable" scrollButtons="auto" sx={{mb: 4}}>
                         <Tab label="スコア表示" value="score"/>
                         <Tab label="バーンダウン" value="burndown"/>
                         <Tab label="メッセージ" value="message"/>
@@ -290,17 +310,17 @@ const ControlPanelPage: React.FC = () => {
                         <Tab label="共通設定" value="common"/>
                     </Tabs>
 
-                    {formData.activeTab === 'score' && <ScoreDisplayPanel/>}
+                    {activeTab === 'score' && <ScoreDisplayPanel/>}
 
-                    {formData.activeTab === 'burndown' && (
+                    {activeTab === 'burndown' && (
                         <Paper sx={{p: 4}}>
                             <Typography variant="h6" gutterBottom>バーンダウンチャート設定</Typography>
-                            <TextField label="フィールド名" value={formData.burndown.label} onChange={(e) => updateBurndown({ label: e.target.value })} fullWidth margin="normal" variant="outlined" multiline rows={2}/>
-                            <TextField label="目標値" type="number" value={formData.burndown.targetValue} onChange={(e) => updateBurndown({ targetValue: Number(e.target.value) })} fullWidth margin="normal" variant="outlined"/>
+                            <TextField label="フィールド名" value={settings.burndown.label} onChange={(e) => updateBurndown({ label: e.target.value })} fullWidth margin="normal" variant="outlined" multiline rows={2}/>
+                            <TextField label="目標値" type="number" value={settings.burndown.targetValue} onChange={(e) => updateBurndown({ targetValue: Number(e.target.value) })} fullWidth margin="normal" variant="outlined"/>
 
                             <Typography variant="h6" gutterBottom sx={{ mt: 2 }}>ポイント履歴</Typography>
                             <Box data-testid="burndown-history" sx={{my: 2, maxHeight: 200, overflowY: 'auto', p: 1, bgcolor: 'rgba(255, 255, 255, 0.03)', borderRadius: '4px'}}>
-                                {formData.burndown.entries.length === 0 ? (
+                                {settings.burndown.entries.length === 0 ? (
                                     <Typography
                                         variant="body2"
                                         sx={{
@@ -308,7 +328,7 @@ const ControlPanelPage: React.FC = () => {
                                             p: 1
                                         }}>履歴がありません</Typography>
                                 ) : (
-                                    formData.burndown.entries.map((entry, index) => (
+                                    settings.burndown.entries.map((entry, index) => (
                                         <Box key={entry.timestamp} sx={{display: 'flex', justifyContent: 'space-between', alignItems: 'center', p: 0.5, borderBottom: '1px dotted rgba(255,255,255,0.2)'}}>
                                             <Typography variant="body1">{index + 1} | {entry.score} | {new Date(entry.timestamp).toLocaleString('ja-JP', {year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false}).replace(/\//g, '/')}</Typography>
                                             <IconButton size="small" color="error" onClick={() => handleRemoveBurndownEntry(entry.timestamp)} aria-label={`remove entry ${entry.score}`}><RemoveCircleIcon fontSize="small"/></IconButton>
@@ -343,16 +363,16 @@ const ControlPanelPage: React.FC = () => {
                         </Paper>
                     )}
 
-                    {formData.activeTab === 'message' && (
+                    {activeTab === 'message' && (
                         <Paper sx={{p: 4}}>
                             <Typography variant="h6" gutterBottom>視聴者向け概要メッセージ</Typography>
                             <Box sx={{borderBottom: 1, borderColor: 'divider', mb: 2}}>
-                                <Tabs value={formData.activePresetName} onChange={(e, newValue) => updateFormData({activePresetName: newValue})} variant="scrollable" scrollButtons="auto" aria-label="メッセージプリセット">
-                                    {formData.messagePresets.map(preset => (<Tab key={preset.name} label={preset.name} value={preset.name}/>))}
+                                <Tabs value={settings.activePresetName} onChange={(e, newValue) => updateSettings({activePresetName: newValue})} variant="scrollable" scrollButtons="auto" aria-label="メッセージプリセット">
+                                    {settings.messagePresets.map(preset => (<Tab key={preset.name} label={preset.name} value={preset.name}/>))}
                                 </Tabs>
                             </Box>
                             <Box sx={{my: 2, maxHeight: 150, overflowY: 'auto', p: 1, bgcolor: 'rgba(255, 255, 255, 0.03)', borderRadius: '4px'}}>
-                                {formData.messagePresets.find(p => p.name === formData.activePresetName)?.messages.length === 0 ? (
+                                {settings.messagePresets.find(p => p.name === settings.activePresetName)?.messages.length === 0 ? (
                                     <Typography
                                         variant="body2"
                                         sx={{
@@ -360,7 +380,7 @@ const ControlPanelPage: React.FC = () => {
                                             p: 1
                                         }}>メッセージがありません</Typography>
                                 ) : (
-                                    formData.messagePresets.find(p => p.name === formData.activePresetName)?.messages.map((msg) => (
+                                    settings.messagePresets.find(p => p.name === settings.activePresetName)?.messages.map((msg) => (
                                         <Box key={msg.id} sx={{display: 'flex', justifyContent: 'space-between', alignItems: 'center', p: 0.5, borderBottom: '1px dotted rgba(255,255,255,0.2)'}}>
                                             <Typography variant="body1">{msg.text}</Typography>
                                             <IconButton size="small" color="error" onClick={() => handleRemoveMessage(msg.id)}><RemoveCircleIcon fontSize="small"/></IconButton>
@@ -374,32 +394,32 @@ const ControlPanelPage: React.FC = () => {
                             </Box>
                             <FormControl fullWidth margin="normal">
                                 <InputLabel>切り替えエフェクト</InputLabel>
-                                <Select value={formData.transitionEffect} label="切り替えエフェクト" onChange={(e) => updateFormData({transitionEffect: e.target.value})}>
+                                <Select value={settings.transitionEffect} label="切り替えエフェクト" onChange={(e) => updateSettings({transitionEffect: e.target.value as TransitionEffect})}>
                                     <MenuItem value={'fade'}>フェード</MenuItem>
                                     <MenuItem value={'slide'}>スライド</MenuItem>
                                 </Select>
                             </FormControl>
-                            <TextField label="表示秒数 (秒)" type="number" value={formData.transitionDuration} onChange={(e) => updateFormData({transitionDuration: Number(e.target.value)})} fullWidth margin="normal" slotProps={{htmlInput: {min: 1}}} variant="outlined"/>
+                            <TextField label="表示秒数 (秒)" type="number" value={settings.transitionDuration} onChange={(e) => updateSettings({transitionDuration: Number(e.target.value)})} fullWidth margin="normal" slotProps={{htmlInput: {min: 1}}} variant="outlined"/>
                         </Paper>
                     )}
 
-                    {formData.activeTab === 'salmon' && <SalmonRunPanel/>}
+                    {activeTab === 'salmon' && <SalmonRunPanel/>}
 
-                    {formData.activeTab === 'weaponCard' && <WeaponCardPanel/>}
+                    {activeTab === 'weaponCard' && <WeaponCardPanel/>}
 
-                    {formData.activeTab === 'sidePanel' && <SidePanelSettingsPanel/>}
+                    {activeTab === 'sidePanel' && <SidePanelSettingsPanel/>}
 
-                    {formData.activeTab === 'clip' && <ClipPanel/>}
-                    {formData.activeTab === 'joinQueue' && <JoinQueuePanel/>}
+                    {activeTab === 'clip' && <ClipPanel/>}
+                    {activeTab === 'joinQueue' && <JoinQueuePanel/>}
 
-                    {formData.activeTab === 'telop' && (
+                    {activeTab === 'telop' && (
                         <>
                             <TelopPanel onPresetsChange={() => setTelopPresetsRevision((n) => n + 1)}/>
                             <VoiceSettingsPanel/>
                         </>
                     )}
 
-                    {formData.activeTab === 'common' && (
+                    {activeTab === 'common' && (
                         <>
                             <Paper sx={{mb: 4, p: 4}}>
                                 <SectionTitle icon={AutoAwesomeRoundedIcon}>演出効果</SectionTitle>
@@ -428,16 +448,8 @@ const ControlPanelPage: React.FC = () => {
                             </Paper>
                             <Paper sx={{mb: 4, p: 4}}>
                                 <SectionTitle icon={TextFieldsRoundedIcon}>フォント設定</SectionTitle>
-                                <TextField label="フォント名 (CSS font-family)" value={formData.fontFamily} onChange={(e) => updateFormData({fontFamily: e.target.value})} fullWidth margin="normal" helperText="システムフォントや、OBS側でカスタムフォントがインストールされているフォント名を入力" variant="outlined"/>
-                                <TextField label="フォントサイズ (px)" type="number" value={formData.fontSize} onChange={(e) => updateFormData({fontSize: Number(e.target.value)})} fullWidth margin="normal" slotProps={{htmlInput: {min: 1}}} variant="outlined"/>
-                            </Paper>
-                            <Paper sx={{p: 4}}>
-                                <Typography variant="h6" gutterBottom>各種設定</Typography>
-                                <Box sx={{display: 'flex', gap: 2, alignItems: 'center', flexWrap: 'wrap'}}>
-                                     <Button variant="outlined" color="warning" onClick={handleClearCache}>
-                                        入力キャッシュをクリア
-                                    </Button>
-                                </Box>
+                                <TextField label="フォント名 (CSS font-family)" value={settings.fontFamily} onChange={(e) => updateSettings({fontFamily: e.target.value})} fullWidth margin="normal" helperText="システムフォントや、OBS側でカスタムフォントがインストールされているフォント名を入力" variant="outlined"/>
+                                <TextField label="フォントサイズ (px)" type="number" value={settings.fontSize} onChange={(e) => updateSettings({fontSize: Number(e.target.value)})} fullWidth margin="normal" slotProps={{htmlInput: {min: 1}}} variant="outlined"/>
                             </Paper>
                         </>
                     )}
@@ -453,26 +465,6 @@ const ControlPanelPage: React.FC = () => {
                         <Typography variant="body2">幅: 250, 高さ: 584 (バーンダウン表示・サイドパネル表示)</Typography>
                     </Box>
                 </Box>
-                
-                <Paper sx={{position: 'fixed', bottom: 0, left: 0, right: 0, p: 4, zIndex: 10, bgcolor: tokens.color.header, border: 'none', borderTop: 1, borderColor: 'divider', borderRadius: 0}}>
-                    <Box sx={{ maxWidth: 700, margin: 'auto' }}>
-                        <Button variant="contained" color="primary" onClick={handleSubmit} disabled={status === 'loading'} fullWidth size="large">
-                            {status === 'loading' ? '更新中...' : 'OBSに反映 (データ送信)'}
-                        </Button>
-                        {status === 'success' && (<Typography
-                            align="center"
-                            sx={{
-                                color: "success.main",
-                                mt: 1
-                            }}>✅ データを更新しました！OBS画面に反映されます。</Typography>)}
-                        {status === 'error' && (<Typography
-                            align="center"
-                            sx={{
-                                color: "error.main",
-                                mt: 1
-                            }}>❌ 更新に失敗しました。サーバー/APIを確認してください。</Typography>)}
-                    </Box>
-                </Paper>
             </Box>
         </ThemeProvider>
     );

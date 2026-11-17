@@ -161,6 +161,8 @@
 │   └── BreakOverlay.tsx          # 休憩中オーバーレイの本体（横長 / 縦型配信用で共通）
 ├── lib/
 │   ├── localStorage.ts           # ローカルストレージのラッパー
+│   ├── streamSettingsTypes.ts    # オーバーレイの設定（フォント・メッセージ・バーンダウン）の型・既定値・入力検証（クライアントからも使う）
+│   ├── streamSettings.ts         # オーバーレイの設定の保存（サーバー専用。SQLite）
 │   ├── db.ts                     # SQLite の接続とスキーマ
 │   ├── salmon.ts                 # サーモンラン記録のデータアクセス・入力検証（サーバー専用）
 │   ├── salmonTypes.ts            # サーモンラン記録の型・定数（クライアントからも使う）
@@ -215,7 +217,7 @@
 
 ### StreamData インターフェース
 
-コアデータ構造は `/app/api/stream-data/route.ts` で定義されています。
+`StreamData` は `/app/api/stream-data/route.ts`、設定の部分（`StreamSettings`・`BurndownData`・`MessagePreset`）は `lib/streamSettingsTypes.ts` で定義されています。
 
 ```typescript
 export interface BurndownData {
@@ -226,24 +228,29 @@ export interface BurndownData {
 
 export interface MessagePreset {
   name: string;
-  messages: string[];
+  messages: { id: number; text: string }[];
 }
 
-export interface StreamData {
-  scoreLabel: string;                 // lib/scoreDisplay.ts に別に保存（GET で合わせて返す）
-  scoreValue: string;
-  transitionEffect: string;          // 'slide' | 'fade' | 'scale' | 'none'
+// コントロールパネルで決める設定。SQLite（app_state のキー streamSettings）に保存する
+export interface StreamSettings {
+  transitionEffect: 'fade' | 'slide';
   transitionDuration: number;
   fontFamily: string;
   fontSize: number;
   messagePresets: MessagePreset[];
   activePresetName: string;
-  lastEvent: {
-    name: string;                     // 'heart' | 'star' | 'bubble' | 'sparkle'
+  burndown: BurndownData;
+}
+
+export interface StreamData extends StreamSettings {
+  scoreLabel: string;                 // lib/scoreDisplay.ts に別に保存（GET で合わせて返す）
+  scoreValue: string;
+  lastEvent: {                        // エフェクト。メモリだけ
+    name: string;                     // 'LOVE' | 'STAR' | 'SPARKLE' | 'BUBBLE' | 'FIREWORKS'
     timestamp: number;
   } | null;
-  burndown: BurndownData;
-  revision: number;                   // クライアント再レンダリング用
+  revision: number;                   // クライアント再レンダリング用（メモリだけ）
+  settingsStored: boolean;            // 設定が SQLite に保存済みか（localStorage からの移行用）
 }
 ```
 
@@ -254,28 +261,29 @@ export interface StreamData {
 - オーバーレイが定期的にポーリング
 
 **`POST /api/stream-data`**
-- `StreamData` を更新（`scoreLabel` / `scoreValue` は省略可。コントロールパネルは送らない）。`Content-Type: application/json` 必須（スコア表示は SQLite に残るので、他サイトからの単純リクエストで書き換えさせない）
-- コントロールパネルから呼び出される
+- 設定（`StreamSettings`）の **送った項目だけ** を書き換えて SQLite に保存する（`parseStreamSettingsUpdate` で検証。知らない項目・不正な値・空は 400）。スコア表示は `/api/score-display`、エフェクトは PATCH で送るので受け付けない。`Content-Type: application/json` 必須（設定は SQLite に残るので、他サイトからの単純リクエストで書き換えさせない）
+- コントロールパネルが、変わった項目だけをその場で送る
 - `revision` が自動的にインクリメントされる
 
 **`PATCH /api/stream-data`**
-- `{event}`（`EFFECT_NAMES` = `LOVE` / `STAR` / `SPARKLE` / `BUBBLE`）で `lastEvent` だけを更新してエフェクトを出す（ほかの項目は変えない）
-- 文字起こしスクリプト（`tools/caption-stt/`）から呼び出される。`Content-Type: application/json` 必須
+- `{event}`（`EFFECT_NAMES` = `LOVE` / `STAR` / `SPARKLE` / `BUBBLE`、と `FIREWORKS`）で `lastEvent` だけを更新してエフェクトを出す（設定は変えない）
+- コントロールパネルのエフェクトのボタン・文字起こしスクリプト（`tools/caption-stt/`）・バーンダウンのオーバーレイ（目標の達成で `FIREWORKS`）から呼び出される。`Content-Type: application/json` 必須
 
 ## 主要ファイルの詳細
 
 ### `/app/api/stream-data/route.ts`
 
-- インメモリで `StreamData` を管理。ただしスコア表示（`scoreLabel` / `scoreValue`）は `lib/scoreDisplay.ts` が SQLite の `app_state`（キー `scoreDisplay`）に別に保存し、`GET` で合わせて返す（リザルトの取り込みで書き換えた値を、コントロールパネルの保存で上書きしないため）
-- `GET` と `POST` ハンドラーを提供
+- 設定は `lib/streamSettings.ts` が SQLite の `app_state`（キー `streamSettings`）に保存する（以前はメモリだけで、再起動で消えていた）。保存値の壊れた項目は既定値（`DEFAULT_STREAM_SETTINGS`）にする（`parseStoredStreamSettings`。ほかの項目は残す）。型・既定値・検証は `lib/streamSettingsTypes.ts`（クライアントからも使う）
+- スコア表示（`scoreLabel` / `scoreValue`）は `lib/scoreDisplay.ts` が SQLite の `app_state`（キー `scoreDisplay`）に別に保存し、`GET` で合わせて返す（リザルトの取り込みで書き換えた値を、コントロールパネルの保存で上書きしないため）
+- `lastEvent` と `revision` はメモリだけ（再起動で消えてよい）
 - `getInitialStreamData()` - 初期データを返す（テストでも使用）
-- `__TEST_ONLY_setStreamData()` - テスト用のデータセッター
+- `__TEST_ONLY_setStreamData()` - テスト用のデータセッター（`settingsStored` が false なら保存した設定を消す）
 
 ### `/app/control-panel/page.tsx`
 
 タブ形式のコントロールパネル。以下の機能を提供：
 
-1. **スコア表示タブ** - `components/ScoreDisplayPanel.tsx`。`/api/score-display` に「反映」でその場で保存する（`formData`・localStorage・「OBSに反映」には含めない）。取り込みでの自動更新の ON/OFF
+1. **スコア表示タブ** - `components/ScoreDisplayPanel.tsx`。`/api/score-display` に「反映」で保存する（取り込みでも書き換わるので、ほかの設定と違って入力のたびには保存しない）。取り込みでの自動更新の ON/OFF
 2. **バーンダウンタブ** - バーンダウンチャートの管理
 3. **メッセージタブ** - メッセージプリセットの管理
 4. **共通設定タブ** - フォント設定、エフェクトのボタン
@@ -283,8 +291,9 @@ export interface StreamData {
 #### 重要な機能
 
 - **見た目**: テーマは `app/control-panel/theme.ts`（`docs/design/control-panel/theme.ts` と同じ値。フォントだけ `app/control-panel/layout.tsx` の `next/font` が設定する CSS 変数を使う）。色・角丸・余白は `tokens` から取り、カードは面の色と 1px の枠だけ（影・グラデーション・すりガラスは使わない）。`spacing` は 4px 単位（`p: 4` = 16px）。カードの見出しは `components/SectionTitle.tsx`（MUI の Rounded のアイコン + 文字。見出しに絵文字は使わない）。今の画面は配信のフェーズ（準備・配信中・振り返り）で作り直している途中（親 Issue #125。設計書は `docs/design/control-panel/README.md`）
-- **ローカルストレージ**: ユーザー設定を `'control-panel-state'` キーで永続化
-- **エフェクトのトリガー**: `/api/stream-data` の `lastEvent` フィールドを更新（ボタンから。話した言葉で出すのは文字起こしスクリプト）
+- **保存**: すべて「その場で保存」（「OBSに反映」ボタンは無い）。バーンダウン・メッセージ・フォント・切り替えエフェクトは、変えてから `SAVE_DELAY_MS`（500ms）待って、保存済みの値と比べて変わった項目だけを `POST /api/stream-data` で送る（入力途中の不正な値、たとえば数値の欄を空にした 0 は送らない。`isValidStreamSetting`）。保存は 1 つずつ順に送り、失敗したら赤い表示を出して次の保存で送り直す。画面を離れるとき（アンマウント・`pagehide` は `fetch` の `keepalive`）は待っている変更をすぐに送る。応答で入力欄を上書きしない（打っている途中の文字を戻さない）
+- **ローカルストレージ**: `'control-panel-state'` キーに開いているタブ（`{activeTab}`）だけを残す。以前は設定も入れていたので、残っていればサーバーに保存が無いとき（`settingsStored` が false）だけ 1 回送り、どちらでも設定は消す。壊れていたら無視する
+- **エフェクトのトリガー**: `PATCH /api/stream-data {event}` でエフェクトだけを送る（ほかの設定は送らない。話した言葉で出すのは文字起こしスクリプト）
 
 ### `/app/obs-overlay/page.tsx`
 
@@ -300,7 +309,7 @@ export interface StreamData {
 バーンダウンチャート専用のオーバーレイ（250x584px）。
 
 - 1秒ごとにデータをポーリング
-- 目標達成時（残りポイント ≤ 0）に `FireworksEffect` を表示
+- 目標達成時（残りポイント ≤ 0）に `FireworksEffect` を表示（`PATCH /api/stream-data {event: 'FIREWORKS'}` でエフェクトだけを送る。設定を丸ごと送ると、開いたときの古い値でコントロールパネルの設定を上書きしてしまうため）
 - `BurndownChart` コンポーネントを使用
 
 ### `/app/api/caption/route.ts` と `/app/caption-overlay/page.tsx`
@@ -340,7 +349,7 @@ Twitch のフォロワー数とフォロワー目標を受け取る機能と、�
 - 集計は **配信セッション単位**。最後に開始したセッションが「現在のセッション」。記録時にセッションが無ければ自動作成
 - `GET /api/salmon`（`?sessionId=` で過去分）、`POST /api/salmon`（記録）、`PATCH /api/salmon {id, ...記録}`（修正。取り込んだバイトの日時・詳細は残し、詳細があれば自分の行の金イクラ・オオモノ・被救助数も合わせる）、`DELETE /api/salmon?id=`（取り消し）、`GET/POST /api/salmon/sessions`（一覧・開始）。POST は `Content-Type: application/json` 必須
 - `lib/salmon.ts` は `node:sqlite` に依存するのでクライアントコンポーネントから import しない。型と定数は `lib/salmonTypes.ts` から import する
-- コントロールパネルの「サーモンラン」タブ（`components/SalmonRunPanel.tsx`）は API に直接保存する（「OBSに反映」ボタンや localStorage は使わない）
+- コントロールパネルの「サーモンラン」タブ（`components/SalmonRunPanel.tsx`）は API に直接保存する
 - テストは `vite.config.mts` の `OVERLAY_DB_PATH=:memory:` で実データに触れない。各テストで `__TEST_ONLY_setDb(openDb(':memory:'))` してから使う
 
 ### `/app/api/salmon/import/route.ts` と `tools/salmon-result/`
@@ -406,7 +415,7 @@ Twitch のフォロワー数とフォロワー目標を受け取る機能と、�
 - 固定枠が多いとローテーション枠の高さが足りず見切れる。`estimateSlotHeight` / `exceedsSlotArea` でスロットの高さの目安を合計し、下段（`SLOT_AREA_HEIGHT` = 約 440px、ゲージ表示時）に収まらない見込みならコントロールパネルで警告する（保存は止めない）。スロットの見た目を変えたら目安の値も見直す
 - 以前の保存形式（`visibleSlots`、さらに前は `activeSlot` と、`autoRotate` / `enabledSlots`）は、自動ローテーション ON ならローテーション枠だけ、OFF なら固定枠だけとして読み込む（既存の設定を既定値に戻さない）
 - オーバーレイのテストは `motion/react` を単純な要素に置き換えている（クロスフェード中に古いスロットが残ると、待ち時間内に消えずに不安定になるため）
-- コントロールパネルの「サイドパネル」タブ（`components/SidePanelSettingsPanel.tsx`）は変更をその場で保存する（「OBSに反映」は不要）
+- コントロールパネルの「サイドパネル」タブ（`components/SidePanelSettingsPanel.tsx`）は変更をその場で保存する
 - 既存の `/burndown-overlay` はそのまま残している（サイドパネルのバーンダウンスロットは花火エフェクトを出さない）
 - フォロワーゲージは `/api/twitch` もポーリングして表示する。値は `getFollowerProgress`（`lib/sidePanelTypes.ts`）で決める: Twitch のクリエイターゴール（フォロワー型）を優先し、無ければフォロワー総数と手入力の `followerGoal`（設定に保存、`null` は未設定）。どちらも無い、または Twitch 連携スクリプトが未起動（`followerTotal: null`）ならゲージを出さない
 - ゲージはフォローを受信すると（`lastFollowAt` の変化）インクを波打たせて `BubbleEffect` を出し、目標を変えずにフォロワー数が目標に届いたときだけ `FireworksEffect` を出す（目標の編集だけでは出さない。達成のたびに `key` で作り直して再生）。表示した時点の値では演出しない（オーバーレイの再読み込みで演出が出ないように）。泡と花火は vw / vh 基準なので、`absolute inset-0 z-50` でサイドパネルのルート（`relative`）全体を覆い、下段スロットより手前に出す
@@ -589,18 +598,18 @@ GitHub Actionsで以下のワークフローが実行されます：
 
 ### 使用箇所
 
-- **コントロールパネル** (`/control-panel`): ユーザー設定を永続化
+- **コントロールパネル** (`/control-panel`): 開いているタブだけを覚える（設定はサーバーの SQLite に保存する）
 
 ### データ構造
 
 - **キー**: `'control-panel-state'`
-- **データ**: `FormData` インターフェース全体をJSON形式で保存
+- **データ**: `{activeTab}`
 
 ### 動作
 
-- **保存**: `formData` ステートが変更されるたびに自動保存
-- **読み込み**: コンポーネントマウント時に読み込み。破損時はAPIからデフォルト値を取得
-- **キャッシュクリア**: エラー発生時にUIでクリアボタンを表示
+- **保存**: タブを切り替えたとき
+- **読み込み**: コンポーネントマウント時。壊れていたら無視する
+- **移行**: 以前の設定（`burndown` など）が入っていれば、サーバーに保存が無いときだけ 1 回送り、どちらでも消す
 
 ## ESLint規約とトラブルシューティング
 
@@ -701,10 +710,10 @@ docker-compose down
 
 ## トラブルシューティング
 
-### ローカルストレージのエラー
+### コントロールパネルの設定を読み込めない・保存できない
 
-- コントロールパネルでキャッシュクリアボタンをクリック
-- または開発者ツールで `localStorage.removeItem('control-panel-state')` を実行
+- 設定はサーバーの SQLite（`data/overlay.db` の `app_state`、キー `streamSettings`）にある。サーバーが起動しているか確認する
+- localStorage には開いているタブしか無いので、消しても設定は失われない（`localStorage.removeItem('control-panel-state')`）
 
 ### テスト失敗
 

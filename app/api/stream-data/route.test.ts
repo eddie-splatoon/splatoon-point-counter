@@ -4,7 +4,7 @@ import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { __TEST_ONLY_setDb, openDb } from '../../../lib/db';
 import { updateScoreDisplay } from '../../../lib/scoreDisplay';
 
-import { GET, PATCH, POST, StreamData, getInitialStreamData, __TEST_ONLY_setStreamData } from './route';
+import { GET, PATCH, POST, getInitialStreamData, __TEST_ONLY_setStreamData } from './route';
 
 // Reset the stream data before each test
 beforeEach(() => {
@@ -12,111 +12,80 @@ beforeEach(() => {
   __TEST_ONLY_setStreamData(getInitialStreamData());
 });
 
+const post = (body: unknown, contentType = 'application/json') =>
+  POST(new NextRequest('http://localhost/api/stream-data', {
+    method: 'POST',
+    headers: { 'Content-Type': contentType },
+    body: typeof body === 'string' ? body : JSON.stringify(body),
+  }));
+
 describe('Stream Data API', () => {
   describe('GET', () => {
-    it('should return the current stream data', async () => {
+    it('returns the default settings before anything is saved', async () => {
       const response = await GET();
       const body = await response.json();
 
       expect(response.status).toBe(200);
       expect(body).toEqual(getInitialStreamData());
+      expect(body.settingsStored).toBe(false);
+    });
+
+    it('returns the score display saved separately', async () => {
+      updateScoreDisplay({ scoreLabel: 'ハイスコア', scoreValue: '180' });
+      const body = await (await GET()).json();
+      expect(body).toMatchObject({ scoreLabel: 'ハイスコア', scoreValue: '180' });
     });
   });
 
   describe('POST', () => {
-    it('should update the stream data with a valid request body', async () => {
-      const initialData = getInitialStreamData();
-      const newData = {
-        ...initialData,
-        scoreLabel: 'New Score Label',
-        scoreValue: '1000',
-        burndown: {
-          ...initialData.burndown,
-          entries: [{ score: 100, timestamp: 12345 }, { score: 200, timestamp: 67890 }],
-        },
-      };
-
-      const request = new NextRequest('http://localhost/api/stream-data', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(newData),
-      });
-
-      const response = await POST(request);
+    it('updates only the sent settings and bumps the revision', async () => {
+      const response = await post({ fontSize: 60 });
       const body = await response.json();
 
       expect(response.status).toBe(200);
-      expect(body.scoreLabel).toBe('New Score Label');
-      expect(body.scoreValue).toBe('1000');
-      expect(body.burndown.entries).toEqual([{ score: 100, timestamp: 12345 }, { score: 200, timestamp: 67890 }]);
-
-      // Verify that the data was actually updated in the module
-      const getResponse = await GET();
-      const getBody = await getResponse.json();
-      expect(getBody.scoreLabel).toBe('New Score Label');
+      expect(body).toEqual({ ...getInitialStreamData(), fontSize: 60, revision: 1, settingsStored: true });
     });
 
-    it('should return a 400 error for an invalid request body', async () => {
-      const invalidData = {
-        scoreLabel: 123, // Invalid type
-      };
+    it('keeps the settings in SQLite (survives a restart of the in-memory state)', async () => {
+      const burndown = { label: 'あと', targetValue: 100, entries: [{ score: 10, timestamp: 1 }] };
+      await post({ burndown, activePresetName: '大会' });
+      await post({ fontFamily: 'Splatfont' });
 
-      const request = new NextRequest('http://localhost/api/stream-data', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(invalidData),
-      });
-
-      const response = await POST(request);
-      expect(response.status).toBe(400);
+      // メモリの状態（エフェクト・revision）だけを初期化しても、設定は残る
+      __TEST_ONLY_setStreamData({ ...(await (await GET()).json()), lastEvent: null, revision: 0 });
+      const body = await (await GET()).json();
+      expect(body).toMatchObject({ burndown, activePresetName: '大会', fontFamily: 'Splatfont', fontSize: getInitialStreamData().fontSize });
     });
 
-    it('keeps the score display when the payload has no score', async () => {
-      updateScoreDisplay({ scoreLabel: 'ハイスコア', scoreValue: '264' });
-      const withoutScore: Partial<StreamData> = { ...getInitialStreamData(), fontSize: 60 };
-      delete withoutScore.scoreLabel;
-      delete withoutScore.scoreValue;
-      const response = await POST(new NextRequest('http://localhost/api/stream-data', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(withoutScore),
-      }));
-      const body = await response.json();
+    it('rejects invalid values without saving anything', async () => {
+      const responses = await Promise.all([
+        post({ fontSize: 0 }),
+        post({ fontSize: '60' }),
+        post({ transitionEffect: 'spin' }),
+        post({ transitionDuration: -1 }),
+        post({ fontFamily: 'x'.repeat(201) }),
+        post({ burndown: { label: 'あと', targetValue: 100, entries: [{ score: 'a', timestamp: 1 }] } }),
+        post({ messagePresets: [{ name: '通常', messages: [{ id: 1 }] }] }),
+        post({ fontSize: 60, transitionEffect: 'spin' }),
+      ]);
+      expect(responses.map((r) => r.status)).toEqual(Array(8).fill(400));
 
-      expect(response.status).toBe(200);
-      expect(body).toMatchObject({ scoreLabel: 'ハイスコア', scoreValue: '264', fontSize: 60 });
-      expect(await (await GET()).json()).toMatchObject({ scoreValue: '264' });
+      const body = await (await GET()).json();
+      expect(body).toEqual(getInitialStreamData());
     });
 
-    it('rejects requests that are not JSON', async () => {
-      const response = await POST(new NextRequest('http://localhost/api/stream-data', {
-        method: 'POST',
-        headers: { 'Content-Type': 'text/plain' },
-        body: JSON.stringify({ ...getInitialStreamData(), scoreValue: '改ざん' }),
-      }));
-      expect(response.status).toBe(415);
+    it('rejects unknown fields, the score and the effect', async () => {
+      // スコア表示は /api/score-display、エフェクトは PATCH で送る
+      expect((await post({ scoreValue: '改ざん' })).status).toBe(400);
+      expect((await post({ lastEvent: { name: 'STAR', timestamp: 1 } })).status).toBe(400);
+      expect((await post({})).status).toBe(400);
+      expect((await post([])).status).toBe(400);
       expect((await (await GET()).json()).scoreValue).toBe(getInitialStreamData().scoreValue);
     });
 
-    it('should update lastEvent when it is in the payload', async () => {
-        const initialData = getInitialStreamData();
-        const event = { name: 'STAR', timestamp: Date.now() };
-        const payload = {
-            ...initialData,
-            lastEvent: event,
-        };
-
-        const request = new NextRequest('http://localhost/api/stream-data', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(payload),
-        });
-
-        const response = await POST(request);
-        const body = await response.json();
-
-        expect(response.status).toBe(200);
-        expect(body.lastEvent).toEqual(event);
+    it('rejects requests that are not JSON', async () => {
+      expect((await post('{"fontSize":60}', 'text/plain')).status).toBe(415);
+      expect((await post('not json')).status).toBe(400);
     });
   });
 
@@ -140,6 +109,11 @@ describe('Stream Data API', () => {
         revision: 1,
       });
       vi.restoreAllMocks();
+    });
+
+    it('accepts the fireworks of the burndown overlay', async () => {
+      const body = await (await patch({ event: 'FIREWORKS' })).json();
+      expect(body.lastEvent.name).toBe('FIREWORKS');
     });
 
     it('rejects an unknown event', async () => {
