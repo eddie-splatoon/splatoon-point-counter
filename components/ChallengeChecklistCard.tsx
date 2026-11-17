@@ -10,14 +10,14 @@ import {Challenge, SidePanelSettings} from '../lib/sidePanelTypes';
 
 import LiveCard, {LiveCardNote} from './LiveCard';
 
+// 準備の画面でお題を変えたのを見せる間隔
+const POLL_INTERVAL_MS = 5000;
+
 /**
  * 配信中の画面の本日のお題。達成のチェックだけ（追加・削除は準備の画面のサイドパネルのカード）。
  * お題はサイドパネルの設定に含めて丸ごと保存するので、チェックのたびに最新の設定を読み直してから、そのお題の done だけを変えて送る
  * （準備の画面で変えたほかの設定を、開いたときの古い値で戻さないため）
  */
-// 準備の画面でお題を変えたのを見せる間隔
-const POLL_INTERVAL_MS = 5000;
-
 const ChallengeChecklistCard: React.FC = () => {
     const [challenges, setChallenges] = useState<Challenge[] | null>(null);
     const [error, setError] = useState('');
