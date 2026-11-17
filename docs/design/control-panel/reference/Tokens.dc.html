@@ -1,0 +1,116 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<title>デザインの決まり</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&amp;family=Noto+Sans+JP:wght@400;500;700&amp;family=JetBrains+Mono:wght@500;700&amp;display=swap" rel="stylesheet">
+<style>body{margin:0}button{font-family:inherit}</style>
+</helmet>
+<div style="width: 1440px; height: 1000px; box-sizing: border-box; background: #0E1014; color: #ECEEF2; font-family: Inter, 'Noto Sans JP', sans-serif; font-size: 14px; line-height: 1.5; padding: 40px; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 24px">
+  <div style="display: flex; flex-direction: column; gap: 24px">
+    <section style="background: #161A21; border: 1px solid #262B35; border-radius: 16px; padding: 22px">
+      <h2 style="margin: 0 0 14px; font-size: 16px">色 — 面と文字</h2>
+      <div style="display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px">
+        <sc-for list="{{ neutrals }}" as="c" hint-placeholder-count="8">
+          <div style="display: flex; flex-direction: column; gap: 6px"><div style="height: 52px; border-radius: 10px; background: {{ c.hex }}; border: 1px solid #343B48"></div><div style="font-size: 12px; font-weight: 600">{{ c.name }}</div><div style="font-family: 'JetBrains Mono', monospace; font-size: 11px; color: #9AA3B2">{{ c.hex }}</div></div>
+        </sc-for>
+      </div>
+      <h2 style="margin: 22px 0 14px; font-size: 16px">色 — アクセント(上に乗る文字色つき)</h2>
+      <div style="display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 10px">
+        <sc-for list="{{ accents }}" as="a" hint-placeholder-count="5">
+          <div style="display: flex; flex-direction: column; gap: 6px"><div style="height: 52px; border-radius: 10px; background: {{ a.hex }}; color: {{ a.on }}; display: flex; align-items: center; justify-content: center; font-weight: 700">Aa</div><div style="font-size: 12px; font-weight: 600">{{ a.name }}</div><div style="font-family: 'JetBrains Mono', monospace; font-size: 11px; color: #9AA3B2">{{ a.hex }} / {{ a.on }}</div><div style="font-size: 11px; color: #B5BCC8">{{ a.use }}</div></div>
+        </sc-for>
+      </div>
+      <p style="margin: 14px 0 0; color: #9AA3B2; font-size: 12px">アクセントの上の文字は白ではなく濃い色(白だとピンクの上でコントラスト 3:1 を切る)。淡い面(#2A1720 など)は選択中・受付中の背景に。</p>
+    </section>
+    <section style="background: #161A21; border: 1px solid #262B35; border-radius: 16px; padding: 22px">
+      <h2 style="margin: 0 0 14px; font-size: 16px">文字</h2>
+      <div style="color: #9AA3B2; font-size: 12px; margin-bottom: 10px">Inter + Noto Sans JP(数字は tabular-nums)/ キーの数字は JetBrains Mono</div>
+      <sc-for list="{{ type }}" as="t" hint-placeholder-count="6">
+        <div style="display: flex; align-items: baseline; gap: 16px; padding: 6px 0; border-top: 1px solid #232832"><span style="width: 120px; flex: none; font-family: 'JetBrains Mono', monospace; font-size: 11px; color: #9AA3B2">{{ t.spec }}</span><span style="font-size: {{ t.size }}px; font-weight: {{ t.w }}">{{ t.sample }}</span></div>
+      </sc-for>
+    </section>
+  </div>
+  <div style="display: flex; flex-direction: column; gap: 24px">
+    <section style="background: #161A21; border: 1px solid #262B35; border-radius: 16px; padding: 22px">
+      <h2 style="margin: 0 0 14px; font-size: 16px">角丸・余白</h2>
+      <div style="display: flex; gap: 14px; align-items: flex-end">
+        <sc-for list="{{ radii }}" as="r" hint-placeholder-count="6">
+          <div style="display: flex; flex-direction: column; align-items: center; gap: 6px"><div style="width: 64px; height: 48px; border-radius: {{ r.v }}px; background: #222833; border: 1px solid #3A4250"></div><span style="font-family: 'JetBrains Mono', monospace; font-size: 11px">{{ r.label }}</span><span style="font-size: 11px; color: #9AA3B2">{{ r.use }}</span></div>
+        </sc-for>
+      </div>
+      <div style="display: flex; gap: 14px; align-items: flex-end; margin-top: 20px">
+        <sc-for list="{{ spaces }}" as="s" hint-placeholder-count="6">
+          <div style="display: flex; flex-direction: column; align-items: center; gap: 6px"><div style="width: {{ s }}px; height: {{ s }}px; background: #FF4F8B; border-radius: 2px"></div><span style="font-family: 'JetBrains Mono', monospace; font-size: 11px">{{ s }}</span></div>
+        </sc-for>
+        <span style="color: #9AA3B2; font-size: 12px; margin-left: 8px">4 の倍数。カードの中 16、カードの間 16、画面の端 20(狭いとき 12)</span>
+      </div>
+    </section>
+    <section style="background: #161A21; border: 1px solid #262B35; border-radius: 16px; padding: 22px">
+      <h2 style="margin: 0 0 14px; font-size: 16px">ボタン</h2>
+      <div style="display: flex; flex-wrap: wrap; gap: 10px; align-items: center">
+        <button type="button" style="height: 56px; padding: 0 22px; border-radius: 12px; border: 0; background: #3DDC84; color: #062312; font-size: 16px; font-weight: 700">配信中の主ボタン 56〜64</button>
+        <button type="button" style="height: 52px; padding: 0 20px; border-radius: 12px; border: 0; background: #FF4F8B; color: #1A0710; font-size: 16px; font-weight: 700">ピンク 52</button>
+        <button type="button" style="display: inline-flex; align-items: center; gap: 8px; height: 52px; padding: 0 12px; border-radius: 10px; border: 2px solid #2E3542; background: #222833; color: #ECEEF2; font-size: 15px; font-weight: 600"><span style="width: 26px; height: 26px; border-radius: 7px; background: #FF4F8B; color: #1A0710; display: inline-flex; align-items: center; justify-content: center; font-family: 'JetBrains Mono', monospace; font-size: 13px; font-weight: 700">1</span>テロップキー</button>
+      </div>
+      <div style="display: flex; flex-wrap: wrap; gap: 10px; align-items: center; margin-top: 12px">
+        <button type="button" style="height: 40px; padding: 0 16px; border-radius: 10px; border: 0; background: #FF4F8B; color: #1A0710; font-weight: 700">標準 40〜44</button>
+        <button type="button" style="height: 40px; padding: 0 16px; border-radius: 10px; border: 1px solid #343B48; background: #1B1F27; color: #ECEEF2; font-weight: 600">枠線</button>
+        <button type="button" style="height: 40px; padding: 0 16px; border-radius: 10px; border: 1px solid #6B5530; background: #241D12; color: #FFC977; font-weight: 600">休憩</button>
+        <button type="button" style="height: 36px; padding: 0 12px; border-radius: 8px; border: 1px solid #343B48; background: transparent; color: #DDE1E8; font-size: 13px">小 32〜36</button>
+        <button type="button" style="height: 36px; padding: 0 12px; border-radius: 8px; border: 0; background: transparent; color: #FF8A8A; font-size: 13px; font-weight: 600">取り消し系(文字だけ)</button>
+        <button type="button" style="height: 34px; padding: 0 12px; border-radius: 999px; border: 1px solid #3DDC84; background: #163A26; color: #7FE3B0; font-size: 13px; font-weight: 600">切り替えチップ</button>
+      </div>
+    </section>
+    <section style="background: #161A21; border: 1px solid #262B35; border-radius: 16px; padding: 22px; flex: 1 1 auto">
+      <h2 style="margin: 0 0 10px; font-size: 16px">決まりごと</h2>
+      <ul style="margin: 0; padding-left: 18px; display: flex; flex-direction: column; gap: 6px; color: #DDE1E8">
+        <li>保存はすべてその場で。画面右上に「変更はすぐ保存」を出し、「OBSに反映」ボタンは無くす</li>
+        <li>配信中の画面のボタンは高さ 48px 以上。押したらすぐ結果が見える(表示中・受付中など)</li>
+        <li>狭いときは列を折り返し、テロップ → サーモンラン → 参加 → お題 の順で縦に並べる</li>
+        <li>アイコンは線のアイコン(MUI なら Rounded / Outlined 系)。絵文字はプリセットの文の中だけ</li>
+        <li>カードは面の色 + 1px の枠。影やグラデーションは使わない</li>
+      </ul>
+    </section>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":1000}}'>
+class Component extends DCLogic {
+  renderVals() {
+    return {
+      neutrals: [
+        { name: 'background', hex: '#0E1014' }, { name: 'header', hex: '#12151B' }, { name: 'surface(カード)', hex: '#161A21' }, { name: 'surface-2', hex: '#1E232C' },
+        { name: 'border', hex: '#262B35' }, { name: 'border-strong', hex: '#343B48' }, { name: 'text', hex: '#ECEEF2' }, { name: 'text-muted', hex: '#9AA3B2' }
+      ],
+      accents: [
+        { name: 'primary', hex: '#FF4F8B', on: '#1A0710', use: 'テロップ・次の人' },
+        { name: 'success', hex: '#3DDC84', on: '#062312', use: '取り込み・受付中' },
+        { name: 'warning', hex: '#FFB547', on: '#261600', use: '休憩' },
+        { name: 'error', hex: '#FF6B6B', on: '#2A0606', use: '削除・長い休憩' },
+        { name: 'gold', hex: '#FFC83D', on: '#2A1C00', use: '金イクラ' }
+      ],
+      type: [
+        { spec: 'h1 20 / 700', size: 20, w: 700, sample: '準備・配信中・振り返り' },
+        { spec: 'stat 22 / 700', size: 22, w: 700, sample: '1,055' },
+        { spec: 'h2 15 / 700', size: 15, w: 700, sample: 'サーモンラン' },
+        { spec: 'button 15–17 / 700', size: 16, w: 700, sample: 'リザルトを取り込む' },
+        { spec: 'body 14 / 400', size: 14, w: 400, sample: '受付中は、チャットの !参加 で列に入ります' },
+        { spec: 'caption 12 / 400', size: 12, w: 400, sample: '最後の取り込み 20:47' }
+      ],
+      radii: [
+        { v: 6, label: '6', use: 'バッジ' }, { v: 8, label: '8', use: '小ボタン' }, { v: 10, label: '10', use: 'ボタン・入力' },
+        { v: 12, label: '12', use: '主ボタン' }, { v: 14, label: '14', use: 'カード' }, { v: 999, label: 'full', use: 'チップ' }
+      ],
+      spaces: [4, 8, 12, 16, 20, 24]
+    };
+  }
+}
+</script>
+</body>
+</html>

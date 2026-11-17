@@ -4,6 +4,7 @@ import {Alert, Box, Button, Paper, Typography} from '@mui/material';
 import axios from 'axios';
 import React, {useCallback, useEffect, useState} from 'react';
 
+import {monoFontFamily, tokens} from '../app/control-panel/theme';
 import {TELOP_SHORTCUT_KEYS, TelopData, TelopPreset} from '../lib/telopTypes';
 
 import BreakControl from './BreakControl';
@@ -69,13 +70,13 @@ const TelopBar: React.FC<TelopBarProps> = ({reloadKey = 0}) => {
 
     return (
         // スクロールしても押せるよう上部に固定する（下のカードが透けないよう背景は不透明）
-        <Paper elevation={12} sx={{position: 'sticky', top: 0, zIndex: 10, mb: 2, p: 1.5, bgcolor: '#2A2A2A', border: '1px solid rgba(255, 255, 255, 0.15)'}}>
+        <Paper sx={{position: 'sticky', top: 0, zIndex: 10, mb: 4, p: 3}}>
             {/* 席を離れるときの「休憩する」もどのタブからでも押せるよう、ここに置く */}
             <BreakControl/>
             {error && <Alert severity="error" sx={{mb: 1}}>{error}</Alert>}
             {presets && presets.length > 0 ? (
                 // プリセットが多いとバーが高くなるので詰めて並べる。キーの割り当ての無いものは outlined で区別する
-                <Box data-testid="telop-buttons" sx={{display: 'flex', flexWrap: 'wrap', gap: 0.75}}>
+                <Box data-testid="telop-buttons" sx={{display: 'flex', flexWrap: 'wrap', gap: 1.5}}>
                     {presets.map((preset, index) => (
                         <Button
                             key={preset.id}
@@ -85,7 +86,7 @@ const TelopBar: React.FC<TelopBarProps> = ({reloadKey = 0}) => {
                             sx={{textTransform: 'none'}}
                         >
                             {TELOP_SHORTCUT_KEYS[index] !== undefined && (
-                                <Box component="kbd" sx={{mr: 1, px: 0.75, borderRadius: 1, bgcolor: 'rgba(0,0,0,0.3)', fontFamily: 'monospace'}}>
+                                <Box component="kbd" sx={{mr: 2, px: 1.5, borderRadius: `${tokens.radius.badge}px`, bgcolor: 'rgba(0,0,0,0.3)', fontFamily: monoFontFamily}}>
                                     {TELOP_SHORTCUT_KEYS[index]}
                                 </Box>
                             )}

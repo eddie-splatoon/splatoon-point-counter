@@ -12,7 +12,7 @@ const mockedAxios = vi.mocked(axios);
 const renderLoaded = async (settings = getDefaultSidePanelSettings()) => {
   mockedAxios.get.mockResolvedValue({ data: settings, status: 200 });
   render(<SidePanelSettingsPanel />);
-  await screen.findByText('📌 固定枠');
+  await screen.findByText('固定枠');
 };
 
 const lastPosted = () => mockedAxios.post.mock.calls.at(-1)?.[1];

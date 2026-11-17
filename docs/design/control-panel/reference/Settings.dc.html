@@ -1,0 +1,108 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<title>設定 テロップのプリセット — 配信パネル</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&amp;family=Noto+Sans+JP:wght@400;500;700&amp;family=JetBrains+Mono:wght@700&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0;background:#0E1014}
+a{color:#FF7AA8}a:hover{color:#FFA3C4}
+button{font-family:inherit;cursor:pointer}
+</style>
+</helmet>
+<div style="min-height: 100vh; background: #0E1014; color: #ECEEF2; font-family: Inter, 'Noto Sans JP', system-ui, sans-serif; font-size: 14px; line-height: 1.5">
+<header style="display: flex; flex-wrap: wrap; align-items: center; gap: 12px 16px; padding: 10px 20px; border-bottom: 1px solid #262B35; background: #12151B">
+  <a href="Main.dc.html" style="display: inline-flex; align-items: center; gap: 6px; height: 36px; padding: 0 10px; border-radius: 8px; color: #B5BCC8; text-decoration: none; font-weight: 600"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 6l-6 6 6 6"></path></svg>配信中に戻る</a>
+  <h1 style="margin: 0; font-size: 18px; font-weight: 700">設定</h1>
+  <div style="flex: 1 1 0"></div>
+  <span style="display: inline-flex; align-items: center; gap: 6px; color: #9AA3B2; font-size: 12px"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#3DDC84" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12l5 5L20 7"></path></svg>変更はすぐ保存</span>
+</header>
+<div style="display: flex; flex-wrap: wrap; gap: 20px; max-width: 1280px; margin: 0 auto; padding: 20px; box-sizing: border-box">
+  <nav aria-label="設定の項目" style="flex: 1 1 200px; max-width: 240px; display: flex; flex-direction: column; gap: 2px">
+    <sc-for list="{{ nav }}" as="n" hint-placeholder-count="6">
+      <a href="#" aria-current="{{ n.cur }}" style="display: flex; align-items: center; height: 40px; padding: 0 12px; border-radius: 10px; background: {{ n.bg }}; color: {{ n.fg }}; text-decoration: none; font-weight: {{ n.w }}">{{ n.label }}</a>
+    </sc-for>
+  </nav>
+  <main style="flex: 999 1 560px; min-width: 0; display: flex; flex-direction: column; gap: 16px">
+    <section aria-labelledby="free-h" style="background: #161A21; border: 1px solid #262B35; border-radius: 14px; padding: 16px">
+      <h2 id="free-h" style="margin: 0 0 10px; font-size: 15px; font-weight: 700">自由入力で出す</h2>
+      <div style="display: flex; flex-wrap: wrap; gap: 8px">
+        <label style="flex: 1 1 280px; display: flex"><span style="position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0)">テロップの文</span><input placeholder="出したい文(入力中は数字キーのテロップは効きません)" style="flex: 1 1 auto; height: 44px; border-radius: 10px; border: 1px solid #343B48; background: #0E1014; color: #ECEEF2; padding: 0 12px; font-size: 15px"></label>
+        <button type="button" style="height: 44px; padding: 0 18px; border-radius: 10px; border: 0; background: #FF4F8B; color: #1A0710; font-weight: 700">出す</button>
+      </div>
+    </section>
+
+    <section aria-labelledby="preset-h" style="background: #161A21; border: 1px solid #262B35; border-radius: 14px; padding: 16px">
+      <div style="display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 8px; margin-bottom: 4px">
+        <h2 id="preset-h" style="margin: 0; font-size: 15px; font-weight: 700">テロップのプリセット <span style="color: #9AA3B2; font-weight: 500; font-size: 13px">30 / 30</span></h2>
+        <span style="color: #9AA3B2; font-size: 12px">先頭の 10 個が数字キー 1〜0 になります。ドラッグで並べ替え。</span>
+      </div>
+      <div style="display: flex; flex-wrap: wrap; gap: 14px; padding: 8px 0 10px; color: #9AA3B2; font-size: 12px">
+        <span style="display: inline-flex; align-items: center; gap: 4px"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><rect x="3" y="5" width="18" height="14" rx="2"></rect><path d="M7 15h6"></path></svg>テロップに出す</span>
+        <span style="display: inline-flex; align-items: center; gap: 4px"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12a8 8 0 0 1-11.8 7L4 20l1.1-4.6A8 8 0 1 1 21 12z"></path></svg>チャットにコメント</span>
+        <span style="display: inline-flex; align-items: center; gap: 4px"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M11 5L6 9H3v6h3l5 4z"></path><path d="M15.5 8.5a5 5 0 0 1 0 7M18.5 5.5a9 9 0 0 1 0 13"></path></svg>読み上げ</span>
+        <span style="display: inline-flex; align-items: center; gap: 4px"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 20l6-16h1l6 16M7 14h7"></path></svg>共通フォント</span>
+      </div>
+      <ol style="list-style: none; margin: 0; padding: 0">
+        <sc-for list="{{ rows }}" as="r" hint-placeholder-count="12">
+          <li style="display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 8px 0; border-top: 1px solid #232832">
+            <button type="button" aria-label="{{ r.dragLabel }}" style="width: 28px; height: 36px; border: 0; background: transparent; color: #6B7383; cursor: grab; display: inline-flex; align-items: center; justify-content: center"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><path d="M9 6h.01M15 6h.01M9 12h.01M15 12h.01M9 18h.01M15 18h.01"></path></svg></button>
+            <span style="flex: none; display: inline-flex; align-items: center; justify-content: center; width: 26px; height: 26px; border-radius: 7px; background: {{ r.keyBg }}; color: {{ r.keyFg }}; font-family: 'JetBrains Mono', monospace; font-size: 12px; font-weight: 700">{{ r.key }}</span>
+            <label style="flex: 1 1 240px; min-width: 0; display: flex"><span style="position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0)">{{ r.fieldLabel }}</span><input value="{{ r.text }}" style="flex: 1 1 auto; min-width: 0; height: 40px; border-radius: 10px; border: 1px solid #2E3542; background: #0E1014; color: #ECEEF2; padding: 0 12px; font-size: 14px"></label>
+            <div style="display: flex; gap: 4px">
+              <button type="button" aria-label="テロップに出す" aria-pressed="{{ r.display }}" style="width: 40px; height: 40px; border-radius: 10px; border: 1px solid {{ r.dBd }}; background: {{ r.dBg }}; color: {{ r.dFg }}; display: inline-flex; align-items: center; justify-content: center"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><rect x="3" y="5" width="18" height="14" rx="2"></rect><path d="M7 15h6"></path></svg></button>
+              <button type="button" aria-label="チャットにコメント" aria-pressed="{{ r.chat }}" style="width: 40px; height: 40px; border-radius: 10px; border: 1px solid {{ r.cBd }}; background: {{ r.cBg }}; color: {{ r.cFg }}; display: inline-flex; align-items: center; justify-content: center"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12a8 8 0 0 1-11.8 7L4 20l1.1-4.6A8 8 0 1 1 21 12z"></path></svg></button>
+              <button type="button" aria-label="読み上げ" aria-pressed="{{ r.speak }}" style="width: 40px; height: 40px; border-radius: 10px; border: 1px solid {{ r.sBd }}; background: {{ r.sBg }}; color: {{ r.sFg }}; display: inline-flex; align-items: center; justify-content: center"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M11 5L6 9H3v6h3l5 4z"></path><path d="M15.5 8.5a5 5 0 0 1 0 7"></path></svg></button>
+              <button type="button" aria-label="共通フォント" aria-pressed="{{ r.font }}" style="width: 40px; height: 40px; border-radius: 10px; border: 1px solid {{ r.fBd }}; background: {{ r.fBg }}; color: {{ r.fFg }}; display: inline-flex; align-items: center; justify-content: center"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 20l6-16h1l6 16M7 14h7"></path></svg></button>
+              <button type="button" aria-label="{{ r.delLabel }}" style="width: 40px; height: 40px; border-radius: 10px; border: 0; background: transparent; color: #9AA3B2; display: inline-flex; align-items: center; justify-content: center"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3"></path></svg></button>
+            </div>
+          </li>
+        </sc-for>
+      </ol>
+      <p style="margin: 10px 0 0; color: #9AA3B2; font-size: 12px">ほか 18 個 · テロップとチャットのどちらかは必ず ON。今の 1 文字ずつの折り返しは、文を 1 行の入力欄に置いてチェックをアイコンにまとめることで解消。</p>
+    </section>
+  </main>
+</div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1280,"height":900}}'>
+class Component extends DCLogic {
+  renderVals() {
+    var data = [
+      ['ナイス!!', 1, 0, 1, 1], ['ドンマイ!', 1, 0, 1, 1], ['共闘感謝!', 1, 0, 1, 1], ['ありがとうございました!', 1, 0, 1, 1],
+      ['地獄絵図', 1, 0, 0, 0], ['ヤバい', 1, 0, 1, 0], ['ごめーん', 1, 0, 1, 1], ['ありがとう!', 1, 0, 1, 1],
+      ['あぶね', 1, 0, 0, 1], ['おしい', 1, 0, 1, 1], ['こんばんは', 1, 1, 0, 1], ['うま', 0, 1, 0, 1]
+    ];
+    var keys = ['1', '2', '3', '4', '5', '6', '7', '8', '9', '0'];
+    function tog(on, onBd, onBg, onFg) {
+      return on ? [onBd, onBg, onFg] : ['#2E3542', 'transparent', '#6B7383'];
+    }
+    var nav = ['テロップのプリセット', '読み上げ(VOICEVOX)', 'スコア表示の自動更新', '見た目(フォント・切り替え)', 'OBS のブラウザソース(12)', 'その他(キャッシュのクリア)'];
+    return {
+      nav: nav.map(function (x, i) { return { label: x, cur: i === 0 ? 'page' : 'false', bg: i === 0 ? '#2A1720' : 'transparent', fg: i === 0 ? '#FF9CC0' : '#B5BCC8', w: i === 0 ? '700' : '500' }; }),
+      rows: data.map(function (d, i) {
+        var dd = tog(d[1], '#5B3346', '#2A1720', '#FF9CC0');
+        var cc = tog(d[2], '#2C4A6B', '#132235', '#9FD8FF');
+        var ss = tog(d[3], '#2F6B4A', '#163A26', '#7FE3B0');
+        var ff = tog(d[4], '#6B5530', '#241D12', '#FFC977');
+        var hasKey = i < 10;
+        return {
+          text: d[0], key: hasKey ? keys[i] : String(i + 1),
+          keyBg: hasKey ? '#FF4F8B' : '#1E232C', keyFg: hasKey ? '#1A0710' : '#9AA3B2',
+          display: !!d[1], chat: !!d[2], speak: !!d[3], font: !!d[4],
+          dBd: dd[0], dBg: dd[1], dFg: dd[2], cBd: cc[0], cBg: cc[1], cFg: cc[2],
+          sBd: ss[0], sBg: ss[1], sFg: ss[2], fBd: ff[0], fBg: ff[1], fFg: ff[2],
+          fieldLabel: (i + 1) + ' 番目の文', dragLabel: (i + 1) + ' 番目を並べ替え', delLabel: d[0] + ' を消す'
+        };
+      })
+    };
+  }
+}
+</script>
+</body>
+</html>

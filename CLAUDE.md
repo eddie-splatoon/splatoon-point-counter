@@ -52,7 +52,10 @@
 ├── app/                          # Next.js App Router
 │   ├── page.tsx                  # ランチャーページ
 │   ├── layout.tsx                # ルートレイアウト
+│   ├── icon.svg                  # ファビコン（16px 用に簡略化した金イクラ）
 │   ├── control-panel/
+│   │   ├── layout.tsx            # コントロールパネルのフォント（next/font）
+│   │   ├── theme.ts              # コントロールパネルの MUI テーマ（色・角丸・文字・ボタンの高さ）
 │   │   └── page.tsx              # コントロールパネル
 │   ├── obs-overlay/
 │   │   └── page.tsx              # メインオーバーレイ
@@ -154,6 +157,7 @@
 │   ├── ClipPanel.tsx             # コントロールパネルのクリップタブ
 │   ├── JoinQueuePanel.tsx        # コントロールパネルの参加タブ
 │   ├── BreakControl.tsx          # テロップバーの「休憩する」ボタン・解除忘れの注意
+│   ├── SectionTitle.tsx          # コントロールパネルのカードの見出し（アイコン + 文字）
 │   └── BreakOverlay.tsx          # 休憩中オーバーレイの本体（横長 / 縦型配信用で共通）
 ├── lib/
 │   ├── localStorage.ts           # ローカルストレージのラッパー
@@ -184,7 +188,9 @@
 │   ├── breakTypes.ts             # 休憩の型・定数・経過時間の表記（クライアントからも使う）
 │   └── break.ts                  # 休憩の状態（サーバー専用。メモリだけ）
 ├── data/                          # SQLite・Twitch トークン（Git / Docker イメージ管理外）
+├── docs/design/control-panel/      # コントロールパネル刷新の設計書（Claude Design の成果物。README が実装の指示）
 ├── public/                        # 静的アセット
+│   ├── favicon.svg               # アプリのアイコン（金イクラ。コントロールパネル・ランチャーのヘッダー）
 │   └── tips.tsv                  # Tips データ
 ├── tools/
 │   ├── caption-stt/              # 文字起こしスクリプト（Python, README参照）
@@ -276,6 +282,7 @@ export interface StreamData {
 
 #### 重要な機能
 
+- **見た目**: テーマは `app/control-panel/theme.ts`（`docs/design/control-panel/theme.ts` と同じ値。フォントだけ `app/control-panel/layout.tsx` の `next/font` が設定する CSS 変数を使う）。色・角丸・余白は `tokens` から取り、カードは面の色と 1px の枠だけ（影・グラデーション・すりガラスは使わない）。`spacing` は 4px 単位（`p: 4` = 16px）。カードの見出しは `components/SectionTitle.tsx`（MUI の Rounded のアイコン + 文字。見出しに絵文字は使わない）。今の画面は配信のフェーズ（準備・配信中・振り返り）で作り直している途中（親 Issue #125。設計書は `docs/design/control-panel/README.md`）
 - **ローカルストレージ**: ユーザー設定を `'control-panel-state'` キーで永続化
 - **エフェクトのトリガー**: `/api/stream-data` の `lastEvent` フィールドを更新（ボタンから。話した言葉で出すのは文字起こしスクリプト）
 
