@@ -194,6 +194,28 @@ describe('TelopPanel', () => {
     expect(lastPut().presets[0]).toEqual({ ...nice, speak: !nice.speak, text: 'ナイスー!' });
   });
 
+  it('keeps a trailing space while typing after the text is saved', async () => {
+    await renderLoaded();
+    const input = editor().getByLabelText('1 番目の文');
+
+    fireEvent.focus(input);
+    fireEvent.change(input, { target: { value: 'ナイス ' } });
+    await waitFor(() => expect(lastPut()?.presets[0].text).toBe('ナイス'));
+
+    expect(input).toHaveValue('ナイス ');
+  });
+
+  it('does not send a save when a row is deleted while its text is waiting to be saved', async () => {
+    await renderLoaded();
+
+    fireEvent.change(editor().getByLabelText('1 番目の文'), { target: { value: 'ナイスー' } });
+    await act(async () => fireEvent.click(screen.getByRole('button', { name: 'プリセット「ナイス!」を削除' })));
+    await act(() => new Promise((resolve) => setTimeout(resolve, 700)));
+
+    expect(mockedAxios.put).toHaveBeenCalledTimes(1);
+    expect(lastPut().presets.map((p) => p.text)).toEqual(['カタパッド残った…', '満潮きた', 'ヘルプ感謝']);
+  });
+
   it('does not save an empty text', async () => {
     await renderLoaded();
     const input = editor().getByLabelText('1 番目の文');

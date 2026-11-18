@@ -53,11 +53,12 @@ const move = <T, >(list: T[], from: number, to: number) => {
 /** プリセットの文の入力欄。打ち終えて少し待つか、入力欄から離れる・Enter で保存する（30 文字を超えた・空の文は保存しない） */
 const PresetTextInput: React.FC<{preset: TelopPreset; index: number; onCommit: (text: string) => void}> = ({preset, index, onCommit}) => {
     const [draft, setDraft] = useState(preset.text);
-    // 保存した・ほかで変わった文に合わせる（打っている途中の文は、保存されるまで preset.text が変わらないので戻さない）
+    const [focused, setFocused] = useState(false);
+    // ほかで変わった文（保存の失敗で読み込み直したときなど）に合わせる。入力中は打っている文を残す（離れたときに保存する）
     const [savedText, setSavedText] = useState(preset.text);
     if (savedText !== preset.text) {
         setSavedText(preset.text);
-        setDraft(preset.text);
+        if (!focused) setDraft(preset.text);
     }
     const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
     const commitRef = useRef<() => void>(() => undefined);
@@ -66,7 +67,10 @@ const PresetTextInput: React.FC<{preset: TelopPreset; index: number; onCommit: (
     const commit = () => {
         if (timer.current) clearTimeout(timer.current);
         timer.current = null;
-        if (normalized !== null && normalized !== preset.text) onCommit(normalized);
+        if (normalized === null || normalized === preset.text) return;
+        // 自分の保存では入力欄を整えた文に戻さない（打っている途中の末尾の空白を消さないため）
+        setSavedText(normalized);
+        onCommit(normalized);
     };
     useEffect(() => {
         commitRef.current = commit;
@@ -85,7 +89,11 @@ const PresetTextInput: React.FC<{preset: TelopPreset; index: number; onCommit: (
                 if (timer.current) clearTimeout(timer.current);
                 timer.current = setTimeout(() => commitRef.current(), TEXT_SAVE_DELAY_MS);
             }}
-            onBlur={commit}
+            onFocus={() => setFocused(true)}
+            onBlur={() => {
+                setFocused(false);
+                commit();
+            }}
             onKeyDown={(e) => {
                 if (e.key !== 'Enter' || e.nativeEvent.isComposing) return;
                 e.preventDefault();
@@ -175,7 +183,10 @@ const TelopPanel: React.FC<TelopPanelProps> = ({onPresetsChange}) => {
 
     const savePresets = (change: (current: TelopPreset[]) => TelopPreset[]) => {
         if (!presetsRef.current) return;
-        const next = change(presetsRef.current);
+        const current = presetsRef.current;
+        const next = change(current);
+        // 変わらない保存は送らない（削除した行の、待っていた文の保存など）
+        if (next.length === current.length && next.every((p, i) => p === current[i])) return;
         presetsRef.current = next;
         setPresets(next);
         setError('');
