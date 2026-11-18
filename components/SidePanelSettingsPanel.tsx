@@ -1,47 +1,25 @@
 'use client';
 
-import ChecklistRoundedIcon from '@mui/icons-material/ChecklistRounded';
-import FlagRoundedIcon from '@mui/icons-material/FlagRounded';
-import PushPinRoundedIcon from '@mui/icons-material/PushPinRounded';
-import RemoveCircleIcon from '@mui/icons-material/RemoveCircle';
-import SyncRoundedIcon from '@mui/icons-material/SyncRounded';
-import {
-    Alert,
-    Box,
-    Button,
-    Checkbox,
-    FormControlLabel,
-    IconButton,
-    Paper,
-    TextField,
-    ToggleButton,
-    ToggleButtonGroup,
-    Typography,
-} from '@mui/material';
-import axios from 'axios';
-import React, {useCallback, useEffect, useState} from 'react';
+import ViewSidebarRoundedIcon from '@mui/icons-material/ViewSidebarRounded';
+import {Alert, Box, TextField, Typography} from '@mui/material';
+import React, {useState} from 'react';
 
 import {
-    Challenge,
     FULL_HEIGHT_SLOTS,
-    MAX_CHALLENGES,
-    MAX_CHALLENGE_LENGTH,
-    MAX_CHALLENGE_LINES,
     MAX_FOLLOWER_GOAL,
     MAX_ROTATE_SECONDS,
     MIN_ROTATE_SECONDS,
     SIDE_PANEL_SLOTS,
     SIDE_PANEL_SLOT_LABELS,
-    SidePanelSettings,
     SLOT_AREA_HEIGHT,
+    SidePanelSettings,
     SidePanelSlot,
     exceedsSlotArea,
-    normalizeChallengeText,
 } from '../lib/sidePanelTypes';
 
-import SectionTitle from './SectionTitle';
-
-const paperSx = {mb: 4, p: 4};
+import ChoiceChip from './ChoiceChip';
+import LiveCard from './LiveCard';
+import {SidePanelSettingsState} from './useSidePanelSettings';
 
 const isValidSeconds = (value: string) =>
     /^\d+$/.test(value) && Number(value) >= MIN_ROTATE_SECONDS && Number(value) <= MAX_ROTATE_SECONDS;
@@ -50,66 +28,23 @@ const isValidSeconds = (value: string) =>
 const isValidFollowerGoal = (value: string) =>
     value === '' || (/^\d+$/.test(value) && Number(value) >= 1 && Number(value) <= MAX_FOLLOWER_GOAL);
 
-/** コントロールパネルの「サイドパネル」タブ。変更はその場で保存される */
-const SidePanelSettingsPanel: React.FC = () => {
-    const [settings, setSettings] = useState<SidePanelSettings | null>(null);
-    const [secondsInput, setSecondsInput] = useState('');
-    const [followerGoalInput, setFollowerGoalInput] = useState('');
-    const [newChallenge, setNewChallenge] = useState('');
-    const [error, setError] = useState('');
+const labelSx = {display: 'block', mt: 4, mb: 1.5, fontSize: 12, color: 'text.secondary'} as const;
 
-    const load = useCallback(async () => {
-        try {
-            const res = await axios.get<SidePanelSettings>('/api/side-panel');
-            setSettings(res.data);
-            setSecondsInput(String(res.data.rotateSeconds));
-            setFollowerGoalInput(res.data.followerGoal === null ? '' : String(res.data.followerGoal));
-        } catch {
-            setError('サイドパネルの設定の読み込みに失敗しました。サーバーを確認してください。');
-        }
-    }, []);
-
-    useEffect(() => {
-        // マウント時に API から設定を読み込む（SalmonRunPanel と同じパターン）
-        // eslint-disable-next-line react-hooks/set-state-in-effect
-        void load();
-    }, [load]);
-
-    const save = async (delta: Partial<SidePanelSettings>) => {
-        if (!settings) return;
-        const next = {...settings, ...delta};
-        setSettings(next);
-        setError('');
-        // 表示は送信前に更新しておく。応答で上書きすると、素早い連続操作で古い応答が新しい選択を戻してしまう
-        try {
-            await axios.post('/api/side-panel', next);
-        } catch {
-            setError('設定の保存に失敗しました。');
-            await load();
-        }
-    };
-
-    if (!settings) {
-        return error ? <Alert severity="error">{error}</Alert> : <Typography>読み込み中...</Typography>;
+const SidePanelForm: React.FC<{settings: SidePanelSettings; update: SidePanelSettingsState['update']}> = ({settings, update}) => {
+    const [secondsInput, setSecondsInput] = useState(String(settings.rotateSeconds));
+    const [followerGoalInput, setFollowerGoalInput] = useState(settings.followerGoal === null ? '' : String(settings.followerGoal));
+    // 保存の失敗で読み込み直したときや、ほかの画面で変えたときは欄も合わせる（入力途中の不正な値では設定が変わらないので、打っている文字は戻さない）
+    const [shown, setShown] = useState({rotateSeconds: settings.rotateSeconds, followerGoal: settings.followerGoal});
+    if (shown.rotateSeconds !== settings.rotateSeconds || shown.followerGoal !== settings.followerGoal) {
+        setShown({rotateSeconds: settings.rotateSeconds, followerGoal: settings.followerGoal});
+        if (shown.rotateSeconds !== settings.rotateSeconds) setSecondsInput(String(settings.rotateSeconds));
+        if (shown.followerGoal !== settings.followerGoal) setFollowerGoalInput(settings.followerGoal === null ? '' : String(settings.followerGoal));
     }
-
-    const saveChallenges = (challenges: Challenge[]) => void save({challenges});
-
-    // 改行は配信画面で折り返したい位置としてそのまま残す（各行の前後の空白と空行は除く）
-    const normalizedChallenge = normalizeChallengeText(newChallenge);
-    const canAddChallenge = normalizedChallenge !== null && settings.challenges.length < MAX_CHALLENGES;
-
-    const handleAddChallenge = () => {
-        if (!canAddChallenge) return;
-        const id = Math.max(0, ...settings.challenges.map((c) => c.id)) + 1;
-        saveChallenges([...settings.challenges, {id, text: normalizedChallenge, done: false}]);
-        setNewChallenge('');
-    };
 
     // 表示順はサーバーと同じく SIDE_PANEL_SLOTS の順にそろえる。固定枠とローテーション枠の両方が空になる変更は無視する（最低1つは残す）
     const saveSlots = (fixedSlots: SidePanelSlot[], rotationSlots: SidePanelSlot[]) => {
         if (fixedSlots.length + rotationSlots.length === 0) return;
-        void save({
+        update({
             fixedSlots: SIDE_PANEL_SLOTS.filter((slot) => fixedSlots.includes(slot)),
             rotationSlots: SIDE_PANEL_SLOTS.filter((slot) => rotationSlots.includes(slot)),
         });
@@ -119,171 +54,110 @@ const SidePanelSettingsPanel: React.FC = () => {
     // 配信画面では見切れに気づきにくいので、収まらない見込みの組み合わせはここで知らせる
     const overflows = exceedsSlotArea(settings);
 
-    const handleFixedSlotsChange = (value: SidePanelSlot[]) => {
-        const added = value.find((slot) => !settings.fixedSlots.includes(slot));
-        if (added !== undefined && FULL_HEIGHT_SLOTS.includes(added)) {
+    const toggleFixed = (slot: SidePanelSlot) => {
+        if (settings.fixedSlots.includes(slot)) {
+            saveSlots(settings.fixedSlots.filter((s) => s !== slot), settings.rotationSlots);
+            return;
+        }
+        if (FULL_HEIGHT_SLOTS.includes(slot)) {
             // 残りの高さいっぱいを使うスロットを固定するときは、それ1つだけにする
-            saveSlots([added], []);
+            saveSlots([slot], []);
             return;
         }
         // 固定枠に移したスロットはローテーション枠から外す。固定していた全高のスロットは、他を固定したら外す
-        const fixed = added === undefined ? value : value.filter((slot) => !FULL_HEIGHT_SLOTS.includes(slot));
-        saveSlots(fixed, settings.rotationSlots.filter((slot) => !fixed.includes(slot)));
+        const fixed = [...settings.fixedSlots.filter((s) => !FULL_HEIGHT_SLOTS.includes(s)), slot];
+        saveSlots(fixed, settings.rotationSlots.filter((s) => !fixed.includes(s)));
     };
 
-    // 固定枠にあるスロットはローテーション枠のボタンを無効にしているので、ここには来ない
-    const handleRotationSlotsChange = (value: SidePanelSlot[]) => saveSlots(settings.fixedSlots, value);
+    // 固定枠にあるスロットはローテーション枠のチップを無効にしているので、ここには来ない
+    const toggleRotation = (slot: SidePanelSlot) => saveSlots(
+        settings.fixedSlots,
+        settings.rotationSlots.includes(slot) ? settings.rotationSlots.filter((s) => s !== slot) : [...settings.rotationSlots, slot],
+    );
 
     const handleSecondsChange = (value: string) => {
         setSecondsInput(value);
-        if (isValidSeconds(value)) void save({rotateSeconds: Number(value)});
+        if (isValidSeconds(value)) update({rotateSeconds: Number(value)});
     };
 
     const handleFollowerGoalChange = (value: string) => {
         setFollowerGoalInput(value);
-        if (isValidFollowerGoal(value)) void save({followerGoal: value === '' ? null : Number(value)});
+        if (isValidFollowerGoal(value)) update({followerGoal: value === '' ? null : Number(value)});
     };
 
     return (
         <>
-            {error && <Alert severity="error" sx={{mb: 2}}>{error}</Alert>}
+            <Typography id="side-panel-fixed" component="span" sx={{...labelSx, mt: 0}}>固定枠（上から順に常に出す）</Typography>
+            <Box role="group" aria-labelledby="side-panel-fixed" sx={{display: 'flex', flexWrap: 'wrap', gap: 1.5}}>
+                {SIDE_PANEL_SLOTS.map((slot) => (
+                    <ChoiceChip key={slot} selected={settings.fixedSlots.includes(slot)} onClick={() => toggleFixed(slot)}>
+                        {SIDE_PANEL_SLOT_LABELS[slot]}
+                    </ChoiceChip>
+                ))}
+            </Box>
 
-            <Paper sx={paperSx}>
-                <SectionTitle icon={FlagRoundedIcon}>フォロワー目標（上段のゲージ）</SectionTitle>
+            <Typography id="side-panel-rotation" component="span" sx={labelSx}>ローテーション枠（固定枠の下で順に切り替える）</Typography>
+            <Box role="group" aria-labelledby="side-panel-rotation" sx={{display: 'flex', flexWrap: 'wrap', gap: 1.5}}>
+                {SIDE_PANEL_SLOTS.map((slot) => (
+                    <ChoiceChip
+                        key={slot}
+                        tone="success"
+                        selected={settings.rotationSlots.includes(slot)}
+                        disabled={fixedFullHeight || settings.fixedSlots.includes(slot)}
+                        onClick={() => toggleRotation(slot)}
+                    >
+                        {SIDE_PANEL_SLOT_LABELS[slot]}
+                    </ChoiceChip>
+                ))}
+            </Box>
+            <Typography variant="caption" sx={{display: 'block', mt: 1.5}}>
+                {fixedFullHeight
+                    ? `${settings.fixedSlots.map((s) => SIDE_PANEL_SLOT_LABELS[s]).join('・')}を固定している間は、ローテーション枠は使えません。`
+                    : `固定枠で選んだものは選べません。${FULL_HEIGHT_SLOTS.map((s) => SIDE_PANEL_SLOT_LABELS[s]).join('・')}を固定するときはそれ 1 つだけになります。`}
+            </Typography>
+            {overflows && (
+                <Alert severity="warning" sx={{mt: 2}}>
+                    固定枠とローテーション枠を合わせると、サイドパネル下段（約 {SLOT_AREA_HEIGHT}px）に収まらず、下が見切れる可能性があります。固定枠を減らすか、ローテーション枠に移してください（高さは目安です）。
+                </Alert>
+            )}
+
+            <Box sx={{display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: 2.5, mt: 4}}>
                 <TextField
-                    label="目標フォロワー数"
-                    type="number"
-                    value={followerGoalInput}
-                    onChange={(e) => handleFollowerGoalChange(e.target.value)}
-                    error={!isValidFollowerGoal(followerGoalInput)}
-                    helperText="Twitch でフォロワー目標を設定している場合はそちらを優先します。空欄で、Twitch の目標が無いときはゲージを表示しません。"
-                    slotProps={{htmlInput: {min: 1, max: MAX_FOLLOWER_GOAL, step: 1}}}
-                    fullWidth
-                    margin="normal"
-                />
-                <Typography variant="caption" sx={{display: 'block', color: 'text.secondary'}}>
-                    フォロワー数は Twitch 連携（<code>pnpm twitch</code>）から取得します。起動していないときはゲージを表示しません。
-                </Typography>
-            </Paper>
-
-            <Paper sx={paperSx}>
-                <SectionTitle icon={ChecklistRoundedIcon}>本日のお題</SectionTitle>
-                <Box data-testid="challenge-editor" sx={{my: 1}}>
-                    {settings.challenges.length === 0 ? (
-                        <Typography variant="body2" sx={{color: 'text.secondary', p: 1}}>お題がありません</Typography>
-                    ) : (
-                        settings.challenges.map((challenge) => (
-                            <Box key={challenge.id} sx={{display: 'flex', alignItems: 'center', borderBottom: '1px dotted rgba(255,255,255,0.2)'}}>
-                                <FormControlLabel
-                                    sx={{flex: 1, mr: 0}}
-                                    label={<span style={{whiteSpace: 'pre-line'}}>{challenge.text}</span>}
-                                    control={
-                                        <Checkbox
-                                            checked={challenge.done}
-                                            onChange={(e) => saveChallenges(settings.challenges.map((c) => c.id === challenge.id ? {...c, done: e.target.checked} : c))}
-                                        />
-                                    }
-                                />
-                                <IconButton
-                                    size="small"
-                                    color="error"
-                                    onClick={() => saveChallenges(settings.challenges.filter((c) => c.id !== challenge.id))}
-                                    aria-label={`お題「${challenge.text.replace(/\n/g, ' ')}」を削除`}
-                                >
-                                    <RemoveCircleIcon fontSize="small"/>
-                                </IconButton>
-                            </Box>
-                        ))
-                    )}
-                </Box>
-                <Box sx={{display: 'flex', gap: 1, alignItems: 'flex-start'}}>
-                    <TextField
-                        label="新しいお題"
-                        value={newChallenge}
-                        onChange={(e) => setNewChallenge(e.target.value)}
-                        // Enter は改行。Ctrl / ⌘ + Enter で追加する（変換中は追加しない。追加時はブラウザが改行を入れないよう止める）
-                        onKeyDown={(e) => {
-                            if (e.key !== 'Enter' || !(e.ctrlKey || e.metaKey) || e.nativeEvent.isComposing) return;
-                            e.preventDefault();
-                            handleAddChallenge();
-                        }}
-                        error={newChallenge.trim() !== '' && normalizedChallenge === null}
-                        helperText={`改行を入れると、その位置で折り返して表示します（${MAX_CHALLENGE_LINES} 行・改行を除いて ${MAX_CHALLENGE_LENGTH} 文字まで）。Ctrl / ⌘ + Enter で追加できます。`}
-                        multiline
-                        minRows={2}
-                        maxRows={MAX_CHALLENGE_LINES}
-                        fullWidth
-                    />
-                    <Button variant="contained" onClick={handleAddChallenge} disabled={!canAddChallenge} sx={{minWidth: '100px'}}>追加</Button>
-                </Box>
-                <Typography variant="caption" sx={{display: 'block', mt: 1, color: 'text.secondary'}}>
-                    最大 {MAX_CHALLENGES} 個（2〜4 個がおすすめ）。チェックを入れると、オーバーレイでスタンプが押されます。サイドパネルに出すには、下の固定枠かローテーション枠で「本日のお題」を選んでください。
-                </Typography>
-            </Paper>
-
-            <Paper sx={paperSx}>
-                <SectionTitle icon={PushPinRoundedIcon}>固定枠</SectionTitle>
-                <ToggleButtonGroup
-                    value={settings.fixedSlots}
-                    onChange={(e, value: SidePanelSlot[]) => handleFixedSlotsChange(value)}
-                    aria-label="固定枠"
-                >
-                    {SIDE_PANEL_SLOTS.map((slot) => (
-                        <ToggleButton key={slot} value={slot}>{SIDE_PANEL_SLOT_LABELS[slot]}</ToggleButton>
-                    ))}
-                </ToggleButtonGroup>
-                <Typography variant="caption" sx={{display: 'block', mt: 1, color: 'text.secondary'}}>
-                    サイドパネル下段の上から順に、常に表示します。{FULL_HEIGHT_SLOTS.map((s) => SIDE_PANEL_SLOT_LABELS[s]).join('・')}は残りの高さいっぱいを使うため、固定するときはそれ1つだけになります。
-                </Typography>
-            </Paper>
-
-            <Paper sx={paperSx}>
-                <SectionTitle icon={SyncRoundedIcon}>ローテーション枠</SectionTitle>
-                <ToggleButtonGroup
-                    value={settings.rotationSlots}
-                    onChange={(e, value: SidePanelSlot[]) => handleRotationSlotsChange(value)}
-                    aria-label="ローテーション枠"
-                >
-                    {SIDE_PANEL_SLOTS.map((slot) => (
-                        <ToggleButton
-                            key={slot}
-                            value={slot}
-                            disabled={fixedFullHeight || settings.fixedSlots.includes(slot)}
-                        >
-                            {SIDE_PANEL_SLOT_LABELS[slot]}
-                        </ToggleButton>
-                    ))}
-                </ToggleButtonGroup>
-                <Typography variant="caption" sx={{display: 'block', mt: 1, color: 'text.secondary'}}>
-                    {fixedFullHeight
-                        ? `${settings.fixedSlots.map((s) => SIDE_PANEL_SLOT_LABELS[s]).join('・')}を固定している間は、ローテーション枠は使えません。`
-                        : '固定枠の下の残りのスペースで、選んだものを1つずつ順に切り替えます。固定枠で選んでいるものは選べません。表示するものが無いもの（お題が0個など）は飛ばします。何も選ばなければ切り替えません。'}
-                </Typography>
-                {overflows && (
-                    <Alert severity="warning" sx={{mt: 2}}>
-                        固定枠とローテーション枠を合わせると、サイドパネル下段（約 {SLOT_AREA_HEIGHT}px）に収まらず、下が見切れる可能性があります。固定枠を減らすか、ローテーション枠に移してください（高さは目安です）。
-                    </Alert>
-                )}
-                <TextField
-                    label="切り替え秒数"
+                    size="small"
+                    label="切り替えの秒数"
                     type="number"
                     value={secondsInput}
                     onChange={(e) => handleSecondsChange(e.target.value)}
                     error={!isValidSeconds(secondsInput)}
                     helperText={`${MIN_ROTATE_SECONDS}〜${MAX_ROTATE_SECONDS} 秒`}
                     slotProps={{htmlInput: {min: MIN_ROTATE_SECONDS, max: MAX_ROTATE_SECONDS, step: 1}}}
-                    fullWidth
-                    margin="normal"
                 />
-                <Typography variant="caption" sx={{display: 'block', mt: 1, color: 'text.secondary'}}>
-                    設定はすぐに保存され、オーバーレイに反映されます。
-                </Typography>
-                <Typography variant="caption" sx={{display: 'block', mt: 0.5, color: 'text.secondary'}}>
-                    縦型配信（1080x1920）では /side-panel-overlay/vertical を 990x440 のブラウザソースとして画面上部（x=45, y=115 付近）に置くと、同じ設定のスロットを横並びで表示します（スロットは枠に収まる大きさに自動で拡大・縮小）。
-                </Typography>
-            </Paper>
+                <TextField
+                    size="small"
+                    label="フォロワー目標"
+                    type="number"
+                    value={followerGoalInput}
+                    onChange={(e) => handleFollowerGoalChange(e.target.value)}
+                    error={!isValidFollowerGoal(followerGoalInput)}
+                    helperText="空欄なら Twitch の目標だけ"
+                    slotProps={{htmlInput: {min: 1, max: MAX_FOLLOWER_GOAL, step: 1}}}
+                />
+            </Box>
+            <Typography variant="caption" sx={{display: 'block', mt: 2}}>
+                フォロワーのゲージは Twitch 連携（<code>pnpm twitch</code>）を起動しているときだけ出ます。Twitch でフォロワー目標を設定していればそちらを優先します。
+            </Typography>
         </>
     );
 };
+
+/** 準備の画面のサイドパネルのカード（固定枠・ローテーション枠・切り替えの秒数・フォロワー目標）。変更はその場で保存する */
+const SidePanelSettingsPanel: React.FC<{state: SidePanelSettingsState}> = ({state}) => (
+    <LiveCard icon={ViewSidebarRoundedIcon} title="サイドパネル">
+        {state.error && <Alert severity="error" sx={{mb: 3}}>{state.error}</Alert>}
+        {state.settings
+            ? <SidePanelForm settings={state.settings} update={state.update}/>
+            : !state.error && <Typography sx={{color: 'text.secondary'}}>読み込み中...</Typography>}
+    </LiveCard>
+);
 
 export default SidePanelSettingsPanel;

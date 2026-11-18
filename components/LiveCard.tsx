@@ -18,7 +18,7 @@ interface LiveCardProps {
 // sx の width: 1 は 100% になるので、px で書く
 const visuallyHidden = {position: 'absolute', width: '1px', height: '1px', margin: '-1px', overflow: 'hidden', clip: 'rect(0 0 0 0)', whiteSpace: 'nowrap'} as const;
 
-/** 配信中の画面のカード（見出し + 右の補足）。見出しは section の名前になる */
+/** 配信中・準備の画面のカード（見出し + 右の補足）。見出しは section の名前になる */
 const LiveCard: React.FC<LiveCardProps> = ({icon: Icon, title, aside, hideTitle = false, sx, children}) => {
     const id = useId();
     return (
