@@ -878,7 +878,7 @@ def fake_reconnect(monkeypatch, first_screen, after=SALMON_TAB):
     return taps
 
 
-@pytest.mark.parametrize("label", ["接続", "再開"])
+@pytest.mark.parametrize("label", ["接続", "再開", "やり直す"])
 def test_ensure_connected_presses_the_reconnect_button(monkeypatch, label):
     """一時停止の画面のボタン（macOS 27 は「接続」、26 までは「再開」）を押す。説明文の「接続」は押さない"""
     taps = fake_reconnect(monkeypatch, [
@@ -908,7 +908,11 @@ def test_ensure_connected_does_nothing_when_connected(monkeypatch):
     assert taps == []
 
 
-@pytest.mark.parametrize("fixture, label", [("mirroring-paused.png", "再開"), ("mirroring-timeout.png", "接続")])
+@pytest.mark.parametrize("fixture, label", [
+    ("mirroring-paused.png", "再開"),
+    ("mirroring-timeout.png", "接続"),
+    ("mirroring-interrupted.png", "やり直す"),
+])
 def test_find_button_reads_the_paused_mirroring_screen(fixture, label):
     """実際の一時停止・タイムアウトの画面から、説明文（「…接続が…」）ではなくボタンを見つける"""
     with Image.open(FIXTURES / fixture) as image:

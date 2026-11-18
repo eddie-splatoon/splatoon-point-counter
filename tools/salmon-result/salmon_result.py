@@ -1512,8 +1512,9 @@ def wait_for_screen(window: Window, *keywords: str, timeout: float = SCREEN_TIME
 
 
 # 一時停止したミラーリングをつなぎ直すボタン。触らずにいると「接続が一時停止されました」（「再開」）になり、
-# さらに数分たつと「タイムアウトです」（「接続」）になる（7 分ほどのバイトの後はたいていタイムアウトのほう）
-RECONNECT_BUTTONS = ("接続", "再開")
+# さらに数分たつと「タイムアウトです」（「接続」）になる（7 分ほどのバイトの後はたいていタイムアウトのほう）。
+# iPhone に届かなかったときは「接続が中断されました」（「やり直す」）になる
+RECONNECT_BUTTONS = ("接続", "再開", "やり直す")
 
 
 def find_button(boxes: list[Box], *labels: str) -> Box | None:
@@ -1535,7 +1536,9 @@ def ensure_connected(window: Window, log=print) -> None:
         return
     _, boxes = wait_for_screen(window, "サーモンラン", timeout=RECONNECT_TIMEOUT_SECONDS)
     if find_box(boxes, "サーモンラン") is None:
-        raise ImportError_("iPhone ミラーリングに接続できませんでした")
+        raise ImportError_(
+            "iPhone ミラーリングに接続できませんでした（iPhone が Mac の近くにあり、Bluetooth と Wi-Fi が有効か確認してください）"
+        )
 
 
 def is_job_detail(boxes: list[Box]) -> bool:
