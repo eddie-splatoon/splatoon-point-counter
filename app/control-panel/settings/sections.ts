@@ -3,6 +3,7 @@
 export const SETTINGS_SECTIONS = [
     {id: 'telop', label: 'テロップのプリセット'},
     {id: 'voice', label: '読み上げ（VOICEVOX）'},
+    {id: 'stamps', label: '画面スタンプ'},
     {id: 'score', label: 'スコア表示の自動更新'},
     {id: 'appearance', label: '見た目'},
     {id: 'obs', label: 'OBS のブラウザソース'},

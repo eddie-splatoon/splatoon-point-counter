@@ -15,6 +15,7 @@ import {OVERLAY_PAGES, OverlayPage} from '../lib/overlayPages';
 import {useTelopPresets} from './controlPanelContext';
 import LiveCard, {LiveCardNote} from './LiveCard';
 import {ScoreAutoUpdateCard} from './ScoreDisplayPanel';
+import ScreenStampSettingsPanel from './ScreenStampSettingsPanel';
 import {AppearanceSettingsCard, StreamSettingsGate} from './StreamSettingsPanels';
 import TelopPanel from './TelopPanel';
 import {useStreamSettings} from './useStreamSettings';
@@ -91,6 +92,7 @@ const ObsSection: React.FC = () => {
 const SECTION_CONTENT: Record<SettingsSectionId, React.FC> = {
     telop: TelopSection,
     voice: VoiceSettingsPanel,
+    stamps: ScreenStampSettingsPanel,
     score: ScoreAutoUpdateCard,
     appearance: AppearanceSection,
     obs: ObsSection,

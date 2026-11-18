@@ -833,6 +833,58 @@ export async function publishReconnected(joinUrl: string, fetchFn: FetchFn = fet
   if (!res.ok) throw new Error(`${joinUrl} への送信に失敗しました: ${res.status}`);
 }
 
+// ---- 画面スタンプ ----
+
+// スタンプを除いた文字がこれより長いメッセージは、言葉だけのメッセージではないので送らない（判定はアプリが辞書でする）
+const MAX_STAMP_TEXT_LENGTH = 20;
+// アプリが受け付けるスタンプの名前の数
+const MAX_STAMP_EMOTES = 20;
+
+export interface StampChat {
+  text: string;
+  emotes: string[];
+}
+
+/**
+ * 画面スタンプの判定にアプリへ送るもの。text はスタンプ・メンションを除いた文字（NFKC・ゼロ幅 / 方向制御文字の除去）、
+ * emotes はメッセージのスタンプの名前（前から順・重複なし）。配信者自身も出してよい（テロップの代わりに使える）。
+ * 共有チャットのほかのチャンネル・ボット、文字が長いのにスタンプも無いメッセージは null（送らない）
+ */
+export function parseStampChat(event: unknown, context: JoinCommandContext): StampChat | null {
+  const chat = (event ?? {}) as ChatMessageEvent;
+  if (!chat.chatter_user_id) return null;
+  if (chat.source_broadcaster_user_id && chat.source_broadcaster_user_id !== context.broadcasterId) return null;
+  if (context.ignoredLogins.has((chat.chatter_user_login ?? '').toLowerCase())) return null;
+  const fragments = chat.message?.fragments ?? [{ type: 'text', text: chat.message?.text ?? '' }];
+  const raw = fragments.filter((f) => f.type === 'text').map((f) => f.text ?? '').join('');
+  const text = raw.normalize('NFKC').replace(INVISIBLE_PATTERN, '').trim();
+  const emotes = [...new Set(fragments.filter((f) => f.type === 'emote' && f.text).map((f) => f.text as string))].slice(0, MAX_STAMP_EMOTES);
+  if (emotes.length === 0 && (text === '' || Array.from(text).length > MAX_STAMP_TEXT_LENGTH)) return null;
+  // スタンプがあれば判定はそちらでするので、長い文字は送らない
+  return { text: Array.from(text).length > MAX_STAMP_TEXT_LENGTH ? '' : text, emotes };
+}
+
+/** チャットのメッセージを /api/screen-stamp に送る。ログは出したとき・間隔の制限で出さなかったときだけ、user_id と結果（本文は出さない） */
+export async function handleStampChat(event: unknown, stampUrl: string, context: JoinCommandContext, fetchFn: FetchFn = fetch, log = console.log): Promise<void> {
+  const stamp = parseStampChat(event, context);
+  if (!stamp) return;
+  const userId = (event as ChatMessageEvent).chatter_user_id ?? '';
+  const res = await fetchFn(stampUrl, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ action: 'chat', userId, ...stamp }),
+  });
+  if (!res.ok) throw new Error(`${stampUrl} への送信に失敗しました: ${res.status}`);
+  const { result, stampId } = (await res.json()) as { result: string; stampId: string | null };
+  if (result === 'shown' || result === 'throttled') log(`画面スタンプ: user_id=${userId} ${stampId} → ${result}`);
+}
+
+/** 配信の終了を画面スタンプに知らせる（配信ごとの集計を閉じる） */
+export async function publishStampOffline(stampUrl: string, fetchFn: FetchFn = fetch): Promise<void> {
+  const res = await fetchFn(stampUrl, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'offline' }) });
+  if (!res.ok) throw new Error(`${stampUrl} への送信に失敗しました: ${res.status}`);
+}
+
 // ---- クリップ ----
 
 export interface Clip {
@@ -1019,6 +1071,7 @@ async function main(): Promise<void> {
   const clipApiUrl = process.env.TWITCH_CLIP_API_URL ?? new URL('/api/clip', apiUrl).toString();
   const telopUrl = new URL('/api/telop', clipApiUrl).toString();
   const joinUrl = process.env.TWITCH_JOIN_API_URL ?? new URL('/api/join-queue', apiUrl).toString();
+  const stampUrl = process.env.TWITCH_STAMP_API_URL ?? new URL('/api/screen-stamp', apiUrl).toString();
   const log = (message: string) => console.log(`[twitch] ${message}`);
 
   const client = new TwitchClient({ clientId, tokenPath: process.env.TWITCH_TOKEN_PATH ?? DEFAULT_TOKEN_PATH, log });
@@ -1116,7 +1169,15 @@ async function main(): Promise<void> {
           handleJoinCommand(event, joinOptions).catch((error) => {
             log(`警告: 参加受付に送信できませんでした: ${(error as Error).message}`);
           });
+          handleStampChat(event, stampUrl, chatContext, fetch, log).catch((error) => {
+            log(`警告: 画面スタンプに送信できませんでした: ${(error as Error).message}`);
+          });
           return;
+        }
+        if (type === 'stream.offline') {
+          publishStampOffline(stampUrl).catch((error) => {
+            log(`警告: 画面スタンプに配信の終了を送信できませんでした: ${(error as Error).message}`);
+          });
         }
         if (type.startsWith('channel.chat.') || type === 'stream.offline') {
           handleModerationEvent(type, event, joinUrl, fetch, log).catch((error) => {

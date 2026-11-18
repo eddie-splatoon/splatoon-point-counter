@@ -26,8 +26,11 @@ import {
   createClipProcessor,
   handleJoinCommand,
   handleModerationEvent,
+  handleStampChat,
   loadToken,
   parseIgnoredLogins,
+  parseStampChat,
+  publishStampOffline,
   parseJoinCommand,
   moderationRequest,
   publishReconnected,
@@ -1263,5 +1266,77 @@ describe('publishReconnected', () => {
     const fetchFn = vi.fn(async () => new Response('{}', { status: 200 }));
     await publishReconnected('http://x/api/join-queue', fetchFn);
     expect(JSON.parse((fetchFn.mock.calls[0] as unknown as [string, RequestInit])[1].body as string)).toEqual({ action: 'reconnected' });
+  });
+});
+
+describe('parseStampChat', () => {
+  const context = { broadcasterId: '123', ignoredLogins: new Set(['nightbot']) };
+  const chat = (fragments: { type: string; text: string }[], overrides: Record<string, unknown> = {}) => ({
+    chatter_user_id: '999',
+    chatter_user_login: 'viewer_a',
+    chatter_user_name: 'ViewerA',
+    message_id: 'm1',
+    message: { text: fragments.map((f) => f.text).join(''), fragments },
+    source_broadcaster_user_id: null,
+    ...overrides,
+  });
+
+  it('sends the text without emotes, normalized, and the emote names in order without duplicates', () => {
+    expect(parseStampChat(chat([{ type: 'text', text: '\u200B！ナイス ' }]), context)).toEqual({ text: '!ナイス', emotes: [] });
+    expect(parseStampChat(chat([
+      { type: 'emote', text: 'eddiesp2Nice' }, { type: 'text', text: ' ' }, { type: 'emote', text: 'Kappa' }, { type: 'emote', text: 'eddiesp2Nice' },
+    ]), context)).toEqual({ text: '', emotes: ['eddiesp2Nice', 'Kappa'] });
+  });
+
+  it('includes the streamer', () => {
+    expect(parseStampChat(chat([{ type: 'text', text: 'ナイス' }], { chatter_user_id: '123' }), context)).toEqual({ text: 'ナイス', emotes: [] });
+  });
+
+  it('skips shared chat from other channels, bots, empty and long messages', () => {
+    expect(parseStampChat(chat([{ type: 'text', text: 'ナイス' }], { source_broadcaster_user_id: '456' }), context)).toBeNull();
+    expect(parseStampChat(chat([{ type: 'text', text: 'ナイス' }], { chatter_user_login: 'Nightbot' }), context)).toBeNull();
+    expect(parseStampChat(chat([{ type: 'mention', text: '@someone' }]), context)).toBeNull();
+    expect(parseStampChat(chat([{ type: 'text', text: '今のナイスだったけどもう少し早く投げられたかも' }]), context)).toBeNull();
+    // スタンプがあれば、長い文字は送らずにスタンプだけ送る
+    expect(parseStampChat(chat([{ type: 'text', text: '今のナイスだったけどもう少し早く投げられたかも' }, { type: 'emote', text: 'eddiesp2Nice' }]), context))
+      .toEqual({ text: '', emotes: ['eddiesp2Nice'] });
+  });
+});
+
+describe('handleStampChat', () => {
+  const context = { broadcasterId: '123', ignoredLogins: new Set<string>() };
+  const event = { chatter_user_id: '999', chatter_user_name: 'ViewerA', message: { text: 'ナイス', fragments: [{ type: 'text', text: 'ナイス' }] } };
+
+  it('posts the chat and logs only the user id and the result', async () => {
+    const fetchFn = vi.fn(async () => new Response(JSON.stringify({ result: 'shown', stampId: 'nice' }), { status: 200 }));
+    const log = vi.fn();
+    await handleStampChat(event, 'http://x/api/screen-stamp', context, fetchFn, log);
+
+    expect(JSON.parse((fetchFn.mock.calls[0] as unknown as [string, RequestInit])[1].body as string))
+      .toEqual({ action: 'chat', userId: '999', text: 'ナイス', emotes: [] });
+    expect(log).toHaveBeenCalledWith('画面スタンプ: user_id=999 nice → shown');
+    expect(log.mock.calls.flat().join()).not.toMatch(/ViewerA|ナイス/);
+  });
+
+  it('does not log messages that matched nothing, and does not send skipped ones', async () => {
+    const fetchFn = vi.fn(async () => new Response(JSON.stringify({ result: 'none', stampId: null }), { status: 200 }));
+    const log = vi.fn();
+    await handleStampChat(event, 'http://x', context, fetchFn, log);
+    expect(log).not.toHaveBeenCalled();
+    await handleStampChat({ ...event, source_broadcaster_user_id: '456' }, 'http://x', context, fetchFn, log);
+    expect(fetchFn).toHaveBeenCalledTimes(1);
+  });
+
+  it('fails on an error response', async () => {
+    const fetchFn = vi.fn(async () => new Response('', { status: 500 }));
+    await expect(handleStampChat(event, 'http://x', context, fetchFn, vi.fn())).rejects.toThrow('500');
+  });
+});
+
+describe('publishStampOffline', () => {
+  it('tells the screen stamps that the stream ended', async () => {
+    const fetchFn = vi.fn(async () => new Response('{}', { status: 200 }));
+    await publishStampOffline('http://x/api/screen-stamp', fetchFn);
+    expect(JSON.parse((fetchFn.mock.calls[0] as unknown as [string, RequestInit])[1].body as string)).toEqual({ action: 'offline' });
   });
 });
