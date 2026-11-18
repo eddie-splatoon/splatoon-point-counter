@@ -175,6 +175,7 @@
 │   ├── JoinQueuePanel.tsx        # 配信中の画面の参加のカード・準備の画面の参加型の準備（配信者の評価）・振り返りの画面のこれまでの受付
 │   ├── TimelyFixesCard.tsx       # 配信中の画面の「ときどき直すもの」（スコア表示・ブキ埋めカードをダイアログで直す）
 │   ├── ChallengeChecklistCard.tsx # 配信中の画面の本日のお題（達成のチェックだけ）
+│   ├── compactLayout.tsx         # 幅 600px 未満のコンパクト表示（useCompact・配信中の画面の折りたたみ CompactLive・CompactRest）
 │   ├── LiveCard.tsx              # 配信中・準備の画面のカード（見出し + 右の補足）
 │   ├── LiveDialog.tsx            # 配信中の画面のダイアログ（右上の × で閉じる）
 │   ├── BreakControl.tsx          # 休憩の状態（useBreak）とヘッダーのボタン・帯・解除忘れの注意
@@ -318,7 +319,7 @@ export interface StreamData extends StreamSettings {
 | 振り返り | `/control-panel/review` | 今の見た目のままカードを縦に並べる（#131）: 振り返りの画像 → 過去のセッション（`SalmonPastSessionsCard`。画像は下で選んだセッション、選ばなければ今のセッション）→ ブキ埋め（`WeaponCardPanel`。画像・新しいカード）→ これまでの受付（`JoinHistoryCard`） |
 | 設定 | `/control-panel/settings/[section]`（`settings/sections.ts` のメニュー。`/control-panel/settings` は最初のメニューへ移る） | テロップのプリセット（`TelopPanel`）・読み上げ（`VoiceSettingsPanel`）・スコア表示の自動更新（`ScoreAutoUpdateCard`）・見た目（フォント・メッセージの切り替え）・OBS のブラウザソース（`lib/overlayPages.ts` のすべて） |
 
-狭い幅の並べ方は #133 で作り直す。
+- **狭い幅（600px 未満）のコンパクト表示**（#133。設計書 2・3 章、キャンバス LiveNarrow）: 判定は `components/compactLayout.tsx` の `useCompact`（MUI の `useMediaQuery(breakpoints.down('sm'))`）。ヘッダーはフェーズの切り替えをセレクト（`NativeSelect`。選ぶと `router.push`）に、休憩を「休憩」/「終わる m:ss」に、「変更はすぐ保存」は保存に失敗したときだけ出す。画面の端の余白は 12px。配信中の画面は `CompactLive` で、テロップ（先頭 10 個、キー 46px）→ サーモンラン（取り込み・手入力、戦績は 1 行）→ 視聴者参加（受付中だけ。状態・いまの人・次の人）→ 本日のお題、の後に折りたたみ 1 つ。カードの「ふだん使わない部分」（ほかのテロップ・記録の一覧・列の一覧・キケン度・お知らせ・受付を始める）は `CompactRest` で囲み、コンパクト表示のときだけ折りたたみの置き場（slot）に portal で描く（カードを 2 回描くと状態や読み込みが二重になるため。それ以外の画面ではその場に描く）。エフェクト・クリップとときどき直すものは、折りたたみの中にそのまま置く。折りたたみは閉じていても描いたまま `hidden` にする（置き場と中の状態を保つため）。カードは `useInCompactLive` で見出しを隠して詰める。配信中の画面は表示した後に幅が決まるまで何も描かない（`useCompactAfterMount`。狭い画面でいったん横長を描いてから作り直すと、読み込みが二重になるため）。600px をまたぐとカードは作り直される（開いていたダイアログは閉じる。リザルトの取り込みの進み具合は、`SalmonRunPanel` が表示したときに途中の取り込みを読み直して出し続ける）
 
 - **設定の画面**（#132。設計書 6 章）: 左にメニュー（220px）、600px 未満はメニューを上のセレクト（`NativeSelect`。選ぶと `router.push`）にする。テロップのプリセットは 1 行に 1 つ（つまみ・番号のバッジ（先頭 10 個はピンク＝数字キー）・文の入力欄（`flex: 1 1 240px`）・4 つのアイコンのトグル（`aria-pressed`、40×40）・削除）で、幅が足りなければトグルが下に折り返す。文は打ち終えて `TEXT_SAVE_DELAY_MS`（500ms）待つか、入力欄から離れる・Enter で保存する（空・30 文字超は保存しない）。保存はそのときの最新のプリセットに重ねる（`presetsRef`。変わらない保存は送らない）。入力中は、自分の保存や読み込み直しで打っている文を書き換えない（末尾の空白が消えないように）。外せない ON のトグル（テロップとチャットの最後の 1 つ）は押せないが色は残す。OBS のブラウザソースは `OVERLAY_PAGES` の名前・URL（コピーのボタン）・大きさ（無ければ「音声のみ」）
 

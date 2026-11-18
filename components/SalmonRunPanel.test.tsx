@@ -319,6 +319,17 @@ describe('SalmonRunPanel result import', () => {
     expect(button).toBeEnabled();
   });
 
+  it('picks up an import still in progress when the card is opened again', async () => {
+    // 画面を開き直した・幅が変わってカードを作り直したとき、途中の取り込みの進み具合を出し続ける
+    mockImportStatus(importRequest({ status: 'processing' }), importRequest({ status: 'processing' }), importRequest({ status: 'succeeded', playedAt: '2026/11/10 21:05', jobId: 1, recordedCount: 1 }));
+    render(<SalmonRunPanel />);
+
+    expect(await screen.findByText(/イカリング3から読み取り中/)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'リザルトを取り込む' })).toBeDisabled();
+    expect(await screen.findByText('記録しました（2026/11/10 21:05 のバイト）', {}, { timeout: 3000 })).toBeInTheDocument();
+    expect(mockedAxios.post).not.toHaveBeenCalled();
+  });
+
   it('shows how many jobs were recorded including the missed ones', async () => {
     render(<SalmonRunPanel />);
     const button = await screen.findByRole('button', { name: 'リザルトを取り込む' });

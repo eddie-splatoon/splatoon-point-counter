@@ -44,6 +44,7 @@ import {
     roundHazard,
 } from '../lib/joinQueueTypes';
 
+import {CompactRest, useInCompactLive} from './compactLayout';
 import LiveCard from './LiveCard';
 import SectionTitle from './SectionTitle';
 
@@ -110,6 +111,9 @@ function RatingText({rating, unreadable, stale = false}: {rating: JoinRating | n
         </>
     );
 }
+
+// コンパクト表示（幅 600px 未満）の「次の人を呼ぶ」の高さ
+const COMPACT_NEXT_HEIGHT = 48;
 
 const bigButtonSx = {height: tokens.height.live, borderRadius: `${tokens.radius.primary}px`, fontSize: 16} as const;
 
@@ -188,23 +192,21 @@ const JoinQueuePanel: React.FC = () => {
     };
 
     const open = queue?.open ?? false;
+    const compact = useInCompactLive();
 
-    return (
-        <LiveCard
-            icon={GroupAddRoundedIcon}
-            title="視聴者参加"
-            sx={{borderColor: open ? 'success.main' : 'divider'}}
-            aside={queue && (open ? (
-                <Chip
-                    size="small"
-                    label={`受付中 · 列 ${queue.entries.length} 人`}
-                    icon={<Box component="span" sx={{width: 8, height: 8, borderRadius: '50%', bgcolor: 'success.main', ml: '8px !important'}}/>}
-                    sx={{bgcolor: tokens.color.successSoft, color: '#7FE3B0'}}
-                />
-            ) : (
-                <Chip size="small" label="受付していません" sx={{bgcolor: 'background.default', color: 'text.secondary'}}/>
-            ))}
-        >
+    const statusChip = queue && (open ? (
+        <Chip
+            size="small"
+            label={`受付中 · 列 ${queue.entries.length} 人`}
+            icon={<Box component="span" sx={{width: 8, height: 8, borderRadius: '50%', bgcolor: 'success.main', ml: '8px !important'}}/>}
+            sx={{bgcolor: tokens.color.successSoft, color: '#7FE3B0'}}
+        />
+    ) : (
+        <Chip size="small" label="受付していません" sx={{bgcolor: 'background.default', color: 'text.secondary'}}/>
+    ));
+
+    const alerts = (
+        <>
             {error && <Alert severity="error" sx={{mb: 2}}>{error}</Alert>}
             {queue?.reconnectedAt && (
                 <Alert
@@ -215,86 +217,132 @@ const JoinQueuePanel: React.FC = () => {
                     {formatTime(queue.reconnectedAt)} に Twitch に再接続しました（その間の参加は受け付けられていない可能性あり）。チャットを見て、並びたい人がいないか確かめてください。
                 </Alert>
             )}
+        </>
+    );
 
-            {queue && !open && (
-                <>
-                    <Button variant="contained" fullWidth onClick={() => send({action: 'open'}, '受付を始められませんでした。')} sx={bigButtonSx}>
-                        受付を始める
-                    </Button>
-                    <Typography variant="caption" sx={{display: 'block', mt: 2, color: 'text.secondary'}}>
-                        チャットの <code>{JOIN_HOW_TO}</code> で列に入り、<code>!取消</code> で抜けます（Twitch 連携 <code>pnpm twitch</code> を起動しておく）。評価はこの画面だけに出ます。
-                    </Typography>
-                </>
-            )}
+    const startSection = queue && !open && (
+        <>
+            <Button variant="contained" fullWidth onClick={() => send({action: 'open'}, '受付を始められませんでした。')} sx={bigButtonSx}>
+                受付を始める
+            </Button>
+            <Typography variant="caption" sx={{display: 'block', mt: 2, color: 'text.secondary'}}>
+                チャットの <code>{JOIN_HOW_TO}</code> で列に入り、<code>!取消</code> で抜けます（Twitch 連携 <code>pnpm twitch</code> を起動しておく）。評価はこの画面だけに出ます。
+            </Typography>
+        </>
+    );
 
-            {queue && open && (
-                <>
-                    <Box sx={{bgcolor: 'background.default', borderRadius: `${tokens.radius.control}px`, px: 3, py: 2.5, mb: 2.5}}>
-                        <Typography sx={{fontSize: 12, color: 'text.secondary'}}>いまの人</Typography>
-                        {queue.current ? (
-                            <Box data-testid="join-current" sx={{display: 'flex', flexWrap: 'wrap', alignItems: 'baseline', gap: 2}}>
-                                <Typography component="strong" sx={{fontSize: 18, fontWeight: 700}}>{queue.current.userName}</Typography>
-                                <RatingText rating={queue.current.rating} unreadable={queue.current.unreadable} stale={stale(queue.current.ratedAt)}/>
+    const currentAndNext = queue && open && (
+        <>
+            <Box sx={{bgcolor: 'background.default', borderRadius: `${tokens.radius.control}px`, px: 3, py: compact ? 1.5 : 2.5, mb: compact ? 2 : 2.5}}>
+                <Typography sx={{fontSize: 12, color: 'text.secondary'}}>いまの人</Typography>
+                {queue.current ? (
+                    <Box data-testid="join-current" sx={{display: 'flex', flexWrap: 'wrap', alignItems: 'baseline', gap: 2}}>
+                        <Typography component="strong" sx={{fontSize: compact ? 16 : 18, fontWeight: 700}}>{queue.current.userName}</Typography>
+                        <RatingText rating={queue.current.rating} unreadable={queue.current.unreadable} stale={stale(queue.current.ratedAt)}/>
+                    </Box>
+                ) : (
+                    <Typography variant="body2" sx={{color: 'text.secondary'}}>まだ呼んでいません。</Typography>
+                )}
+            </Box>
+            <Button
+                variant="contained"
+                fullWidth
+                onClick={() => send({action: 'next'}, '次の人を呼べませんでした。')}
+                disabled={queue.entries.length === 0}
+                sx={compact ? {...bigButtonSx, height: COMPACT_NEXT_HEIGHT, fontSize: 15} : bigButtonSx}
+            >
+                次の人を呼ぶ
+            </Button>
+        </>
+    );
+
+    // 列の一覧・キケン度・お知らせ・受付を終わる（コンパクト表示では最後の折りたたみに入れる）
+    const details = queue && open && (
+        <>
+            {queue.entries.length === 0 ? (
+                <Typography variant="body2" sx={{mt: compact ? 0 : 2.5, color: 'text.secondary'}}>まだ誰も並んでいません。</Typography>
+            ) : (
+                // 列が長くても、カードが画面からはみ出さないようにする
+                <Box component="ol" aria-label="受付の列" sx={{listStyle: 'none', m: 0, mt: compact ? 0 : 2.5, p: 0, maxHeight: 220, overflowY: 'auto'}}>
+                    {queue.entries.map((entry) => (
+                        <Box component="li" key={entry.userId} sx={{display: 'flex', alignItems: 'center', gap: 2, py: 1, borderTop: '1px solid #232832'}}>
+                            <Typography variant="body2" sx={{width: 20, flex: 'none', color: 'text.secondary', fontVariantNumeric: 'tabular-nums'}}>{entry.position}</Typography>
+                            <Box sx={{flex: '1 1 auto', minWidth: 0, display: 'flex', flexWrap: 'wrap', alignItems: 'baseline', columnGap: 2}}>
+                                <Typography variant="body2" sx={{fontWeight: 600}}>{entry.userName}</Typography>
+                                <RatingText rating={entry.rating} unreadable={entry.unreadable} stale={stale(entry.ratedAt)}/>
                             </Box>
-                        ) : (
-                            <Typography variant="body2" sx={{color: 'text.secondary'}}>まだ呼んでいません。</Typography>
-                        )}
-                    </Box>
-                    <Button
-                        variant="contained"
-                        fullWidth
-                        onClick={() => send({action: 'next'}, '次の人を呼べませんでした。')}
-                        disabled={queue.entries.length === 0}
-                        sx={bigButtonSx}
-                    >
-                        次の人を呼ぶ
-                    </Button>
-
-                    {queue.entries.length === 0 ? (
-                        <Typography variant="body2" sx={{mt: 2.5, color: 'text.secondary'}}>まだ誰も並んでいません。</Typography>
-                    ) : (
-                        // 列が長くても、カードが画面からはみ出さないようにする
-                        <Box component="ol" aria-label="受付の列" sx={{listStyle: 'none', m: 0, mt: 2.5, p: 0, maxHeight: 220, overflowY: 'auto'}}>
-                            {queue.entries.map((entry) => (
-                                <Box component="li" key={entry.userId} sx={{display: 'flex', alignItems: 'center', gap: 2, py: 1, borderTop: '1px solid #232832'}}>
-                                    <Typography variant="body2" sx={{width: 20, flex: 'none', color: 'text.secondary', fontVariantNumeric: 'tabular-nums'}}>{entry.position}</Typography>
-                                    <Box sx={{flex: '1 1 auto', minWidth: 0, display: 'flex', flexWrap: 'wrap', alignItems: 'baseline', columnGap: 2}}>
-                                        <Typography variant="body2" sx={{fontWeight: 600}}>{entry.userName}</Typography>
-                                        <RatingText rating={entry.rating} unreadable={entry.unreadable} stale={stale(entry.ratedAt)}/>
-                                    </Box>
-                                    <IconButton
-                                        size="small"
-                                        onClick={() => send({action: 'remove', userId: entry.userId}, '列から外せませんでした。')}
-                                        aria-label={`${entry.userName} を列から外す`}
-                                    >
-                                        <CloseRoundedIcon fontSize="small"/>
-                                    </IconButton>
-                                </Box>
-                            ))}
+                            <IconButton
+                                size="small"
+                                onClick={() => send({action: 'remove', userId: entry.userId}, '列から外せませんでした。')}
+                                aria-label={`${entry.userName} を列から外す`}
+                            >
+                                <CloseRoundedIcon fontSize="small"/>
+                            </IconButton>
                         </Box>
-                    )}
-
-                    <RoomHazard queue={queue}/>
-
-                    <Box sx={{display: 'flex', flexWrap: 'wrap', gap: 1.5, mt: 2.5}}>
-                        <Button variant="outlined" size="small" onClick={() => announce('merge')} sx={{borderColor: '#5B3346', color: '#FF9CC0'}}>合流のお知らせ</Button>
-                        <Button variant="outlined" size="small" onClick={() => announce('private')} sx={{borderColor: '#5B3346', color: '#FF9CC0'}}>プラベのお知らせ</Button>
-                        <Button size="small" color="error" onClick={() => setConfirmingClose(true)} sx={{ml: 'auto'}}>受付を終わる</Button>
-                    </Box>
-                    {notice && <Alert severity="success" sx={{mt: 2}} onClose={() => setNotice('')}>{notice}</Alert>}
-                </>
+                    ))}
+                </Box>
             )}
 
-            <Dialog open={confirmingClose} onClose={() => setConfirmingClose(false)}>
-                <DialogTitle>受付を終了しますか？</DialogTitle>
-                <DialogContent>
-                    <DialogContentText>列といまの人が消えます（チャットの !参加 も受け付けなくなります）。人数だけを「これまでの受付」に残します。</DialogContentText>
-                </DialogContent>
-                <DialogActions>
-                    <Button onClick={() => setConfirmingClose(false)}>やめる</Button>
-                    <Button onClick={handleClose} color="error" variant="contained">終了する</Button>
-                </DialogActions>
-            </Dialog>
+            <RoomHazard queue={queue}/>
+
+            <Box sx={{display: 'flex', flexWrap: 'wrap', gap: 1.5, mt: 2.5}}>
+                <Button variant="outlined" size="small" onClick={() => announce('merge')} sx={{borderColor: '#5B3346', color: '#FF9CC0'}}>合流のお知らせ</Button>
+                <Button variant="outlined" size="small" onClick={() => announce('private')} sx={{borderColor: '#5B3346', color: '#FF9CC0'}}>プラベのお知らせ</Button>
+                <Button size="small" color="error" onClick={() => setConfirmingClose(true)} sx={{ml: 'auto'}}>受付を終わる</Button>
+            </Box>
+            {notice && <Alert severity="success" sx={{mt: 2}} onClose={() => setNotice('')}>{notice}</Alert>}
+        </>
+    );
+
+    const closeDialog = (
+        <Dialog open={confirmingClose} onClose={() => setConfirmingClose(false)}>
+            <DialogTitle>受付を終了しますか？</DialogTitle>
+            <DialogContent>
+                <DialogContentText>列といまの人が消えます（チャットの !参加 も受け付けなくなります）。人数だけを「これまでの受付」に残します。</DialogContentText>
+            </DialogContent>
+            <DialogActions>
+                <Button onClick={() => setConfirmingClose(false)}>やめる</Button>
+                <Button onClick={handleClose} color="error" variant="contained">終了する</Button>
+            </DialogActions>
+        </Dialog>
+    );
+
+    if (compact) {
+        // コンパクト表示: 受付中だけカードを出し（状態・いまの人・次の人）、残りと「受付を始める」は最後の折りたたみに入れる。
+        // エラー・再接続の知らせは、見落とさないようにカードの外でも出す
+        return (
+            <>
+                {open ? (
+                    <LiveCard icon={GroupAddRoundedIcon} title="視聴者参加" hideTitle sx={{p: 2.5, borderColor: 'success.main'}}>
+                        {alerts}
+                        <Box sx={{mb: 2}}>{statusChip}</Box>
+                        {currentAndNext}
+                    </LiveCard>
+                ) : (error || queue?.reconnectedAt) && <Box>{alerts}</Box>}
+                <CompactRest slot="join">
+                    <Box>
+                        {statusChip && !open && <Box sx={{mb: 2}}>{statusChip}</Box>}
+                        {startSection}
+                        {details}
+                    </Box>
+                </CompactRest>
+                {closeDialog}
+            </>
+        );
+    }
+
+    return (
+        <LiveCard
+            icon={GroupAddRoundedIcon}
+            title="視聴者参加"
+            sx={{borderColor: open ? 'success.main' : 'divider'}}
+            aside={statusChip}
+        >
+            {alerts}
+            {startSection}
+            {currentAndNext}
+            {details}
+            {closeDialog}
         </LiveCard>
     );
 };
