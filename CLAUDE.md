@@ -592,6 +592,7 @@ Twitch のフォロワー数とフォロワー目標を受け取る機能と、�
 - 集計: 配信の枠ごとに、スタンプごとの表示回数と出した人の数を `app_state`（キー `screenStampStats`）に残す
   - 名前・本文は残さない。人数を数える user_id はメモリだけ
   - 出すたびに今の枠を書き込み、`offline` で閉じる。サーバーを再起動しても閉じていない枠に数え続ける（人数は再起動の後に出した人だけ数え直す）
+  - `offline` が届かなくても（スクリプトが止まっていたなど）、`SCREEN_STAMP_WINDOW_GAP_MS`（6 時間）スタンプが出なければ、最後に出した時刻（`lastShownAt`）で閉じる
   - 28 日（`SCREEN_STAMP_STATS_DAYS`）を過ぎたものは捨てる。振り返りの画面の `ScreenStampHistoryCard` に出す
 - `GET` はオーバーレイ用（`{current, serverTime}`）。`?view=settings` で設定、`?view=stats` で集計を返す。POST / PUT は `Content-Type: application/json` 必須
 - オーバーレイの本体は `components/ScreenStampOverlay.tsx`（`layout: 'landscape' | 'portrait'`）
