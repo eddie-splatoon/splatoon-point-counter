@@ -59,9 +59,12 @@ const toDraft = (settings: ScreenStampSettings): Draft => ({
     stamps: settings.stamps.map((s) => ({id: s.id, label: s.label, words: s.words.join('、'), emotes: s.emotes.join('、'), imageUrl: s.imageUrl ?? ''})),
 });
 
+const isBlank = (s: StampDraft) => [s.label, s.words, s.emotes, s.imageUrl].every((v) => v.trim() === '');
+
+// 足したばかりで何も入れていないスタンプは保存しない（ほかの編集やスイッチの保存を止めないように）
 const fromDraft = (draft: Draft): ScreenStampSettings | null => parseScreenStampSettings({
     enabled: draft.enabled,
-    stamps: draft.stamps.map((s) => ({
+    stamps: draft.stamps.filter((s) => !isBlank(s)).map((s) => ({
         id: s.id, label: s.label, words: splitStampWords(s.words), emotes: splitStampWords(s.emotes), imageUrl: s.imageUrl.trim() || null,
     })),
 });
@@ -129,7 +132,7 @@ const ScreenStampSettingsPanel: React.FC = () => {
         setDraft(next);
         save(next);
     };
-    // 足しただけでは保存しない（ラベルが空で保存できないので、打ち終えたときに保存する）
+    // 足しただけでは保存しない（何か入れて打ち終えたときに保存する）
     const addStamp = () => setDraft({...draft, stamps: [...draft.stamps, {id: `stamp-${Date.now()}`, label: '', words: '', emotes: '', imageUrl: ''}]});
     // 打ち終えたとき（離れた・Enter）に保存する。新しく足したスタンプはラベルを入れるまで保存できない
     const commitOnEnter = (e: React.KeyboardEvent) => {

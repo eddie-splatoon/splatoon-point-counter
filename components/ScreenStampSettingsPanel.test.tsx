@@ -74,6 +74,15 @@ describe('ScreenStampSettingsPanel', () => {
     fireEvent.click(await screen.findByLabelText('画面スタンプを出す'));
     await waitFor(() => expect(lastSaved().enabled).toBe(false));
   });
+
+  it('still saves other changes while a newly added stamp is left empty', async () => {
+    render(<ScreenStampSettingsPanel />);
+    await screen.findByRole('listitem', { name: 'ナイス' });
+    fireEvent.click(screen.getByRole('button', { name: 'スタンプを追加' }));
+    fireEvent.click(screen.getByLabelText('画面スタンプを出す'));
+    await waitFor(() => expect(lastSaved()).toEqual({ ...DEFAULT_SCREEN_STAMP_SETTINGS, enabled: false }));
+    expect(screen.queryByText(/保存できない入力があります/)).not.toBeInTheDocument();
+  });
 });
 
 describe('ScreenStampHistoryCard', () => {
@@ -83,6 +92,7 @@ describe('ScreenStampHistoryCard', () => {
         windows: [{
           startedAt: new Date(2026, 10, 18, 18, 0).getTime(),
           endedAt: null,
+          lastShownAt: new Date(2026, 10, 18, 19, 0).getTime(),
           stamps: [{ id: 'donmai', label: 'ドンマイ', shown: 2, users: 2 }, { id: 'nice', label: 'ナイス', shown: 5, users: 3 }],
         }],
       },
