@@ -23,7 +23,9 @@ export const MAX_WAV_BYTES = 20_000_000;
 
 /** 保存済みの読み上げ設定。未保存、または不正なら既定値（読み上げ無効） */
 export function loadVoiceSettings(): VoiceSettings {
-    const saved = parseVoiceSettings(getAppState(VOICE_STATE_KEY));
+    const stored = getAppState(VOICE_STATE_KEY);
+    // showCredit は後から足した項目なので、保存値に無ければ表示する（既定）とみなす
+    const saved = parseVoiceSettings(stored && typeof stored === 'object' ? {showCredit: true, ...stored} : stored);
     return typeof saved === 'string' ? getDefaultVoiceSettings() : saved;
 }
 

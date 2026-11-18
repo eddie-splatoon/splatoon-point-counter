@@ -17,7 +17,7 @@ describe('normalizeSpeechText', () => {
 });
 
 describe('parseVoiceSettings', () => {
-  const valid = { enabled: true, speakerId: 3, speakerName: ' ずんだもん ', speedScale: 1.2, volumeScale: 0.8 };
+  const valid = { enabled: true, speakerId: 3, speakerName: ' ずんだもん ', speedScale: 1.2, volumeScale: 0.8, showCredit: false };
 
   it('accepts the default settings', () => {
     expect(parseVoiceSettings(getDefaultVoiceSettings())).toEqual(getDefaultVoiceSettings());
@@ -37,6 +37,7 @@ describe('parseVoiceSettings', () => {
     ['a too slow speed', { ...valid, speedScale: 0.4 }],
     ['a negative volume', { ...valid, volumeScale: -0.1 }],
     ['a non-finite volume', { ...valid, volumeScale: Infinity }],
+    ['a missing showCredit', { ...valid, showCredit: undefined }],
   ])('rejects %s', (_, body) => {
     expect(typeof parseVoiceSettings(body)).toBe('string');
   });
@@ -64,5 +65,9 @@ describe('parseSpeakers', () => {
 describe('voiceCredit', () => {
   it('formats the credit', () => {
     expect(voiceCredit('ずんだもん')).toBe('VOICEVOX:ずんだもん');
+  });
+
+  it('uses the notation required by the character', () => {
+    expect(voiceCredit('もち子さん')).toBe('VOICEVOX:もち子(cv 明日葉よもぎ)');
   });
 });

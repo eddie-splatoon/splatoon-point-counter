@@ -2,7 +2,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { __TEST_ONLY_setDb, openDb, setAppState } from './db';
-import { MAX_WAV_BYTES, VOICE_STATE_KEY, __TEST_ONLY_resetSpeechQueue, enqueueSpeech, fetchSpeakers, findSpeech, listSpeech, synthesize, synthesizeSpeech } from './speech';
+import { MAX_WAV_BYTES, VOICE_STATE_KEY, __TEST_ONLY_resetSpeechQueue, enqueueSpeech, fetchSpeakers, findSpeech, listSpeech, loadVoiceSettings, synthesize, synthesizeSpeech } from './speech';
 import { MAX_SPEECH_QUEUE, SPEECH_TTL_MS, getDefaultVoiceSettings } from './voiceTypes';
 
 const enabled = { ...getDefaultVoiceSettings(), enabled: true, speakerId: 3, speakerName: 'ずんだもん' };
@@ -17,6 +17,22 @@ beforeEach(() => {
 afterEach(() => {
   vi.restoreAllMocks();
   vi.unstubAllGlobals();
+});
+
+describe('loadVoiceSettings', () => {
+  it('returns the defaults when nothing is saved', () => {
+    expect(loadVoiceSettings()).toEqual(getDefaultVoiceSettings());
+  });
+
+  it('shows the credit for settings saved before showCredit was added', () => {
+    setAppState(VOICE_STATE_KEY, { enabled: true, speakerId: 3, speakerName: 'ずんだもん', speedScale: 1, volumeScale: 1 });
+    expect(loadVoiceSettings()).toEqual({ ...enabled, showCredit: true });
+  });
+
+  it('keeps a saved showCredit', () => {
+    setAppState(VOICE_STATE_KEY, { ...enabled, showCredit: false });
+    expect(loadVoiceSettings().showCredit).toBe(false);
+  });
 });
 
 describe('speech queue', () => {

@@ -61,6 +61,14 @@ describe('VoiceSettingsPanel', () => {
     expect(screen.getByText('VOICEVOX:ずんだもん')).toBeInTheDocument();
   });
 
+  it('hides the credit on the stream', async () => {
+    await renderLoaded(enabled);
+
+    await act(async () => fireEvent.click(screen.getByLabelText('配信画面にクレジットを表示する')));
+
+    expect(lastSaved()).toMatchObject({ showCredit: false });
+  });
+
   it('queues a test speech', async () => {
     await renderLoaded(enabled);
 

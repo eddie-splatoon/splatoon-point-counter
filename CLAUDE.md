@@ -15,7 +15,7 @@
 5. **字幕オーバーレイ** (`/caption-overlay`) - 配信者の音声をリアルタイムに字幕表示
 6. **サイドパネルオーバーレイ** (`/side-panel-overlay`) - 配信画面右側（250x584）。上段にフォロワーゲージ、下段にコントロールパネルで選んだスロットを表示。縦型配信用の横長レイアウト（990x440）は `/side-panel-overlay/vertical`
 7. **実況テロップオーバーレイ** (`/telop-overlay`) - コントロールパネルのボタン・キーボードで出す定型文を数秒だけ大きく表示。縦型配信用（1080x1920、画面の下のほうに出す）は `/telop-overlay/vertical`
-8. **読み上げ（音声専用）オーバーレイ** (`/voice-overlay`) - 読み上げキューの文を VOICEVOX で音声にして順に再生（画面には何も出さない）
+8. **読み上げ（音声専用）オーバーレイ** (`/voice-overlay`) - 読み上げキューの文を VOICEVOX で音声にして順に再生（画面には何も出さない）。キャラクターのクレジット（`VOICEVOX:ずんだもん`）は `/voice-credit-overlay`（1920x1080。左下に小さく常に出す）、縦型配信用は `/voice-credit-overlay/vertical`
 9. **ブキ埋めカードオーバーレイ** (`/weapon-card-overlay`) - サーモンランのオールランダムで支給された全ブキ種（71 種）を埋めていくカード
 10. **サーモンランの振り返りオーバーレイ** (`/salmon-review-overlay`) - 配信の最後に、その日（セッション）のサーモンランの記録をグラフで大きく出す（1920x1080）。縦型配信用（1080x1920）は `/salmon-review-overlay/vertical`。コントロールパネルから SNS 用の PNG でダウンロードできる
 11. **視聴者参加の受付オーバーレイ** (`/join-queue-overlay`) - チャットの `!参加` で並んだ列（番号・表示名）と書き方・部屋の推定キケン度を出す（420x600。受付中だけ表示）
@@ -82,6 +82,10 @@
 │   │       └── page.tsx          # 実況テロップ（縦型配信用 1080x1920）
 │   ├── voice-overlay/
 │   │   └── page.tsx              # 読み上げ（音声専用）オーバーレイ
+│   ├── voice-credit-overlay/
+│   │   ├── page.tsx              # VOICEVOX のクレジット
+│   │   └── vertical/
+│   │       └── page.tsx          # VOICEVOX のクレジット（縦型配信用 1080x1920）
 │   ├── weapon-card-overlay/
 │   │   └── page.tsx              # ブキ埋めカードオーバーレイ
 │   ├── salmon-review-overlay/
@@ -163,6 +167,7 @@
 │   ├── TelopPanel.tsx            # 設定の「テロップのプリセット」の自由入力・プリセットの 1 行編集（文の入力欄・4 つのアイコンのトグル・並べ替え）
 │   ├── TelopOverlay.tsx          # 実況テロップのオーバーレイの本体（横長 / 縦型配信用で共通）
 │   ├── VoiceSettingsPanel.tsx    # 読み上げ（VOICEVOX）の設定（設定の「読み上げ（VOICEVOX）」）
+│   ├── VoiceCreditOverlay.tsx    # VOICEVOX のクレジットのオーバーレイの本体（横長 / 縦型配信用で共通）
 │   ├── WeaponIcon.tsx            # ブキの画像（読み込めなければブキ名）
 │   ├── WeaponPicker.tsx          # カテゴリごとのブキのパレット（記録・ブキ埋めのカードで使う）
 │   ├── WeaponCard.tsx            # ブキ埋めカード（オーバーレイ）
@@ -509,9 +514,10 @@ Twitch のフォロワー数とフォロワー目標を受け取る機能と、�
 
 - 読み上げキュー（`lib/speech.ts`、サーバー専用）はインメモリ。`/api/speech` と `/api/telop` など複数のルートから使うので、ルートごとにモジュールが別に読み込まれても共有できるよう `globalThis` に置く。1 件 100 文字まで（超えたら切り詰め）・最大 20 件・60 秒で破棄。ID は起動時刻から振る（サーバーを再起動しても、開いたままのオーバーレイが新しい読み上げを再生済みと取り違えないように）。`enqueueSpeech` は読み上げが無効・話者が未選択なら追加せず null を返す（`POST /api/speech` は 409）。`__TEST_ONLY_resetSpeechQueue()` はテスト用
 - `/api/speech/audio?id=` はキューにある id だけを受け付け、VOICEVOX の `audio_query` → `synthesis` を中継して wav を返す（任意の文を読ませないため）。合成は ID ごとに 1 回だけ（`synthesizeSpeech` が結果をキャッシュし、失敗したら次の要求で合成し直す。合成後に速度・音量を変えても、合成済みのものはそのまま）。VOICEVOX との通信は 10 秒（`VOICEVOX_TIMEOUT_MS`）で打ち切り、応答は `audio_query` 1 MB・wav 20 MB を超えた時点で読むのをやめる。失敗したら 502
-- 設定 `{enabled, speakerId, speakerName, speedScale, volumeScale}` は SQLite の `app_state`（キー `voice`）。既定は無効。`speakerId` は VOICEVOX のスタイル ID、`speakerName` はクレジット表記（`voiceCredit` → `VOICEVOX:キャラ名`）用のキャラクター名。`/api/voice/speakers` は VOICEVOX の `/speakers` の中継で、歌唱用（`type` が `talk` 以外）のスタイルは除く（`parseSpeakers`）
+- 設定 `{enabled, speakerId, speakerName, speedScale, volumeScale, showCredit}` は SQLite の `app_state`（キー `voice`）。既定は無効。`speakerId` は VOICEVOX のスタイル ID、`speakerName` はクレジット表記（`voiceCredit` → `VOICEVOX:キャラ名`。スタイル名は付けない。規約で別の表記が決まっているキャラクター（もち子さん → `もち子(cv 明日葉よもぎ)`）は `CREDIT_NAMES` に足す）用のキャラクター名。`showCredit` は配信画面にクレジットを出すか（後から追加した項目なので、保存値に無ければ `loadVoiceSettings` が true とみなす）。`/api/voice/speakers` は VOICEVOX の `/speakers` の中継で、歌唱用（`type` が `talk` 以外）のスタイルは除く（`parseSpeakers`）
 - オーバーレイは 0.5 秒ごとにキューを取得し、開いた時点でキューにあったものは再生しない。新しいものを 1 件ずつ順に `Audio` で再生し、再生できなかったとき（VOICEVOX 未起動・自動再生の拒否など）も止まらずに次へ進む
-- コントロールパネルの設定の「読み上げ（VOICEVOX）」に `components/VoiceSettingsPanel.tsx`（有効/無効・話者・速度・音量・テスト再生・クレジット表記）。VOICEVOX に接続できなくても保存済みの話者は表示する
+- コントロールパネルの設定の「読み上げ（VOICEVOX）」に `components/VoiceSettingsPanel.tsx`（有効/無効・話者・速度・音量・テスト再生・クレジットの表示/非表示と表記）。VOICEVOX に接続できなくても保存済みの話者は表示する
+- クレジットのオーバーレイ（`components/VoiceCreditOverlay.tsx`、`layout: 'landscape' | 'portrait'`）: キャラクターの規約で、見る人が探したときにわかる場所にクレジットを書く必要があるので、配信画面に常に小さく出す（アーカイブ・クリップにも残る）。5 秒ごとに `/api/voice` をポーリングし、`showCredit` が true で話者があるときだけ出す。目立たせない（概要欄などにも書いている）ので、左下の角に小さく、共通設定のフォント（`/api/stream-data` の `fontFamily`）で、帯を付けずに少し透かして出す（landscape はスコア表示の下、portrait はロゴの下の余白）。取得に失敗したら直前の表示のまま
 - テストでは `fetch` を `vi.stubGlobal` で差し替える（実際の VOICEVOX には接続しない）
 
 ### `/app/api/clip/route.ts` と `lib/clips.ts`
