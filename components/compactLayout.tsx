@@ -4,7 +4,7 @@ import ExpandLessRoundedIcon from '@mui/icons-material/ExpandLessRounded';
 import ExpandMoreRoundedIcon from '@mui/icons-material/ExpandMoreRounded';
 import {Box, ButtonBase, Paper, Typography, useMediaQuery} from '@mui/material';
 import {useTheme} from '@mui/material/styles';
-import React, {createContext, useCallback, useContext, useState} from 'react';
+import React, {createContext, useCallback, useContext, useEffect, useState} from 'react';
 import {createPortal} from 'react-dom';
 
 import {tokens} from '../app/control-panel/theme';
@@ -13,8 +13,23 @@ import {tokens} from '../app/control-panel/theme';
 // 配信中の画面では、カードの「ふだん使わない部分」を最後の折りたたみ 1 つにまとめる。カードを 2 回描くと状態や読み込みが二重になるので、
 // カードは 1 つのまま、その部分だけを折りたたみの中の置き場（slot）に portal で描く
 
-/** 幅 600px 未満か（MUI の sm 未満） */
+/** 幅 600px 未満か（MUI の sm 未満）。サーバーと最初の描画では false（ヘッダーなど、作り直しても困らないところで使う） */
 export const useCompact = () => useMediaQuery(useTheme().breakpoints.down('sm'));
+
+/**
+ * 幅 600px 未満か。表示した後に決まるまでは null（配信中の画面で使う）。
+ * 狭い画面で、いったん横長のカードを描いてから作り直すと、読み込みが二重になり画面もちらつくので、決まるまでは何も描かない
+ */
+export const useCompactAfterMount = (): boolean | null => {
+    const [mounted, setMounted] = useState(false);
+    useEffect(() => {
+        // 表示した後でないと幅が分からない（サーバーの描画と食い違わないよう、最初の描画は何も出さない）
+        // eslint-disable-next-line react-hooks/set-state-in-effect
+        setMounted(true);
+    }, []);
+    const compact = useMediaQuery(useTheme().breakpoints.down('sm'), {noSsr: true});
+    return mounted ? compact : null;
+};
 
 export type CompactSlotName = 'telop' | 'salmon' | 'join';
 

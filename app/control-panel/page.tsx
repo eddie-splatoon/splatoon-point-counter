@@ -3,7 +3,7 @@
 import {Box} from '@mui/material';
 
 import ChallengeChecklistCard from '../../components/ChallengeChecklistCard';
-import {CompactLive, useCompact} from '../../components/compactLayout';
+import {CompactLive, useCompactAfterMount} from '../../components/compactLayout';
 import EffectClipCard from '../../components/EffectClipCard';
 import JoinQueuePanel from '../../components/JoinQueuePanel';
 import SalmonRunPanel from '../../components/SalmonRunPanel';
@@ -19,7 +19,9 @@ const columnSx = {flex: '1 1 380px', minWidth: 0, display: 'flex', flexDirection
  * 残り（ほかのテロップ・エフェクト・クリップ・記録の一覧・ときどき直すもの・列の一覧・キケン度・お知らせ）は最後の折りたたみ 1 つ
  */
 export default function LivePage() {
-    const compact = useCompact();
+    // 幅が変わって 600px をまたぐと、カードは作り直される（開いていたダイアログは閉じる。取り込みの進み具合は SalmonRunPanel が読み直す）
+    const compact = useCompactAfterMount();
+    if (compact === null) return null;
     if (compact) {
         return (
             <CompactLive

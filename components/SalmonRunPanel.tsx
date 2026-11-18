@@ -42,9 +42,13 @@ const importStatusText = (request: SalmonImportRequest): string => {
     }
 };
 
-const loadLatestImport = async (): Promise<SalmonImportRequest | null> => {
-    const res = await axios.get<{imports?: SalmonImportRequest[]}>('/api/salmon/import');
-    return (res.data.imports ?? []).filter((i) => i.status === 'succeeded').sort((a, b) => (b.completedAt ?? 0) - (a.completedAt ?? 0))[0] ?? null;
+/** 最後に成功した取り込みと、途中の取り込み（画面を開き直した・幅が変わってカードを作り直したときに、進み具合を出し続けるため） */
+const loadImports = async (): Promise<{latest: SalmonImportRequest | null; active: SalmonImportRequest | null}> => {
+    const imports = (await axios.get<{imports?: SalmonImportRequest[]}>('/api/salmon/import')).data.imports ?? [];
+    return {
+        latest: imports.filter((i) => i.status === 'succeeded').sort((a, b) => (b.completedAt ?? 0) - (a.completedAt ?? 0))[0] ?? null,
+        active: imports.filter(isActiveImport).sort((a, b) => b.id - a.id)[0] ?? null,
+    };
 };
 
 /** 「最後の取り込み 20:47（30 バイト目）」。何バイト目かは、今のセッションの記録にあるときだけ */
@@ -85,9 +89,12 @@ const SalmonRunPanel: React.FC = () => {
         }
     }, []);
 
-    const refreshLatestImport = useCallback(async () => {
+    const refreshImports = useCallback(async () => {
         try {
-            setLatestImport(await loadLatestImport());
+            const {latest, active} = await loadImports();
+            setLatestImport(latest);
+            // 自分で依頼していなければ、途中の取り込みを引き継いで進み具合を出す
+            if (active) setRequest((current) => current ?? active);
         } catch (e) {
             // 「最後の取り込み」は表示の補助なので、取れなくても記録は続けられる
             console.error('Failed to load the salmon imports', e);
@@ -98,7 +105,7 @@ const SalmonRunPanel: React.FC = () => {
         // マウント時に API から記録・最後の取り込み・開催中のスケジュールを読み込む
         // eslint-disable-next-line react-hooks/set-state-in-effect
         void load();
-        void refreshLatestImport();
+        void refreshImports();
         axios.get<SalmonScheduleData>('/api/salmon-schedule')
             .then((res) => {
                 const current = pickCurrentSchedule(res.data.entries, Date.now());
@@ -106,7 +113,7 @@ const SalmonRunPanel: React.FC = () => {
             })
             // スケジュールは入力の補助なので、取れなくても手入力で記録できる
             .catch((e) => console.error('Failed to load the salmon run schedule', e));
-    }, [load, refreshLatestImport]);
+    }, [load, refreshImports]);
 
     const active = isActiveImport(request);
     const requestId = request?.id;
