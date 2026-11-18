@@ -148,6 +148,16 @@ describe('SidePanelSettingsPanel', () => {
     await waitFor(() => expect(fixedButton('スケジュール')).toHaveAttribute('aria-pressed', 'false'));
   });
 
+  it('puts the saved seconds back in the field when saving fails', async () => {
+    await renderLoaded({ ...getDefaultSidePanelSettings(), rotateSeconds: 8 });
+    mockedAxios.post.mockRejectedValue(new Error('500'));
+
+    await act(async () => fireEvent.change(screen.getByLabelText('切り替えの秒数'), { target: { value: '30' } }));
+
+    expect(await screen.findByText('設定の保存に失敗しました。')).toBeInTheDocument();
+    await waitFor(() => expect(screen.getByLabelText('切り替えの秒数')).toHaveValue(8));
+  });
+
   it('shows the saved follower goal', async () => {
     await renderLoaded({ ...getDefaultSidePanelSettings(), followerGoal: 20 });
     expect(screen.getByLabelText('フォロワー目標')).toHaveValue(20);

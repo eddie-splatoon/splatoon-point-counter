@@ -33,6 +33,13 @@ const labelSx = {display: 'block', mt: 4, mb: 1.5, fontSize: 12, color: 'text.se
 const SidePanelForm: React.FC<{settings: SidePanelSettings; update: SidePanelSettingsState['update']}> = ({settings, update}) => {
     const [secondsInput, setSecondsInput] = useState(String(settings.rotateSeconds));
     const [followerGoalInput, setFollowerGoalInput] = useState(settings.followerGoal === null ? '' : String(settings.followerGoal));
+    // 保存の失敗で読み込み直したときや、ほかの画面で変えたときは欄も合わせる（入力途中の不正な値では設定が変わらないので、打っている文字は戻さない）
+    const [shown, setShown] = useState({rotateSeconds: settings.rotateSeconds, followerGoal: settings.followerGoal});
+    if (shown.rotateSeconds !== settings.rotateSeconds || shown.followerGoal !== settings.followerGoal) {
+        setShown({rotateSeconds: settings.rotateSeconds, followerGoal: settings.followerGoal});
+        if (shown.rotateSeconds !== settings.rotateSeconds) setSecondsInput(String(settings.rotateSeconds));
+        if (shown.followerGoal !== settings.followerGoal) setFollowerGoalInput(settings.followerGoal === null ? '' : String(settings.followerGoal));
+    }
 
     // 表示順はサーバーと同じく SIDE_PANEL_SLOTS の順にそろえる。固定枠とローテーション枠の両方が空になる変更は無視する（最低1つは残す）
     const saveSlots = (fixedSlots: SidePanelSlot[], rotationSlots: SidePanelSlot[]) => {
