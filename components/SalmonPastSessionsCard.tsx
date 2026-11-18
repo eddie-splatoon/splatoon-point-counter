@@ -15,7 +15,7 @@ import SectionTitle from './SectionTitle';
 
 const paperSx = {mb: 4, p: 4};
 
-/** 振り返りの画面の、サーモンランの過去のセッションと振り返りの画像（選んだセッション。選ばなければ今のセッション） */
+/** 振り返りの画面の、サーモンランの振り返りの画像と過去のセッション（画像は下で選んだセッション。選ばなければ今のセッション） */
 const SalmonPastSessionsCard: React.FC = () => {
     const [currentSessionId, setCurrentSessionId] = useState<number | undefined>(undefined);
     const [sessions, setSessions] = useState<SalmonSessionWithTotals[] | null>(null);
@@ -58,6 +58,14 @@ const SalmonPastSessionsCard: React.FC = () => {
         <>
             {error && <Alert severity="error" sx={{mb: 2}}>{error}</Alert>}
             <Paper sx={paperSx}>
+                <SectionTitle icon={ImageRoundedIcon}>サーモンランの振り返りの画像</SectionTitle>
+                <Typography variant="body2" sx={{mb: 2}}>
+                    {pastSessionId !== '' ? '下で選んだセッション' : '現在のセッション'}の振り返り（/salmon-review-overlay と同じ画面）を、X・Bluesky などに投稿できる PNG 画像でダウンロードします。
+                </Typography>
+                <SalmonReviewDownload sessionId={pastSessionId !== '' ? pastSessionId : currentSessionId}/>
+            </Paper>
+
+            <Paper sx={paperSx}>
                 <SectionTitle icon={HistoryRoundedIcon}>サーモンランの過去のセッション</SectionTitle>
                 <FormControl fullWidth margin="normal">
                     <InputLabel id="salmon-past-session-label">セッションを選択</InputLabel>
@@ -88,14 +96,6 @@ const SalmonPastSessionsCard: React.FC = () => {
                         </Box>
                     </Box>
                 )}
-            </Paper>
-
-            <Paper sx={paperSx}>
-                <SectionTitle icon={ImageRoundedIcon}>サーモンランの振り返りの画像</SectionTitle>
-                <Typography variant="body2" sx={{mb: 2}}>
-                    {pastSessionId !== '' ? '上で選んだセッション' : '現在のセッション'}の振り返り（/salmon-review-overlay と同じ画面）を、X・Bluesky などに投稿できる PNG 画像でダウンロードします。
-                </Typography>
-                <SalmonReviewDownload sessionId={pastSessionId !== '' ? pastSessionId : currentSessionId}/>
             </Paper>
         </>
     );

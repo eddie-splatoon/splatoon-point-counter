@@ -149,7 +149,7 @@
 │   ├── SalmonJobDialog.tsx       # サーモンランの手入力・修正のダイアログ（支給ブキのパレットは「ブキを選ぶ」で開く）
 │   ├── SalmonJobRow.tsx          # サーモンランの記録の行・セッションの表記（画面をまたいで共通）
 │   ├── StreamStartCard.tsx       # 準備の画面の「今日の配信」（配信を始める = 新しいセッションを始めて配信中の画面へ）
-│   ├── SalmonPastSessionsCard.tsx # 振り返りの画面の、サーモンランの過去のセッションと振り返りの画像
+│   ├── SalmonPastSessionsCard.tsx # 振り返りの画面の、サーモンランの振り返りの画像と過去のセッション
 │   ├── SidePanelOverlay.tsx      # サイドパネルの本体（2 つのレイアウトで共通）
 │   ├── SidePanelSettingsPanel.tsx # 準備の画面のサイドパネルのカード（固定枠・ローテーション枠・秒数・フォロワー目標）
 │   ├── ChallengeEditorCard.tsx   # 準備の画面の本日のお題（追加・削除・並べ替え）
@@ -314,10 +314,10 @@ export interface StreamData extends StreamSettings {
 |---|---|---|
 | 配信中 | `/control-panel`（既定。配信中に開き直しても 1 手で戻れるように） | 3 列のカード: テロップ（`TelopBar`）→ エフェクト・クリップ（`EffectClipCard`）/ サーモンラン（`SalmonRunPanel`）→ ときどき直すもの（`TimelyFixesCard`）/ 視聴者参加（`JoinQueuePanel`）→ 本日のお題（`ChallengeChecklistCard`） |
 | 準備 | `/control-panel/prepare` | 2 列のカード: 今日の配信（`StreamStartCard`）→ 本日のお題（`ChallengeEditorCard`）/ サイドパネル（`SidePanelSettingsPanel`）→ 参加型の準備（`JoinStreamerRatingCard`）→ 流すメッセージ・バーンダウン（`MessageBurndownCard`） |
-| 振り返り | `/control-panel/review` | サーモンランの過去のセッションと振り返りの画像・ブキ埋め（画像・新しいカード）・これまでの受付 |
+| 振り返り | `/control-panel/review` | 今の見た目のままカードを縦に並べる（#131）: 振り返りの画像 → 過去のセッション（`SalmonPastSessionsCard`。画像は下で選んだセッション、選ばなければ今のセッション）→ ブキ埋め（`WeaponCardPanel`。画像・新しいカード）→ これまでの受付（`JoinHistoryCard`） |
 | 設定 | `/control-panel/settings/[section]`（`settings/sections.ts` のメニュー。`/control-panel/settings` は最初のメニューへ移る） | テロップと読み上げ・見た目（フォント・メッセージの切り替え・スコア表示の自動更新）・OBS のブラウザソース |
 
-振り返り・設定・狭い幅の並べ方は #131〜#133 で作り直す（今はカードを縦に並べただけ）。
+設定・狭い幅の並べ方は #132・#133 で作り直す。
 
 - **配信中の画面**（#129。設計書 3 章）: 1280×900 でスクロールせずに全部見える（参加の受付中も。列は高さを決めてスクロール）ことが目標。列は `flex: 1 1 380px`（3 列目は 340px）で折り返し、DOM の順番 = 狭い幅で縦に並ぶ順番 = 優先度。外枠の `main` の最大幅は配信中の画面 1600px・準備の画面 1200px（ほかは 900px。`ControlPanelShell` の `PAGE_MAX_WIDTHS`）。カードは `components/LiveCard.tsx`（見出しを section の名前にする。`hideTitle` で見出しを読み上げだけにする）。ときどき使うもの（手入力・すべての記録・クリップの履歴・スコア表示・ブキ埋めの手動）はダイアログ（`components/LiveDialog.tsx`）に入れ、開いたときだけ中身を描く。主ボタンは `tokens.height.hero`（64px）/ `live`（52px）
 - **準備の画面**（#130。設計書 4 章）: 2 列（各 `flex: 1 1 420px`）。「配信を始める」は `POST /api/salmon/sessions` をしてから `router.push('/control-panel')`（失敗したら移らない）。本日のお題は追加・削除と並べ替え（つまみのドラッグ、またはつまみにフォーカスして ↑↓）だけで、達成のチェックは配信中の画面。メッセージのプリセットはチップ（`role=radio`）で選ぶ
