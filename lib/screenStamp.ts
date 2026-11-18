@@ -8,6 +8,7 @@ import {
     SCREEN_STAMP_GLOBAL_INTERVAL_MS,
     SCREEN_STAMP_SAME_INTERVAL_MS,
     SCREEN_STAMP_STATS_DAYS,
+    SCREEN_STAMP_WINDOW_GAP_MS,
     ScreenStampChatResult,
     ScreenStampData,
     ScreenStampSettings,
@@ -51,19 +52,25 @@ export function getScreenStampData(now = Date.now()): ScreenStampData {
     return {current: store().current, serverTime: now};
 }
 
-const isWindowStats = (w: unknown): w is ScreenStampWindowStats => {
-    if (typeof w !== 'object' || w === null) return false;
-    const {startedAt, endedAt, stamps} = w as Record<string, unknown>;
-    return typeof startedAt === 'number' && (endedAt === null || typeof endedAt === 'number') && Array.isArray(stamps)
-        && stamps.every((s) => typeof s === 'object' && s !== null
-            && typeof s.id === 'string' && typeof s.label === 'string' && typeof s.shown === 'number' && typeof s.users === 'number');
-};
+/** 保存値の 1 枠を読む（形の違うものは null）。開いたままでも SCREEN_STAMP_WINDOW_GAP_MS スタンプが出ていなければ、最後に出した時刻で閉じる */
+function parseWindow(w: unknown, now: number): ScreenStampWindowStats | null {
+    if (typeof w !== 'object' || w === null) return null;
+    const {startedAt, endedAt, lastShownAt, stamps} = w as Record<string, unknown>;
+    if (typeof startedAt !== 'number' || (endedAt !== null && typeof endedAt !== 'number') || !Array.isArray(stamps)) return null;
+    if (!stamps.every((s) => typeof s === 'object' && s !== null
+        && typeof s.id === 'string' && typeof s.label === 'string' && typeof s.shown === 'number' && typeof s.users === 'number')) return null;
+    // lastShownAt は後から足した項目なので、無ければ始めた時刻
+    const last = typeof lastShownAt === 'number' ? lastShownAt : startedAt;
+    const closedAt = endedAt === null && now - last >= SCREEN_STAMP_WINDOW_GAP_MS ? last : endedAt;
+    return {startedAt, endedAt: closedAt, lastShownAt: last, stamps};
+}
 
 /** 保存済みの集計（形の違うもの・期間を過ぎたものは捨てる） */
 function loadStats(now: number): ScreenStampWindowStats[] {
     const stored = getAppState(SCREEN_STAMP_STATS_STATE_KEY);
     if (!Array.isArray(stored)) return [];
-    return stored.filter(isWindowStats).filter((w) => (w.endedAt ?? now) >= now - SCREEN_STAMP_STATS_DAYS * DAY_MS);
+    return stored.map((w) => parseWindow(w, now)).filter((w): w is ScreenStampWindowStats => w !== null)
+        .filter((w) => (w.endedAt ?? now) >= now - SCREEN_STAMP_STATS_DAYS * DAY_MS);
 }
 
 /** 直近 SCREEN_STAMP_STATS_DAYS 日の配信ごとの集計（新しい順） */
@@ -78,10 +85,13 @@ function countShown(stampId: string, label: string, userId: string, now: number)
     // サーバーを再起動したあとも、閉じていない枠があればそこに数え続ける（人数は再起動の後に出した人だけ数え直す）
     let window = stats.find((w) => w.endedAt === null && (s.windowStartedAt === null || w.startedAt === s.windowStartedAt));
     if (!window) {
-        window = {startedAt: now, endedAt: null, stamps: []};
+        window = {startedAt: now, endedAt: null, lastShownAt: now, stamps: []};
         stats.push(window);
     }
+    // 新しい枠になったら、人数は数え直す
+    if (s.windowStartedAt !== window.startedAt) s.users = new Map();
     s.windowStartedAt = window.startedAt;
+    window.lastShownAt = now;
     const users = s.users.get(stampId) ?? new Set<string>();
     users.add(userId);
     s.users.set(stampId, users);

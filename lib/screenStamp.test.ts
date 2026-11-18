@@ -68,6 +68,7 @@ describe('stats', () => {
     expect(getScreenStampStats(T + 40_000)).toEqual([{
       startedAt: T,
       endedAt: null,
+      lastShownAt: T + 30_000,
       stamps: [{ id: 'nice', label: 'ナイス', shown: 3, users: 2 }, { id: 'donmai', label: 'ドンマイ', shown: 1, users: 1 }],
     }]);
     expect(JSON.stringify(getAppState(SCREEN_STAMP_STATS_STATE_KEY))).not.toContain('"1"');
@@ -79,8 +80,24 @@ describe('stats', () => {
     receiveChat('1', 'ナイス', [], T + DAY);
 
     expect(getScreenStampStats(T + DAY)).toEqual([
-      { startedAt: T + DAY, endedAt: null, stamps: [{ id: 'nice', label: 'ナイス', shown: 1, users: 1 }] },
-      { startedAt: T, endedAt: T + 60_000, stamps: [{ id: 'nice', label: 'ナイス', shown: 1, users: 1 }] },
+      { startedAt: T + DAY, endedAt: null, lastShownAt: T + DAY, stamps: [{ id: 'nice', label: 'ナイス', shown: 1, users: 1 }] },
+      { startedAt: T, endedAt: T + 60_000, lastShownAt: T, stamps: [{ id: 'nice', label: 'ナイス', shown: 1, users: 1 }] },
+    ]);
+  });
+
+  it('closes a stream that never got offline after 6 hours without stamps, and counts users again', () => {
+    receiveChat('1', 'ナイス', [], T);
+    receiveChat('1', 'ドンマイ', [], T + 60_000);
+    // 配信の終了が届かないまま、翌日の配信
+    expect(getScreenStampStats(T + 6 * 60 * 60_000 + 60_000)[0].endedAt).toBe(T + 60_000);
+    receiveChat('1', 'ナイス', [], T + DAY);
+
+    expect(getScreenStampStats(T + DAY)).toEqual([
+      { startedAt: T + DAY, endedAt: null, lastShownAt: T + DAY, stamps: [{ id: 'nice', label: 'ナイス', shown: 1, users: 1 }] },
+      {
+        startedAt: T, endedAt: T + 60_000, lastShownAt: T + 60_000,
+        stamps: [{ id: 'nice', label: 'ナイス', shown: 1, users: 1 }, { id: 'donmai', label: 'ドンマイ', shown: 1, users: 1 }],
+      },
     ]);
   });
 
@@ -90,7 +107,7 @@ describe('stats', () => {
     receiveChat('2', 'ナイス', [], T + 20_000);
 
     expect(getScreenStampStats(T + 20_000)).toEqual([
-      { startedAt: T, endedAt: null, stamps: [{ id: 'nice', label: 'ナイス', shown: 2, users: 1 }] },
+      { startedAt: T, endedAt: null, lastShownAt: T + 20_000, stamps: [{ id: 'nice', label: 'ナイス', shown: 2, users: 1 }] },
     ]);
   });
 
@@ -100,6 +117,7 @@ describe('stats', () => {
       { startedAt: T - 2 * DAY, endedAt: T - DAY, stamps: [] },
       { startedAt: 'x' },
     ]);
-    expect(getScreenStampStats(T)).toEqual([{ startedAt: T - 2 * DAY, endedAt: T - DAY, stamps: [] }]);
+    // lastShownAt の無い保存値（以前の形）は始めた時刻とみなす
+    expect(getScreenStampStats(T)).toEqual([{ startedAt: T - 2 * DAY, endedAt: T - DAY, lastShownAt: T - 2 * DAY, stamps: [] }]);
   });
 });

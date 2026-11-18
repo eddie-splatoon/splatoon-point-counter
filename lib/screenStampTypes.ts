@@ -40,6 +40,8 @@ export interface ScreenStampWindowStats {
     startedAt: number;
     /** 配信の終了で閉じた時刻。今の配信なら null */
     endedAt: number | null;
+    /** 最後にスタンプを出した時刻（配信の終了が届かなかったときに、間が空いたら枠を閉じるため） */
+    lastShownAt: number;
     stamps: {id: string; label: string; shown: number; users: number}[];
 }
 
@@ -60,6 +62,8 @@ export const SCREEN_STAMP_IMAGE_URL_MAX_LENGTH = 500;
 export const SCREEN_STAMP_CHAT_MAX_LENGTH = 50;
 /** スクリプトから受け取る 1 メッセージのスタンプの名前の数（重複は除いて送る） */
 export const SCREEN_STAMP_MAX_CHAT_EMOTES = 20;
+/** 配信の終了が届かなくても（Twitch 連携スクリプトが止まっていたなど）、スタンプがこの時間出なければ配信の枠を閉じる */
+export const SCREEN_STAMP_WINDOW_GAP_MS = 6 * 60 * 60_000;
 /** 集計を残す日数 */
 export const SCREEN_STAMP_STATS_DAYS = 28;
 
