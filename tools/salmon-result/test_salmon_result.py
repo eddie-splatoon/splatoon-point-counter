@@ -864,3 +864,55 @@ def test_read_hazard_level_prefers_the_labeled_percent():
     assert s.read_hazard_level(blank_detail_image(), boxes, fake_ocr) == 290
     # ラベルが無く「%」が 2 つあれば、どちらか分からないので「キケン度」を探す（無ければ読まない）
     assert s.read_hazard_level(blank_detail_image(), [Box("50%", 0.1, 0.24, 0.1, 0.02), Box("約290%", 0.55, 0.24, 0.2, 0.02)], fake_ocr) is None
+
+
+SALMON_TAB = [Box("サーモンラン", 0.4, 0.93, 0.2, 0.02)]
+
+
+def fake_reconnect(monkeypatch, first_screen, after=SALMON_TAB):
+    """ensure_connected が見る画面を差し替え、押した位置を返す"""
+    screens = [first_screen, after]
+    taps = []
+    monkeypatch.setattr(s, "wait_for_screen", lambda window, *keywords, timeout: (None, screens.pop(0)))
+    monkeypatch.setattr(s, "tap", lambda window, rx, ry: taps.append((round(rx, 2), round(ry, 2))))
+    return taps
+
+
+@pytest.mark.parametrize("label", ["接続", "再開"])
+def test_ensure_connected_presses_the_reconnect_button(monkeypatch, label):
+    """一時停止の画面のボタン（macOS 27 は「接続」、26 までは「再開」）を押す。説明文の「接続」は押さない"""
+    taps = fake_reconnect(monkeypatch, [
+        Box("接続が一時停止されました", 0.2, 0.45, 0.6, 0.02),
+        Box(label, 0.45, 0.6, 0.1, 0.02),
+    ])
+    s.ensure_connected(FakeWindow(), log=lambda *_: None)
+    assert taps == [(0.5, 0.61)]
+
+
+def test_ensure_connected_waits_while_connecting(monkeypatch):
+    """「iPhone に接続中」なら押さずに、つながるまで待つ"""
+    taps = fake_reconnect(monkeypatch, [Box("iPhone 18 Pro", 0.3, 0.5, 0.4, 0.02), Box("に接続中", 0.4, 0.53, 0.2, 0.02)])
+    s.ensure_connected(FakeWindow(), log=lambda *_: None)
+    assert taps == []
+
+
+def test_ensure_connected_fails_when_it_cannot_reconnect(monkeypatch):
+    fake_reconnect(monkeypatch, [Box("接続", 0.45, 0.6, 0.1, 0.02)], after=[])
+    with pytest.raises(s.ImportError_):
+        s.ensure_connected(FakeWindow(), log=lambda *_: None)
+
+
+def test_ensure_connected_does_nothing_when_connected(monkeypatch):
+    taps = fake_reconnect(monkeypatch, SALMON_TAB)
+    s.ensure_connected(FakeWindow(), log=lambda *_: None)
+    assert taps == []
+
+
+@pytest.mark.parametrize("fixture, label", [("mirroring-paused.png", "再開"), ("mirroring-timeout.png", "接続")])
+def test_find_button_reads_the_paused_mirroring_screen(fixture, label):
+    """実際の一時停止・タイムアウトの画面から、説明文（「…接続が…」）ではなくボタンを見つける"""
+    with Image.open(FIXTURES / fixture) as image:
+        boxes = s.ocr(image.convert("RGB"), s.FULL_OCR_SCALE)
+    button = s.find_button(boxes, *s.RECONNECT_BUTTONS)
+    assert button is not None and s.normalize(button.text) == label
+    assert 0.55 < button.cy < 0.65

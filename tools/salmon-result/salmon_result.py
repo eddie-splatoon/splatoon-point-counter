@@ -1511,14 +1511,28 @@ def wait_for_screen(window: Window, *keywords: str, timeout: float = SCREEN_TIME
             time.sleep(1)
 
 
+# 一時停止したミラーリングをつなぎ直すボタン。触らずにいると「接続が一時停止されました」（「再開」）になり、
+# さらに数分たつと「タイムアウトです」（「接続」）になる（7 分ほどのバイトの後はたいていタイムアウトのほう）
+RECONNECT_BUTTONS = ("接続", "再開")
+
+
+def find_button(boxes: list[Box], *labels: str) -> Box | None:
+    """文字全体が labels のどれかと同じ Box（説明文の「接続が一時停止されました」などを押さないように、部分一致にしない）"""
+    found = [b for b in boxes if normalize(b.text) in labels]
+    return min(found, key=lambda b: b.y, default=None)
+
+
 def ensure_connected(window: Window, log=print) -> None:
-    """「接続が一時停止されました」なら「再開」を押して、つながるまで待つ"""
-    _, boxes = wait_for_screen(window, "サーモンラン", "ホーム", "再開", timeout=3)
-    resume = find_box(boxes, "再開")
-    if resume is None:
+    """ミラーリングが一時停止していたら「接続」（「再開」）を押して、つながるまで待つ。つなぎ直している途中なら待つ"""
+    _, boxes = wait_for_screen(window, "サーモンラン", "ホーム", *RECONNECT_BUTTONS, timeout=3)
+    button = find_button(boxes, *RECONNECT_BUTTONS)
+    if button is not None:
+        log("ミラーリングの接続を再開します")
+        tap(window, button.cx, button.cy)
+    elif find_box(boxes, "接続中") is not None:
+        log("ミラーリングの接続を待ちます")
+    else:
         return
-    log("ミラーリングの接続を再開します")
-    tap(window, resume.cx, resume.cy)
     _, boxes = wait_for_screen(window, "サーモンラン", timeout=RECONNECT_TIMEOUT_SECONDS)
     if find_box(boxes, "サーモンラン") is None:
         raise ImportError_("iPhone ミラーリングに接続できませんでした")
