@@ -1,6 +1,9 @@
+'use client';
+
 import {Box} from '@mui/material';
 
 import ChallengeChecklistCard from '../../components/ChallengeChecklistCard';
+import {CompactLive, useCompact} from '../../components/compactLayout';
 import EffectClipCard from '../../components/EffectClipCard';
 import JoinQueuePanel from '../../components/JoinQueuePanel';
 import SalmonRunPanel from '../../components/SalmonRunPanel';
@@ -11,9 +14,32 @@ const columnSx = {flex: '1 1 380px', minWidth: 0, display: 'flex', flexDirection
 
 /**
  * 配信中の画面（/control-panel）。配信中に押すものだけを 3 列のカードに並べる（1280×900 でスクロールせずに全部見える）。
- * DOM の順番が、狭い幅で縦に並ぶ順番（= 優先度）
+ * DOM の順番が、狭い幅で縦に並ぶ順番（= 優先度）。
+ * 幅 600px 未満はコンパクト表示: テロップ（先頭 10 個）→ サーモンラン（取り込み・手入力・戦績 1 行）→ 視聴者参加（受付中だけ）→ 本日のお題。
+ * 残り（ほかのテロップ・エフェクト・クリップ・記録の一覧・ときどき直すもの・列の一覧・キケン度・お知らせ）は最後の折りたたみ 1 つ
  */
 export default function LivePage() {
+    const compact = useCompact();
+    if (compact) {
+        return (
+            <CompactLive
+                renderFold={(slot) => (
+                    <>
+                        {slot('telop')}
+                        <EffectClipCard/>
+                        {slot('salmon')}
+                        <TimelyFixesCard/>
+                        {slot('join')}
+                    </>
+                )}
+            >
+                <TelopBar/>
+                <SalmonRunPanel/>
+                <JoinQueuePanel/>
+                <ChallengeChecklistCard/>
+            </CompactLive>
+        );
+    }
     return (
         <Box sx={{display: 'flex', flexWrap: 'wrap', alignItems: 'flex-start', gap: 4}}>
             <Box sx={columnSx}>

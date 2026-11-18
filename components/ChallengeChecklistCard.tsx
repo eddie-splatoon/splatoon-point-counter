@@ -8,6 +8,7 @@ import React, {useCallback, useEffect, useRef, useState} from 'react';
 import {tokens} from '../app/control-panel/theme';
 import {Challenge, SidePanelSettings} from '../lib/sidePanelTypes';
 
+import {useInCompactLive} from './compactLayout';
 import LiveCard, {LiveCardNote} from './LiveCard';
 
 // 準備の画面でお題を変えたのを見せる間隔
@@ -74,11 +75,14 @@ const ChallengeChecklistCard: React.FC = () => {
     };
 
     const doneCount = challenges?.filter((c) => c.done).length ?? 0;
+    const compact = useInCompactLive();
 
     return (
         <LiveCard
             icon={ChecklistRoundedIcon}
             title="本日のお題"
+            hideTitle={compact}
+            sx={compact ? {px: 2.5, py: 1} : undefined}
             aside={challenges && challenges.length > 0 && <LiveCardNote>{doneCount} / {challenges.length} 達成</LiveCardNote>}
         >
             {error && <Alert severity="error" sx={{mb: 2}}>{error}</Alert>}
@@ -89,7 +93,7 @@ const ChallengeChecklistCard: React.FC = () => {
                 <Box
                     component="label"
                     key={challenge.id}
-                    sx={{display: 'flex', alignItems: 'center', gap: 3, minHeight: 48, borderTop: '1px solid #232832', cursor: 'pointer'}}
+                    sx={{display: 'flex', alignItems: 'center', gap: 3, minHeight: compact ? 44 : 48, borderTop: '1px solid #232832', cursor: 'pointer', '&:first-of-type': compact ? {borderTop: 0} : {}}}
                 >
                     <Box
                         component="input"

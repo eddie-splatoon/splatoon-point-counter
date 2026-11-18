@@ -13,6 +13,7 @@ import {SalmonImportRequest} from '../lib/salmonImportTypes';
 import {SalmonScheduleData, pickCurrentSchedule} from '../lib/salmonSchedule';
 import {SalmonJob, SalmonJobKind, SalmonSummary} from '../lib/salmonTypes';
 
+import {CompactRest, useInCompactLive} from './compactLayout';
 import LiveCard from './LiveCard';
 import LiveDialog from './LiveDialog';
 import SalmonJobDialog, {EditingJob} from './SalmonJobDialog';
@@ -21,6 +22,8 @@ import {JobRow, formatTime, jobResultLabel, salmonListSx} from './SalmonJobRow';
 const IMPORT_POLL_INTERVAL_MS = 1000;
 // カードに出す、このセッションの新しい記録の数
 const RECENT_JOBS = 3;
+// コンパクト表示（幅 600px 未満）の取り込み・手入力のボタンの高さ
+const COMPACT_BUTTON_HEIGHT = 56;
 
 const isActiveImport = (request: SalmonImportRequest | null) => request?.status === 'pending' || request?.status === 'processing';
 
@@ -147,6 +150,7 @@ const SalmonRunPanel: React.FC = () => {
     };
 
     const openEdit = (job: SalmonJob, index: number) => setDialog({editing: {job, index}});
+    const compact = useInCompactLive();
 
     if (!summary) {
         return (
@@ -162,6 +166,8 @@ const SalmonRunPanel: React.FC = () => {
         <LiveCard
             icon={SetMealRoundedIcon}
             title="サーモンラン"
+            hideTitle={compact}
+            sx={compact ? {p: 2.5} : undefined}
             aside={(
                 <Chip
                     size="small"
@@ -179,14 +185,14 @@ const SalmonRunPanel: React.FC = () => {
                     onClick={handleImport}
                     disabled={active}
                     startIcon={<FileDownloadRoundedIcon/>}
-                    sx={{flex: '1 1 auto', height: tokens.height.hero, borderRadius: `${tokens.radius.primary}px`, fontSize: 17}}
+                    sx={{flex: '1 1 auto', height: compact ? COMPACT_BUTTON_HEIGHT : tokens.height.hero, borderRadius: `${tokens.radius.primary}px`, fontSize: compact ? 16 : 17}}
                 >
                     リザルトを取り込む
                 </Button>
                 <ButtonBase
                     onClick={() => setDialog({editing: null})}
                     sx={{
-                        flex: 'none', flexDirection: 'column', gap: 0.5, width: 72, height: tokens.height.hero,
+                        flex: 'none', flexDirection: 'column', gap: 0.5, width: compact ? 64 : 72, height: compact ? COMPACT_BUTTON_HEIGHT : tokens.height.hero,
                         borderRadius: `${tokens.radius.primary}px`, border: '1px solid', borderColor: 'divider', bgcolor: '#1B1F27',
                         fontSize: 12, fontWeight: 600, '&:hover': {bgcolor: '#222833'},
                         '&.Mui-focusVisible': {outline: `2px solid ${tokens.color.primary}`, outlineOffset: 2},
@@ -196,58 +202,74 @@ const SalmonRunPanel: React.FC = () => {
                     手入力
                 </ButtonBase>
             </Box>
-            <Typography role="status" variant="caption" sx={{display: 'block', mt: 2, mb: 3, color: request?.status === 'failed' ? 'error.main' : 'text.secondary'}}>
+            <Typography role="status" variant="caption" sx={{display: 'block', mt: 2, mb: compact ? 1.5 : 3, color: request?.status === 'failed' ? 'error.main' : 'text.secondary'}}>
                 {request ? importStatusText(request) : `${lastImportText(latestImport, jobs)} · 取り込めなかったときだけ手入力`}
             </Typography>
 
-            <Box data-testid="salmon-totals" sx={{display: 'grid', gridTemplateColumns: 'repeat(4, minmax(0, 1fr))', gap: 2}}>
-                <StatTile label="金イクラ" color={tokens.color.gold} value={totals.goldenEggs.toLocaleString()} last={lastJob ? String(lastJob.goldenEggs) : '-'}/>
-                <StatTile label="オオモノ" color="#FF9F6B" value={totals.bossKills.toLocaleString()} last={lastJob ? String(lastJob.bossKills) : '-'}/>
-                <StatTile label="デス" color="#B5BCC8" value={totals.deaths.toLocaleString()} last={lastJob ? String(lastJob.deaths) : '-'}/>
-                <StatTile
-                    label="クリア"
-                    color={tokens.color.success}
-                    value={<>{totals.clears}<Box component="span" sx={{fontSize: 13, color: 'text.secondary', fontWeight: 500}}> / {totals.jobs}</Box></>}
-                    last={lastJob ? jobResultLabel(lastJob) : '-'}
-                />
-            </Box>
-
-            <Typography component="h3" sx={{mt: 4, mb: 1.5, fontSize: 12, fontWeight: 600, color: 'text.secondary'}}>このセッションの記録</Typography>
-            {jobs.length === 0 ? (
-                <Typography variant="body2" sx={{color: 'text.secondary'}}>記録がありません</Typography>
+            {compact ? (
+                // コンパクト表示では、本日の戦績を 1 行にする
+                <Typography data-testid="salmon-totals" sx={{display: 'flex', justifyContent: 'space-between', fontSize: 13, fontVariantNumeric: 'tabular-nums'}}>
+                    <span><Box component="span" sx={{color: tokens.color.gold}}>金</Box> {totals.goldenEggs.toLocaleString()}</span>
+                    <span><Box component="span" sx={{color: '#FF9F6B'}}>オオモノ</Box> {totals.bossKills.toLocaleString()}</span>
+                    <span><Box component="span" sx={{color: '#B5BCC8'}}>デス</Box> {totals.deaths.toLocaleString()}</span>
+                    <span><Box component="span" sx={{color: tokens.color.success}}>クリア</Box> {totals.clears}/{totals.jobs}</span>
+                </Typography>
             ) : (
-                <Box component="ul" data-testid="salmon-recent" sx={{listStyle: 'none', m: 0, p: 0}}>
-                    {jobs.slice(0, RECENT_JOBS).map((job, i) => {
-                        const index = jobs.length - i;
-                        return (
-                            <Box component="li" key={job.id} sx={{display: 'flex', alignItems: 'center', gap: 2.5, py: 1, borderTop: '1px solid #232832'}}>
-                                <Typography sx={{width: 28, color: 'text.secondary', fontVariantNumeric: 'tabular-nums'}}>{index}</Typography>
-                                <Box
-                                    component="span"
-                                    sx={{
-                                        px: 2, borderRadius: `${tokens.radius.badge}px`, fontSize: 12, fontWeight: 600, whiteSpace: 'nowrap',
-                                        bgcolor: job.cleared ? tokens.color.successSoft : tokens.color.warningSoft, color: job.cleared ? '#7FE3B0' : '#FFC977',
-                                    }}
-                                >
-                                    {jobResultLabel(job)}
-                                </Box>
-                                <Typography sx={{flex: '1 1 auto', minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontVariantNumeric: 'tabular-nums'}}>
-                                    金 {job.goldenEggs} · オオモノ {job.bossKills} · デス {job.deaths}
-                                </Typography>
-                                <Typography variant="caption" sx={{color: 'text.secondary', fontVariantNumeric: 'tabular-nums'}}>{formatTime(job.createdAt)}</Typography>
-                                <IconButton size="small" onClick={() => openEdit(job, index)} aria-label={`記録 ${index} を修正`}>
-                                    <EditIcon fontSize="small"/>
-                                </IconButton>
-                            </Box>
-                        );
-                    })}
+                <Box data-testid="salmon-totals" sx={{display: 'grid', gridTemplateColumns: 'repeat(4, minmax(0, 1fr))', gap: 2}}>
+                    <StatTile label="金イクラ" color={tokens.color.gold} value={totals.goldenEggs.toLocaleString()} last={lastJob ? String(lastJob.goldenEggs) : '-'}/>
+                    <StatTile label="オオモノ" color="#FF9F6B" value={totals.bossKills.toLocaleString()} last={lastJob ? String(lastJob.bossKills) : '-'}/>
+                    <StatTile label="デス" color="#B5BCC8" value={totals.deaths.toLocaleString()} last={lastJob ? String(lastJob.deaths) : '-'}/>
+                    <StatTile
+                        label="クリア"
+                        color={tokens.color.success}
+                        value={<>{totals.clears}<Box component="span" sx={{fontSize: 13, color: 'text.secondary', fontWeight: 500}}> / {totals.jobs}</Box></>}
+                        last={lastJob ? jobResultLabel(lastJob) : '-'}
+                    />
                 </Box>
             )}
-            {jobs.length > 0 && (
-                <Button size="small" onClick={() => setAllOpen(true)} sx={{mt: 1, minHeight: 32, color: '#FF7AA8'}}>
-                    すべての記録（{jobs.length}）と修正・削除
-                </Button>
-            )}
+
+            {/* 記録の一覧は、コンパクト表示では最後の折りたたみに入れる */}
+            <CompactRest slot="salmon">
+                <Box>
+                    {/* コンパクト表示では、折りたたみの置き場の見出し（サーモンランの記録）があるので出さない */}
+                    {!compact && <Typography component="h3" sx={{mt: 4, mb: 1.5, fontSize: 12, fontWeight: 600, color: 'text.secondary'}}>このセッションの記録</Typography>}
+                    {jobs.length === 0 ? (
+                        <Typography variant="body2" sx={{color: 'text.secondary'}}>記録がありません</Typography>
+                    ) : (
+                        <Box component="ul" data-testid="salmon-recent" sx={{listStyle: 'none', m: 0, p: 0}}>
+                            {jobs.slice(0, RECENT_JOBS).map((job, i) => {
+                                const index = jobs.length - i;
+                                return (
+                                    <Box component="li" key={job.id} sx={{display: 'flex', alignItems: 'center', gap: 2.5, py: 1, borderTop: '1px solid #232832'}}>
+                                        <Typography sx={{width: 28, color: 'text.secondary', fontVariantNumeric: 'tabular-nums'}}>{index}</Typography>
+                                        <Box
+                                            component="span"
+                                            sx={{
+                                                px: 2, borderRadius: `${tokens.radius.badge}px`, fontSize: 12, fontWeight: 600, whiteSpace: 'nowrap',
+                                                bgcolor: job.cleared ? tokens.color.successSoft : tokens.color.warningSoft, color: job.cleared ? '#7FE3B0' : '#FFC977',
+                                            }}
+                                        >
+                                            {jobResultLabel(job)}
+                                        </Box>
+                                        <Typography sx={{flex: '1 1 auto', minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontVariantNumeric: 'tabular-nums'}}>
+                                            金 {job.goldenEggs} · オオモノ {job.bossKills} · デス {job.deaths}
+                                        </Typography>
+                                        <Typography variant="caption" sx={{color: 'text.secondary', fontVariantNumeric: 'tabular-nums'}}>{formatTime(job.createdAt)}</Typography>
+                                        <IconButton size="small" onClick={() => openEdit(job, index)} aria-label={`記録 ${index} を修正`}>
+                                            <EditIcon fontSize="small"/>
+                                        </IconButton>
+                                    </Box>
+                                );
+                            })}
+                        </Box>
+                    )}
+                    {jobs.length > 0 && (
+                        <Button size="small" onClick={() => setAllOpen(true)} sx={{mt: 1, minHeight: 32, color: '#FF7AA8'}}>
+                            すべての記録（{jobs.length}）と修正・削除
+                        </Button>
+                    )}
+                </Box>
+            </CompactRest>
 
             <LiveDialog open={allOpen} onClose={() => setAllOpen(false)} title={`このセッションの記録（${jobs.length}）`} maxWidth="md">
                 <Box data-testid="salmon-history" sx={salmonListSx}>

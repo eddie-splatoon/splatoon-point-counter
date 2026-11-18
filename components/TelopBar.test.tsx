@@ -174,7 +174,7 @@ describe('TelopBar', () => {
     respondWith([]);
     render(<Harness />);
 
-    expect(await screen.findByText(/設定の「テロップと読み上げ」で追加できます/)).toBeInTheDocument();
+    expect(await screen.findByText(/設定の「テロップのプリセット」で追加できます/)).toBeInTheDocument();
   });
 
   it('shows an error when the presets cannot be loaded', async () => {

@@ -3,16 +3,17 @@
 import CheckCircleRoundedIcon from '@mui/icons-material/CheckCircleRounded';
 import ErrorRoundedIcon from '@mui/icons-material/ErrorRounded';
 import SettingsRoundedIcon from '@mui/icons-material/SettingsRounded';
-import {Box, CssBaseline, IconButton, Typography} from '@mui/material';
+import {Box, CssBaseline, IconButton, NativeSelect, Typography} from '@mui/material';
 import {ThemeProvider} from '@mui/material/styles';
 import Image from 'next/image';
 import Link from 'next/link';
-import {usePathname} from 'next/navigation';
+import {usePathname, useRouter} from 'next/navigation';
 import React from 'react';
 
 import {theme, tokens} from '../app/control-panel/theme';
 
 import {BreakBanner, BreakButton, useBreak} from './BreakControl';
+import {useCompact} from './compactLayout';
 import {SaveStatusProvider, TelopPresetsProvider, useSaveStatus, useTelopPresets} from './controlPanelContext';
 import {useTelopHotkeys} from './useTelopHotkeys';
 
@@ -25,6 +26,9 @@ export const CONTROL_PANEL_PHASES = [
 
 const SaveIndicator: React.FC = () => {
     const {failed} = useSaveStatus();
+    // 狭い幅では、保存に失敗したときだけ出す
+    const compact = useCompact();
+    if (compact && !failed) return null;
     return (
         <Box role="status" sx={{display: 'flex', alignItems: 'center', gap: 1, color: failed ? 'error.main' : 'text.secondary'}}>
             {failed
@@ -39,6 +43,24 @@ const SaveIndicator: React.FC = () => {
 
 const PhaseSwitch: React.FC = () => {
     const pathname = usePathname();
+    const router = useRouter();
+    const compact = useCompact();
+    if (compact) {
+        // 狭い幅ではセレクトにする（設定の画面はどのフェーズでもないので、選んでいない状態で出す）
+        const current = CONTROL_PANEL_PHASES.find(({href}) => href === pathname)?.href ?? '';
+        return (
+            <NativeSelect
+                value={current}
+                onChange={(e) => router.push(e.target.value)}
+                inputProps={{'aria-label': 'フェーズ'}}
+                disableUnderline
+                sx={{height: 36, px: 3, borderRadius: `${tokens.radius.pill}px`, border: '1px solid', borderColor: tokens.color.borderStrong, bgcolor: tokens.color.surface2, fontSize: 13, fontWeight: 700}}
+            >
+                {current === '' && <option value="" disabled>フェーズ</option>}
+                {CONTROL_PANEL_PHASES.map(({href, label}) => <option key={href} value={href}>{label}</option>)}
+            </NativeSelect>
+        );
+    }
     return (
         <Box component="nav" aria-label="フェーズ" sx={{display: 'flex', gap: 1, p: 1, borderRadius: `${tokens.radius.pill}px`, bgcolor: tokens.color.surface2}}>
             {CONTROL_PANEL_PHASES.map(({href, label}) => {
@@ -73,24 +95,25 @@ const TelopHotkeys: React.FC = () => {
 
 const Header: React.FC = () => {
     const breakView = useBreak();
+    const compact = useCompact();
     return (
         <Box sx={{position: 'sticky', top: 0, zIndex: 10}}>
             <Box
                 component="header"
                 sx={{
-                    display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 4, px: 5, py: 3,
+                    display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: compact ? 2 : 4, px: compact ? 3 : 5, py: compact ? 2 : 3,
                     bgcolor: tokens.color.header, borderBottom: 1, borderColor: 'divider',
                 }}
             >
                 <Box sx={{display: 'flex', alignItems: 'center', gap: 2}}>
-                    <Image src="/favicon.svg" alt="" width={28} height={28}/>
-                    <Typography variant="h1" component="p">配信パネル</Typography>
+                    <Image src="/favicon.svg" alt={compact ? '配信パネル' : ''} width={compact ? 24 : 28} height={compact ? 24 : 28}/>
+                    {!compact && <Typography variant="h1" component="p">配信パネル</Typography>}
                 </Box>
                 <PhaseSwitch/>
                 <Box sx={{flex: 1}}/>
                 <SaveIndicator/>
-                <BreakButton view={breakView}/>
-                <IconButton component={Link} href="/control-panel/settings" aria-label="設定">
+                <BreakButton view={breakView} compact={compact}/>
+                <IconButton component={Link} href="/control-panel/settings" aria-label="設定" size={compact ? 'small' : 'medium'}>
                     <SettingsRoundedIcon/>
                 </IconButton>
             </Box>
@@ -110,7 +133,8 @@ export const pageMaxWidth = (pathname: string) => {
 const Main: React.FC<{children: React.ReactNode}> = ({children}) => {
     const pathname = usePathname();
     return (
-        <Box component="main" sx={{px: 5, py: 4, maxWidth: pageMaxWidth(pathname), mx: 'auto'}}>
+        // 狭い幅では画面の端の余白を 12px にする
+        <Box component="main" sx={{px: {xs: 3, sm: 5}, py: {xs: 3, sm: 4}, maxWidth: pageMaxWidth(pathname), mx: 'auto'}}>
             {children}
         </Box>
     );

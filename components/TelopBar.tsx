@@ -11,6 +11,7 @@ import {monoFontFamily, tokens} from '../app/control-panel/theme';
 import {getItem, setItem} from '../lib/localStorage';
 import {TELOP_SHORTCUT_KEYS, TelopPreset} from '../lib/telopTypes';
 
+import {CompactRest, useInCompactLive} from './compactLayout';
 import {useTelopPresets} from './controlPanelContext';
 import LiveCard, {LiveCardNote} from './LiveCard';
 
@@ -35,14 +36,17 @@ const ChatOnlyMark: React.FC = () => (
     />
 );
 
-const KeyButton: React.FC<{preset: TelopPreset; keyName: string; shown: boolean; onShow: () => void}> = ({preset, keyName, shown, onShow}) => (
+// キーの高さ。コンパクト表示（幅 600px 未満）は 46px にして、10 個を 1 画面に収める
+const KEY_HEIGHT_COMPACT = 46;
+
+const KeyButton: React.FC<{preset: TelopPreset; keyName: string; shown: boolean; compact: boolean; onShow: () => void}> = ({preset, keyName, shown, compact, onShow}) => (
     <ButtonBase
         onClick={onShow}
         aria-keyshortcuts={keyName}
         sx={{
-            display: 'flex', alignItems: 'center', gap: 2.5, minHeight: tokens.height.live, px: 3, minWidth: 0,
+            display: 'flex', alignItems: 'center', gap: compact ? 2 : 2.5, minHeight: compact ? KEY_HEIGHT_COMPACT : tokens.height.live, px: compact ? 2.5 : 3, minWidth: 0,
             borderRadius: `${tokens.radius.control}px`, border: '2px solid', borderColor: shown ? 'primary.main' : '#2E3542',
-            bgcolor: '#222833', color: 'text.primary', fontSize: 15, fontWeight: 600, textAlign: 'left', justifyContent: 'flex-start',
+            bgcolor: '#222833', color: 'text.primary', fontSize: compact ? 14 : 15, fontWeight: 600, textAlign: 'left', justifyContent: 'flex-start',
             '&:hover': {bgcolor: '#28303C'},
             '&.Mui-focusVisible': {outline: `2px solid ${tokens.color.primary}`, outlineOffset: 2},
         }}
@@ -66,10 +70,11 @@ const KeyButton: React.FC<{preset: TelopPreset; keyName: string; shown: boolean;
 
 /**
  * 配信中の画面のテロップ。先頭の 10 個はキーボードの 1〜9, 0 でも出せる
- * （キーは共通の外枠の useTelopHotkeys が受けるので、どの画面からでも効く）。11 個目以降は「ほかのテロップ」で開く
+ * （キーは共通の外枠の useTelopHotkeys が受けるので、どの画面からでも効く）。11 個目以降は「ほかのテロップ」で開く（コンパクト表示では最後の折りたたみに入れる）
  */
 const TelopBar: React.FC = () => {
     const {presets, error, show, shownId} = useTelopPresets();
+    const compact = useInCompactLive();
     const [moreOpen, setMoreOpen] = useState(false);
 
     useEffect(() => {
@@ -86,26 +91,48 @@ const TelopBar: React.FC = () => {
     const keyed = presets?.slice(0, TELOP_SHORTCUT_KEYS.length) ?? [];
     const extras = presets?.slice(TELOP_SHORTCUT_KEYS.length) ?? [];
 
+    const extraButtons = (
+        <Box data-testid="telop-more" sx={{display: 'flex', flexWrap: 'wrap', gap: 1.5, mt: compact ? 0 : 1.5}}>
+            {extras.map((preset) => (
+                <Button key={preset.id} variant="outlined" size="small" onClick={() => show(preset.id)} sx={{gap: 1}}>
+                    {!preset.display && <ChatOnlyMark/>}
+                    {preset.text}
+                    {shownId === preset.id && <Box component="span" sx={{fontSize: 11, fontWeight: 700, color: '#FF9CC0'}}>表示中</Box>}
+                </Button>
+            ))}
+        </Box>
+    );
+
     return (
-        <LiveCard icon={CampaignRoundedIcon} title="テロップ" aside={<LiveCardNote>キーボードの 1〜0 でも出せます</LiveCardNote>}>
+        <LiveCard
+            icon={CampaignRoundedIcon}
+            title="テロップ"
+            hideTitle={compact}
+            sx={compact ? {p: 2.5} : undefined}
+            aside={<LiveCardNote>キーボードの 1〜0 でも出せます</LiveCardNote>}
+        >
             {error && <Alert severity="error" sx={{mb: 2}}>{error}</Alert>}
             {presets && presets.length === 0 && (
-                <Typography variant="body2" sx={{color: 'text.secondary'}}>テロップのプリセットがありません（設定の「テロップと読み上げ」で追加できます）</Typography>
+                <Typography variant="body2" sx={{color: 'text.secondary'}}>テロップのプリセットがありません（設定の「テロップのプリセット」で追加できます）</Typography>
             )}
             {keyed.length > 0 && (
-                <Box data-testid="telop-buttons" sx={{display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: 2}}>
+                <Box data-testid="telop-buttons" sx={{display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: compact ? 1.5 : 2}}>
                     {keyed.map((preset, index) => (
                         <KeyButton
                             key={preset.id}
                             preset={preset}
                             keyName={TELOP_SHORTCUT_KEYS[index]}
                             shown={shownId === preset.id}
+                            compact={compact}
                             onShow={() => show(preset.id)}
                         />
                     ))}
                 </Box>
             )}
-            {extras.length > 0 && (
+            {extras.length > 0 && (compact ? (
+                // コンパクト表示では、最後の折りたたみの中にそのまま並べる（折りたたみが開閉を受け持つ）
+                <CompactRest slot="telop">{extraButtons}</CompactRest>
+            ) : (
                 <>
                     <Button
                         size="small"
@@ -116,19 +143,9 @@ const TelopBar: React.FC = () => {
                     >
                         {moreOpen ? 'たたむ' : `ほかのテロップ（${extras.length}）`}
                     </Button>
-                    {moreOpen && (
-                        <Box data-testid="telop-more" sx={{display: 'flex', flexWrap: 'wrap', gap: 1.5, mt: 1.5}}>
-                            {extras.map((preset) => (
-                                <Button key={preset.id} variant="outlined" size="small" onClick={() => show(preset.id)} sx={{gap: 1}}>
-                                    {!preset.display && <ChatOnlyMark/>}
-                                    {preset.text}
-                                    {shownId === preset.id && <Box component="span" sx={{fontSize: 11, fontWeight: 700, color: '#FF9CC0'}}>表示中</Box>}
-                                </Button>
-                            ))}
-                        </Box>
-                    )}
+                    {moreOpen && extraButtons}
                 </>
-            )}
+            ))}
         </LiveCard>
     );
 };

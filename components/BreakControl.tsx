@@ -111,17 +111,19 @@ export function useBreak(): BreakView {
 
 const attentionSx = (needsAttention: boolean) => needsAttention ? {animation: `${blink} 1.2s ease-in-out infinite`} : {};
 
-/** ヘッダーの休憩のボタン。休憩していなければ「休憩する」、休憩中は塗りの「休憩を終わる m:ss」 */
-export const BreakButton: React.FC<{view: BreakView}> = ({view}) => view.active ? (
+/** ヘッダーの休憩のボタン。休憩していなければ「休憩する」、休憩中は塗りの「休憩を終わる m:ss」。compact（幅 600px 未満）は「休憩」「終わる m:ss」と短くする */
+export const BreakButton: React.FC<{view: BreakView; compact?: boolean}> = ({view, compact = false}) => view.active ? (
     <Button
         variant="contained"
         color={view.needsAttention ? 'error' : 'warning'}
         disabled={view.sending}
         onClick={view.end}
         data-attention={view.needsAttention ? 'true' : 'false'}
+        size={compact ? 'small' : 'medium'}
+        aria-label={compact ? `休憩を終わる ${view.label}` : undefined}
         sx={{fontVariantNumeric: 'tabular-nums', ...attentionSx(view.needsAttention)}}
     >
-        休憩を終わる {view.label}
+        {compact ? `終わる ${view.label}` : `休憩を終わる ${view.label}`}
     </Button>
 ) : (
     <Button
@@ -129,10 +131,11 @@ export const BreakButton: React.FC<{view: BreakView}> = ({view}) => view.active 
         color="warning"
         disabled={view.sending}
         onClick={view.start}
-        startIcon={<FreeBreakfastRoundedIcon/>}
+        size={compact ? 'small' : 'medium'}
+        startIcon={compact ? undefined : <FreeBreakfastRoundedIcon/>}
         sx={{bgcolor: tokens.color.warningSoft, borderColor: tokens.color.warning, color: tokens.color.warning}}
     >
-        休憩する
+        {compact ? '休憩' : '休憩する'}
     </Button>
 );
 
