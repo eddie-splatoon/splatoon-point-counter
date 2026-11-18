@@ -73,6 +73,17 @@ interface TokenResponse {
 
 const toToken = (json: TokenResponse): Token => ({ accessToken: json.access_token, refreshToken: json.refresh_token });
 
+/** ログ用のエラーの説明。fetch の通信の失敗は message が「fetch failed」だけなので、cause（ENOTFOUND など）も付ける */
+export function describeError(error: unknown): string {
+  if (!(error instanceof Error)) return String(error);
+  const cause = error.cause;
+  if (cause instanceof Error) {
+    const code = (cause as Error & { code?: unknown }).code;
+    return `${error.message}（${typeof code === 'string' ? `${code}: ` : ''}${cause.message}）`;
+  }
+  return error.message;
+}
+
 // ---- OAuth (Device Code Flow) ----
 
 export async function requestDeviceCode(clientId: string, fetchFn: FetchFn = fetch): Promise<DeviceCode> {
@@ -209,7 +220,7 @@ export class TwitchClient {
           await this.refreshAndSave();
           info = await validateToken(this.token.accessToken, this.fetchFn);
         } catch (error) {
-          this.log(`保存済みトークンを更新できませんでした: ${(error as Error).message}`);
+          this.log(`保存済みトークンを更新できませんでした: ${describeError(error)}`);
         }
       }
       const scopes = info?.scopes ?? [];
@@ -302,7 +313,7 @@ export class TwitchClient {
   private refresh(): Promise<void> {
     this.refreshing ??= this.refreshAndSave()
       .catch((error) => {
-        this.log(`トークンを更新できませんでした: ${(error as Error).message}`);
+        this.log(`トークンを更新できませんでした: ${describeError(error)}`);
         return this.runDeviceFlow();
       })
       .finally(() => {
@@ -447,7 +458,7 @@ export class EventSubConnection {
       try {
         this.handleMessage(socket, JSON.parse(String(event.data)) as EventSubMessage);
       } catch (error) {
-        this.log(`EventSub のメッセージを処理できませんでした: ${(error as Error).message}`);
+        this.log(`EventSub のメッセージを処理できませんでした: ${describeError(error)}`);
       }
     };
     socket.onclose = () => {
@@ -789,7 +800,7 @@ export async function handleJoinCommand(event: unknown, options: JoinHandlerOpti
     // 返信が出ていないので、抑制の記録も戻す（次の !参加 で返せるように）
     release();
     unmute?.();
-    log(`参加受付の返信を書き込めませんでした（user_id=${userId}）: ${(error as Error).message}`);
+    log(`参加受付の返信を書き込めませんでした（user_id=${userId}）: ${describeError(error)}`);
   }
 }
 
@@ -1004,7 +1015,7 @@ export function createChatPostProcessor(options: ChatPostProcessorOptions): () =
       await sendChatMessage(text);
     } catch (error) {
       unmute?.();
-      log(`テロップ「${text}」をチャットに書き込めませんでした: ${(error as Error).message}`);
+      log(`テロップ「${text}」をチャットに書き込めませんでした: ${describeError(error)}`);
       await report(chatId, 'failed');
       return;
     }
@@ -1080,7 +1091,7 @@ async function main(): Promise<void> {
   let state: TwitchState = { followerTotal: await client.getFollowerTotal(), goal: await client.getFollowerGoal(), lastFollowAt: null };
   const publish = () =>
     publishState(apiUrl, state).catch((error) => {
-      log(`警告: ${(error as Error).message}。Next.js アプリ（pnpm dev / docker-compose up）が起動しているか確認してください`);
+      log(`警告: ${describeError(error)}。Next.js アプリ（pnpm dev / docker-compose up）が起動しているか確認してください`);
     });
   await publish();
   log(`フォロワー数: ${state.followerTotal}${state.goal ? ` / 目標: ${state.goal.target}` : ''}`);
@@ -1095,7 +1106,7 @@ async function main(): Promise<void> {
       // await 中に届いた通知（lastFollowAt など）を消さないよう、取得後の最新の state に反映する
       state = { ...state, followerTotal, goal };
     } catch (error) {
-      log(`同期に失敗しました: ${(error as Error).message}`);
+      log(`同期に失敗しました: ${describeError(error)}`);
     } finally {
       syncing = false;
     }
@@ -1116,7 +1127,7 @@ async function main(): Promise<void> {
       },
       (error) => {
         // Next.js が止まっている間、1 秒ごとに同じ警告を出し続けない
-        if (!clipWarned) log(`警告: クリップの依頼を処理できませんでした: ${(error as Error).message}`);
+        if (!clipWarned) log(`警告: クリップの依頼を処理できませんでした: ${describeError(error)}`);
         clipWarned = true;
       },
     );
@@ -1136,7 +1147,7 @@ async function main(): Promise<void> {
         chatPostWarned = false;
       },
       (error) => {
-        if (!chatPostWarned) log(`警告: テロップのコメントを処理できませんでした: ${(error as Error).message}`);
+        if (!chatPostWarned) log(`警告: テロップのコメントを処理できませんでした: ${describeError(error)}`);
         chatPostWarned = true;
       },
     );
@@ -1164,24 +1175,24 @@ async function main(): Promise<void> {
         if (type === 'channel.chat.message') {
           // 視聴者の名前やコメントはログに出さない
           speakChatMessage(event, chatContext, (text) => publishSpeech(speechUrl, text)).catch((error) => {
-            log(`警告: 読み上げを送信できませんでした: ${(error as Error).message}`);
+            log(`警告: 読み上げを送信できませんでした: ${describeError(error)}`);
           });
           handleJoinCommand(event, joinOptions).catch((error) => {
-            log(`警告: 参加受付に送信できませんでした: ${(error as Error).message}`);
+            log(`警告: 参加受付に送信できませんでした: ${describeError(error)}`);
           });
           handleStampChat(event, stampUrl, chatContext, fetch, log).catch((error) => {
-            log(`警告: 画面スタンプに送信できませんでした: ${(error as Error).message}`);
+            log(`警告: 画面スタンプに送信できませんでした: ${describeError(error)}`);
           });
           return;
         }
         if (type === 'stream.offline') {
           publishStampOffline(stampUrl).catch((error) => {
-            log(`警告: 画面スタンプに配信の終了を送信できませんでした: ${(error as Error).message}`);
+            log(`警告: 画面スタンプに配信の終了を送信できませんでした: ${describeError(error)}`);
           });
         }
         if (type.startsWith('channel.chat.') || type === 'stream.offline') {
           handleModerationEvent(type, event, joinUrl, fetch, log).catch((error) => {
-            log(`警告: 参加受付に送信できませんでした: ${(error as Error).message}`);
+            log(`警告: 参加受付に送信できませんでした: ${describeError(error)}`);
           });
           return;
         }
@@ -1191,7 +1202,7 @@ async function main(): Promise<void> {
         if (type === 'channel.follow') {
           // フォローした人の名前はログにもテロップにも出さない
           publishFollowTelop(telopUrl).catch((error) => {
-            log(`警告: フォローのテロップを送信できませんでした: ${(error as Error).message}`);
+            log(`警告: フォローのテロップを送信できませんでした: ${describeError(error)}`);
           });
         }
       },
@@ -1202,7 +1213,7 @@ async function main(): Promise<void> {
       onResubscribed: () => {
         log('EventSub に接続し直しました。切れていた間のチャット（!参加 など）は届いていません');
         publishReconnected(joinUrl).catch((error) => {
-          log(`警告: 参加受付に再接続を知らせられませんでした: ${(error as Error).message}`);
+          log(`警告: 参加受付に再接続を知らせられませんでした: ${describeError(error)}`);
         });
       },
     },
@@ -1219,7 +1230,7 @@ async function main(): Promise<void> {
 
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
   main().catch((error) => {
-    console.error(`[twitch] ${(error as Error).message}`);
+    console.error(`[twitch] ${describeError(error)}`);
     process.exit(1);
   });
 }
