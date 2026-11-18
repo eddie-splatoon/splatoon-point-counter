@@ -169,11 +169,16 @@ const VoiceSettingsPanel: React.FC = () => {
 
             <Button variant="outlined" onClick={() => void handleTest()} disabled={!settings.enabled || settings.speakerId === null}>テスト再生</Button>
 
+            <FormControlLabel
+                sx={{display: 'flex', mt: 2}}
+                label="配信画面にクレジットを表示する"
+                control={<Switch checked={settings.showCredit} onChange={(e) => save({showCredit: e.target.checked})}/>}
+            />
             {settings.speakerName && (
-                <Alert severity="info" sx={{mt: 2}}>
+                <Alert severity="info" sx={{mt: 1}}>
                     クレジット表記: <strong>{voiceCredit(settings.speakerName)}</strong>
                     <br/>
-                    配信の概要欄やパネルに記載してください。キャラクターごとの利用規約は VOICEVOX 公式サイトの各キャラクターのページで確認できます。
+                    配信画面には、OBS に追加したクレジットのオーバーレイ（/voice-credit-overlay）に出ます。配信の概要欄やパネルにも書いておくと確実です。キャラクターごとの利用規約は VOICEVOX 公式サイトの各キャラクターのページで確認できます。
                 </Alert>
             )}
             <Typography variant="caption" sx={{display: 'block', mt: 1, color: 'text.secondary'}}>

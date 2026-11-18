@@ -15,7 +15,7 @@ const post = (body: unknown, contentType = 'application/json') =>
     body: typeof body === 'string' ? body : JSON.stringify(body),
   }));
 
-const settings = { enabled: true, speakerId: 3, speakerName: 'ずんだもん', speedScale: 1.2, volumeScale: 0.8 };
+const settings = { enabled: true, speakerId: 3, speakerName: 'ずんだもん', speedScale: 1.2, volumeScale: 0.8, showCredit: true };
 
 beforeEach(() => {
   __TEST_ONLY_setDb(openDb(':memory:'));

@@ -16,6 +16,7 @@ export interface VoiceSettings {
     speakerName: string; // クレジット表記に使うキャラクター名
     speedScale: number;
     volumeScale: number;
+    showCredit: boolean; // 配信画面（/voice-credit-overlay）にクレジットを出すか
 }
 
 export interface SpeechItem {
@@ -40,10 +41,19 @@ export const getDefaultVoiceSettings = (): VoiceSettings => ({
     speakerName: '',
     speedScale: 1,
     volumeScale: 1,
+    showCredit: true,
 });
 
-/** VOICEVOX のキャラクターの規約で求められるクレジット表記 */
-export const voiceCredit = (speakerName: string) => `VOICEVOX:${speakerName}`;
+/**
+ * 規約で「VOICEVOX:<キャラ名>」と違う表記が決まっているキャラクター（キーは VOICEVOX の話者名）。
+ * キャラクターを使い始めるときは、VOICEVOX 公式サイトの各キャラクターのページで表記を確かめて、違えばここに足す
+ */
+const CREDIT_NAMES: Record<string, string> = {
+    'もち子さん': 'もち子(cv 明日葉よもぎ)',
+};
+
+/** VOICEVOX のキャラクターの規約で求められるクレジット表記（スタイル名は付けない。コロンは半角） */
+export const voiceCredit = (speakerName: string) => `VOICEVOX:${CREDIT_NAMES[speakerName] ?? speakerName}`;
 
 /** 読み上げる文を整える。1 行にまとめ（改行・連続する空白は空白 1 つ）、長すぎる分は切り詰める。空なら null */
 export function normalizeSpeechText(text: string): string | null {
@@ -56,13 +66,14 @@ const isNumberBetween = (value: unknown, min: number, max: number): value is num
 
 /** 設定を検証する。不正ならエラーメッセージを返す */
 export function parseVoiceSettings(body: unknown): VoiceSettings | string {
-    const {enabled, speakerId, speakerName, speedScale, volumeScale} = (body ?? {}) as Record<string, unknown>;
+    const {enabled, speakerId, speakerName, speedScale, volumeScale, showCredit} = (body ?? {}) as Record<string, unknown>;
     if (typeof enabled !== 'boolean') return 'enabled must be a boolean.';
     if (speakerId !== null && (typeof speakerId !== 'number' || !Number.isInteger(speakerId) || speakerId < 0)) return 'speakerId must be null or a non-negative integer.';
     if (typeof speakerName !== 'string' || speakerName.length > 50) return 'speakerName must be a string of up to 50 characters.';
     if (!isNumberBetween(speedScale, MIN_SPEED_SCALE, MAX_SPEED_SCALE)) return `speedScale must be between ${MIN_SPEED_SCALE} and ${MAX_SPEED_SCALE}.`;
     if (!isNumberBetween(volumeScale, MIN_VOLUME_SCALE, MAX_VOLUME_SCALE)) return `volumeScale must be between ${MIN_VOLUME_SCALE} and ${MAX_VOLUME_SCALE}.`;
-    return {enabled, speakerId, speakerName: speakerName.trim(), speedScale, volumeScale};
+    if (typeof showCredit !== 'boolean') return 'showCredit must be a boolean.';
+    return {enabled, speakerId, speakerName: speakerName.trim(), speedScale, volumeScale, showCredit};
 }
 
 /** VOICEVOX の /speakers の応答から、名前とスタイルだけを取り出す。形が想定と違う要素は捨てる */
