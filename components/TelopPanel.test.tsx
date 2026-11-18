@@ -1,4 +1,4 @@
-import { act, fireEvent, render, screen, within } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import axios from 'axios';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -12,7 +12,7 @@ const mockedAxios = vi.mocked(axios);
 const renderLoaded = async (presets: TelopPreset[] = getDefaultTelopSettings().presets) => {
   mockedAxios.get.mockResolvedValue({ data: { presets, current: null, revision: 0 }, status: 200 });
   render(<TelopPanel />);
-  await screen.findByText('自由入力でテロップを出す');
+  await screen.findByText('自由入力で出す');
 };
 
 const lastPosted = () => mockedAxios.post.mock.calls.at(-1)?.[1];
@@ -86,7 +86,7 @@ describe('TelopPanel', () => {
     await act(async () => fireEvent.click(screen.getByRole('button', { name: '追加' })));
 
     expect(lastPut()).toEqual({ presets: [...getDefaultTelopSettings().presets, { id: 5, text: 'カンスト!', speak: false, followFont: true, display: true, chat: false }] });
-    expect(editor().getByText('カンスト!')).toBeInTheDocument();
+    expect(editor().getByLabelText('5 番目の文')).toHaveValue('カンスト!');
   });
 
   it('cannot add more than the maximum number of presets', async () => {
@@ -97,12 +97,14 @@ describe('TelopPanel', () => {
     expect(screen.getByRole('button', { name: '追加' })).toBeDisabled();
   });
 
-  it('toggles reading aloud, reorders and deletes presets', async () => {
+  it('toggles the icons, reorders with the arrow keys and deletes presets', async () => {
     await renderLoaded();
     const [nice, catapad] = getDefaultTelopSettings().presets;
 
+    expect(screen.getByRole('button', { name: '「カタパッド残った…」を読み上げる' })).toHaveAttribute('aria-pressed', String(catapad.speak));
     await act(async () => fireEvent.click(screen.getByLabelText('「カタパッド残った…」を読み上げる')));
     expect(lastPut().presets[1]).toEqual({ ...catapad, speak: true });
+    expect(screen.getByRole('button', { name: '「カタパッド残った…」を読み上げる' })).toHaveAttribute('aria-pressed', 'true');
 
     await act(async () => fireEvent.click(screen.getByLabelText('「カタパッド残った…」を共通設定のフォントで表示')));
     expect(lastPut().presets[1]).toEqual({ ...catapad, speak: true, followFont: false });
@@ -115,7 +117,7 @@ describe('TelopPanel', () => {
     // テロップを外したので、コメントは外せない
     expect(screen.getByLabelText('「カタパッド残った…」を Twitch のチャットにも書き込む')).toBeDisabled();
 
-    await act(async () => fireEvent.click(screen.getByRole('button', { name: '「カタパッド残った…」を上へ' })));
+    await act(async () => fireEvent.keyDown(screen.getByRole('button', { name: /「カタパッド残った…」を並べ替える/ }), { key: 'ArrowUp' }));
     expect(lastPut().presets.slice(0, 2).map((p) => p.id)).toEqual([catapad.id, nice.id]);
 
     await act(async () => fireEvent.click(screen.getByRole('button', { name: 'プリセット「ナイス!」を削除' })));
@@ -143,14 +145,14 @@ describe('TelopPanel', () => {
     await act(async () => fireEvent.click(screen.getByRole('button', { name: 'プリセット「ナイス!」を削除' })));
 
     expect(screen.getByText('プリセットの保存に失敗しました。')).toBeInTheDocument();
-    expect(editor().getByText('ナイス!')).toBeInTheDocument();
+    expect(editor().getByLabelText('1 番目の文')).toHaveValue('ナイス!');
   });
 
   it('notifies after a preset is saved and after reloading on failure', async () => {
     mockedAxios.get.mockResolvedValue({ data: { presets: getDefaultTelopSettings().presets, current: null, revision: 0 }, status: 200 });
     const onPresetsChange = vi.fn();
     render(<TelopPanel onPresetsChange={onPresetsChange} />);
-    await screen.findByText('自由入力でテロップを出す');
+    await screen.findByText('自由入力で出す');
 
     await act(async () => fireEvent.click(screen.getByLabelText('「ナイス!」を読み上げる')));
     expect(onPresetsChange).toHaveBeenCalledTimes(1);
@@ -158,6 +160,68 @@ describe('TelopPanel', () => {
     mockedAxios.put.mockRejectedValueOnce(new Error('network'));
     await act(async () => fireEvent.click(screen.getByRole('button', { name: 'プリセット「ナイス!」を削除' })));
     expect(onPresetsChange).toHaveBeenCalledTimes(2);
+  });
+
+  it('shows the number keys on the first ten presets', async () => {
+    await renderLoaded(Array.from({ length: 12 }, (_, i) => ({ id: i + 1, text: `p${i + 1}`, speak: false, followFont: true, display: true, chat: false })));
+
+    expect(editor().getAllByLabelText(/^数字キー|番目（数字キーなし）$/).map((badge) => badge.textContent))
+      .toEqual(['1', '2', '3', '4', '5', '6', '7', '8', '9', '0', '11', '12']);
+  });
+
+  it('edits the text of a preset in one line and saves it after a pause', async () => {
+    await renderLoaded();
+    const [nice] = getDefaultTelopSettings().presets;
+    const input = editor().getByLabelText('1 番目の文');
+
+    fireEvent.change(input, { target: { value: 'ナイス!!' } });
+    expect(mockedAxios.put).not.toHaveBeenCalled();
+
+    await waitFor(() => expect(lastPut()?.presets[0]).toEqual({ ...nice, text: 'ナイス!!' }));
+    expect(mockedAxios.put).toHaveBeenCalledTimes(1);
+    expect(input.tagName).toBe('INPUT');
+  });
+
+  it('saves the text right away when leaving the field, and keeps the toggles changed meanwhile', async () => {
+    await renderLoaded();
+    const [nice] = getDefaultTelopSettings().presets;
+    const input = editor().getByLabelText('1 番目の文');
+
+    fireEvent.change(input, { target: { value: 'ナイスー!' } });
+    await act(async () => fireEvent.click(screen.getByLabelText('「ナイス!」を読み上げる')));
+    await act(async () => fireEvent.blur(input));
+
+    expect(lastPut().presets[0]).toEqual({ ...nice, speak: !nice.speak, text: 'ナイスー!' });
+  });
+
+  it('does not save an empty text', async () => {
+    await renderLoaded();
+    const input = editor().getByLabelText('1 番目の文');
+
+    fireEvent.change(input, { target: { value: '   ' } });
+    await act(async () => fireEvent.blur(input));
+
+    expect(mockedAxios.put).not.toHaveBeenCalled();
+    expect(input).toHaveAttribute('aria-invalid', 'true');
+  });
+
+  it('moves a preset by dragging its handle onto another row', async () => {
+    await renderLoaded();
+    const rows = editor().getAllByRole('listitem');
+
+    fireEvent.dragStart(screen.getByRole('button', { name: /「ナイス!」を並べ替える/ }), { dataTransfer: { effectAllowed: '' } });
+    fireEvent.dragOver(rows[2]);
+    await act(async () => fireEvent.drop(rows[2]));
+
+    expect(lastPut().presets.map((p) => p.text)).toEqual(['カタパッド残った…', '満潮きた', 'ナイス!', 'ヘルプ感謝']);
+  });
+
+  it('does not let both the telop and the chat be turned off', async () => {
+    await renderLoaded();
+
+    // 既定はテロップだけ ON なので、テロップは外せない
+    expect(screen.getByRole('button', { name: '「ナイス!」を配信画面のテロップに出す' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: '「ナイス!」を Twitch のチャットにも書き込む' })).toBeEnabled();
   });
 
   it('does not show presets with number keys (the telop bar handles them)', async () => {

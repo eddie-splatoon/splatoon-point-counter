@@ -99,14 +99,18 @@ const Header: React.FC = () => {
     );
 };
 
-// 配信中の画面は 3 列、準備の画面は 2 列のカードなので広く使う。ほかの画面は読みやすい幅にする
-const PAGE_MAX_WIDTHS: Record<string, number> = {'/control-panel': 1600, '/control-panel/prepare': 1200};
+// 配信中の画面は 3 列、準備の画面は 2 列、設定はメニューと中身なので広く使う。振り返りは読みやすい幅にする
 const PAGE_MAX_WIDTH = 900;
+export const pageMaxWidth = (pathname: string) => {
+    if (pathname === '/control-panel') return 1600;
+    if (pathname === '/control-panel/prepare' || pathname.startsWith('/control-panel/settings')) return 1200;
+    return PAGE_MAX_WIDTH;
+};
 
 const Main: React.FC<{children: React.ReactNode}> = ({children}) => {
     const pathname = usePathname();
     return (
-        <Box component="main" sx={{px: 5, py: 4, maxWidth: PAGE_MAX_WIDTHS[pathname] ?? PAGE_MAX_WIDTH, mx: 'auto'}}>
+        <Box component="main" sx={{px: 5, py: 4, maxWidth: pageMaxWidth(pathname), mx: 'auto'}}>
             {children}
         </Box>
     );

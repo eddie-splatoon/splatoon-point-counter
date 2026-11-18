@@ -8,7 +8,7 @@
 
 ### 主要な構成要素
 
-1. **ランチャーページ** (`/`) - 各画面へのアクセスポイント。全オーバーレイを iframe の縮小プレビューで常に表示し、カードのアイコン・プレビューのクリックで別タブで開く（読み上げは埋め込むと音声が鳴るのでプレビューしない）。ページの一覧は `app/page.tsx` の `OVERLAY_PAGES`
+1. **ランチャーページ** (`/`) - 各画面へのアクセスポイント。全オーバーレイを iframe の縮小プレビューで常に表示し、カードのアイコン・プレビューのクリックで別タブで開く（読み上げは埋め込むと音声が鳴るのでプレビューしない）。ページの一覧は `lib/overlayPages.ts` の `OVERLAY_PAGES`（設定の「OBS のブラウザソース」と共通）
 2. **コントロールパネル** (`/control-panel`) - ストリーマーがデータを更新するUI
 3. **スコア＆メッセージオーバーレイ** (`/obs-overlay`) - メインのオーバーレイ表示
 4. **バーンダウンチャートオーバーレイ** (`/burndown-overlay`) - 進捗状況を可視化
@@ -160,9 +160,9 @@
 │   ├── SalmonSchedule.tsx        # サーモンランのスケジュール（サイドパネルのスロット）
 │   ├── ScoreDisplayPanel.tsx     # スコア表示の読み込み（useScoreDisplay）・直すダイアログの中身・設定の自動更新のカード
 │   ├── TelopBar.tsx              # 配信中の画面のテロップのカード（先頭 10 個は 2 列のキー・表示中。プリセットは controlPanelContext で共有）
-│   ├── TelopPanel.tsx            # 設定の「テロップと読み上げ」の自由入力・プリセットの編集
+│   ├── TelopPanel.tsx            # 設定の「テロップのプリセット」の自由入力・プリセットの 1 行編集（文の入力欄・4 つのアイコンのトグル・並べ替え）
 │   ├── TelopOverlay.tsx          # 実況テロップのオーバーレイの本体（横長 / 縦型配信用で共通）
-│   ├── VoiceSettingsPanel.tsx    # 読み上げ（VOICEVOX）の設定（設定の「テロップと読み上げ」）
+│   ├── VoiceSettingsPanel.tsx    # 読み上げ（VOICEVOX）の設定（設定の「読み上げ（VOICEVOX）」）
 │   ├── WeaponIcon.tsx            # ブキの画像（読み込めなければブキ名）
 │   ├── WeaponPicker.tsx          # カテゴリごとのブキのパレット（記録・ブキ埋めのカードで使う）
 │   ├── WeaponCard.tsx            # ブキ埋めカード（オーバーレイ）
@@ -184,9 +184,10 @@
 │   ├── useTelopHotkeys.ts        # テロップの数字キー（1〜9, 0）
 │   ├── useStreamSettings.ts      # オーバーレイの設定の読み込み・その場で保存
 │   ├── StreamSettingsPanels.tsx  # 準備の画面の流すメッセージ・バーンダウンと、設定の見た目のカード
-│   ├── ControlPanelSettings.tsx  # 設定の画面（左のメニューと中身）
+│   ├── ControlPanelSettings.tsx  # 設定の画面（左のメニュー（600px 未満は上にセレクト）と中身・OBS のブラウザソースの一覧）
 │   └── BreakOverlay.tsx          # 休憩中オーバーレイの本体（横長 / 縦型配信用で共通）
 ├── lib/
+│   ├── overlayPages.ts           # オーバーレイのページと大きさ（ランチャー・設定の OBS のブラウザソース）
 │   ├── localStorage.ts           # ローカルストレージのラッパー
 │   ├── streamSettingsTypes.ts    # オーバーレイの設定（フォント・メッセージ・バーンダウン）の型・既定値・入力検証（クライアントからも使う）
 │   ├── streamSettings.ts         # オーバーレイの設定の保存（サーバー専用。SQLite）
@@ -315,11 +316,13 @@ export interface StreamData extends StreamSettings {
 | 配信中 | `/control-panel`（既定。配信中に開き直しても 1 手で戻れるように） | 3 列のカード: テロップ（`TelopBar`）→ エフェクト・クリップ（`EffectClipCard`）/ サーモンラン（`SalmonRunPanel`）→ ときどき直すもの（`TimelyFixesCard`）/ 視聴者参加（`JoinQueuePanel`）→ 本日のお題（`ChallengeChecklistCard`） |
 | 準備 | `/control-panel/prepare` | 2 列のカード: 今日の配信（`StreamStartCard`）→ 本日のお題（`ChallengeEditorCard`）/ サイドパネル（`SidePanelSettingsPanel`）→ 参加型の準備（`JoinStreamerRatingCard`）→ 流すメッセージ・バーンダウン（`MessageBurndownCard`） |
 | 振り返り | `/control-panel/review` | 今の見た目のままカードを縦に並べる（#131）: 振り返りの画像 → 過去のセッション（`SalmonPastSessionsCard`。画像は下で選んだセッション、選ばなければ今のセッション）→ ブキ埋め（`WeaponCardPanel`。画像・新しいカード）→ これまでの受付（`JoinHistoryCard`） |
-| 設定 | `/control-panel/settings/[section]`（`settings/sections.ts` のメニュー。`/control-panel/settings` は最初のメニューへ移る） | テロップと読み上げ・見た目（フォント・メッセージの切り替え・スコア表示の自動更新）・OBS のブラウザソース |
+| 設定 | `/control-panel/settings/[section]`（`settings/sections.ts` のメニュー。`/control-panel/settings` は最初のメニューへ移る） | テロップのプリセット（`TelopPanel`）・読み上げ（`VoiceSettingsPanel`）・スコア表示の自動更新（`ScoreAutoUpdateCard`）・見た目（フォント・メッセージの切り替え）・OBS のブラウザソース（`lib/overlayPages.ts` のすべて） |
 
-設定・狭い幅の並べ方は #132・#133 で作り直す。
+狭い幅の並べ方は #133 で作り直す。
 
-- **配信中の画面**（#129。設計書 3 章）: 1280×900 でスクロールせずに全部見える（参加の受付中も。列は高さを決めてスクロール）ことが目標。列は `flex: 1 1 380px`（3 列目は 340px）で折り返し、DOM の順番 = 狭い幅で縦に並ぶ順番 = 優先度。外枠の `main` の最大幅は配信中の画面 1600px・準備の画面 1200px（ほかは 900px。`ControlPanelShell` の `PAGE_MAX_WIDTHS`）。カードは `components/LiveCard.tsx`（見出しを section の名前にする。`hideTitle` で見出しを読み上げだけにする）。ときどき使うもの（手入力・すべての記録・クリップの履歴・スコア表示・ブキ埋めの手動）はダイアログ（`components/LiveDialog.tsx`）に入れ、開いたときだけ中身を描く。主ボタンは `tokens.height.hero`（64px）/ `live`（52px）
+- **設定の画面**（#132。設計書 6 章）: 左にメニュー（220px）、600px 未満はメニューを上のセレクト（`NativeSelect`。選ぶと `router.push`）にする。テロップのプリセットは 1 行に 1 つ（つまみ・番号のバッジ（先頭 10 個はピンク＝数字キー）・文の入力欄（`flex: 1 1 240px`）・4 つのアイコンのトグル（`aria-pressed`、40×40）・削除）で、幅が足りなければトグルが下に折り返す。文は打ち終えて `TEXT_SAVE_DELAY_MS`（500ms）待つか、入力欄から離れる・Enter で保存する（空・30 文字超は保存しない）。保存はそのときの最新のプリセットに重ねる（`presetsRef`）。外せない ON のトグル（テロップとチャットの最後の 1 つ）は押せないが色は残す。OBS のブラウザソースは `OVERLAY_PAGES` の名前・URL（コピーのボタン）・大きさ（無ければ「音声のみ」）
+
+- **配信中の画面**（#129。設計書 3 章）: 1280×900 でスクロールせずに全部見える（参加の受付中も。列は高さを決めてスクロール）ことが目標。列は `flex: 1 1 380px`（3 列目は 340px）で折り返し、DOM の順番 = 狭い幅で縦に並ぶ順番 = 優先度。外枠の `main` の最大幅は配信中の画面 1600px・準備と設定の画面 1200px（振り返りは 900px。`ControlPanelShell` の `pageMaxWidth`）。カードは `components/LiveCard.tsx`（見出しを section の名前にする。`hideTitle` で見出しを読み上げだけにする）。ときどき使うもの（手入力・すべての記録・クリップの履歴・スコア表示・ブキ埋めの手動）はダイアログ（`components/LiveDialog.tsx`）に入れ、開いたときだけ中身を描く。主ボタンは `tokens.height.hero`（64px）/ `live`（52px）
 - **準備の画面**（#130。設計書 4 章）: 2 列（各 `flex: 1 1 420px`）。「配信を始める」は `POST /api/salmon/sessions` をしてから `router.push('/control-panel')`（失敗したら移らない）。本日のお題は追加・削除と並べ替え（つまみのドラッグ、またはつまみにフォーカスして ↑↓）だけで、達成のチェックは配信中の画面。メッセージのプリセットはチップ（`role=radio`）で選ぶ
 - **テロップの「表示中」**: `TelopPresetsProvider` の `show` が `/api/telop` に成功したら、そのプリセットを `shownId` にして `TELOP_DISPLAY_DURATION` の間だけ枠をピンクにする（数字キーで出したときも。コメントだけのプリセットは配信画面に出ないので付けない）。11 個目以降は「ほかのテロップ（n）」で開き、開いているかを localStorage（`TELOP_MORE_OPEN_KEY`）に覚える
 
@@ -465,7 +468,7 @@ Twitch のフォロワー数とフォロワー目標を受け取る機能と、�
 
 スコア表示（`/obs-overlay` の `scoreLabel` / `scoreValue`）を、サーモンランのリザルトの取り込みのたびに自動で入れる機能。
 
-- 値と設定 `{scoreLabel, scoreValue, autoUpdate}` は SQLite の `app_state`（キー `scoreDisplay`）。`GET /api/stream-data` は `StreamData` に合わせて返す。以前はコントロールパネルが `StreamData` を丸ごと POST していたので、サーバーで書き換えても次の保存で戻っていた。いまはパネルの POST に含めず、配信中の画面の「ときどき直すもの」の「直す」（`components/ScoreDisplayPanel.tsx` の `ScoreDisplayEditor`）が `PATCH /api/score-display`（送った項目だけ書き換える。`Content-Type: application/json` 必須）で「反映」したときだけ保存する。自動更新の ON/OFF は設定の「見た目」（`ScoreAutoUpdateCard`）。編集中は 3 秒ごとの読み込み直しで入力を上書きしない
+- 値と設定 `{scoreLabel, scoreValue, autoUpdate}` は SQLite の `app_state`（キー `scoreDisplay`）。`GET /api/stream-data` は `StreamData` に合わせて返す。以前はコントロールパネルが `StreamData` を丸ごと POST していたので、サーバーで書き換えても次の保存で戻っていた。いまはパネルの POST に含めず、配信中の画面の「ときどき直すもの」の「直す」（`components/ScoreDisplayPanel.tsx` の `ScoreDisplayEditor`）が `PATCH /api/score-display`（送った項目だけ書き換える。`Content-Type: application/json` 必須）で「反映」したときだけ保存する。自動更新の ON/OFF は設定の「スコア表示の自動更新」（`ScoreAutoUpdateCard`）。編集中は 3 秒ごとの読み込み直しで入力を上書きしない
 - 自動更新（`updateScoreDisplayFromImport`）: `PATCH /api/salmon/import` が succeeded で記録したあと、最新のバイト（`jobs` の最後）で決める。`autoUpdate` が false・値を決められないときは変えない。失敗しても取り込みは成功として返す
   - いつものバイト: 「現在のバイト評価」と評価（`formatGrade`。でんせつは `720` のように数字だけ、それ以外は `たつじん+3 450`）
   - ビッグラン / バイトチームコンテスト: 「ハイスコア」と、そのバイトの日時を含むスケジュールの枠（同じ種類）で記録したバイトのチームの金イクラの最大（`getShiftHighScore`。ビッグランは失敗も数え、チームコンテストはクリアだけ。ゲーム内のハイスコアに合わせた）。日時はイカリング3の表示（日本時間）なので `parsePlayedAt` でエポックミリ秒に直す。スケジュール（非公式 API）が取れない・過去の枠で見つからないときは変えない
@@ -497,7 +500,7 @@ Twitch のフォロワー数とフォロワー目標を受け取る機能と、�
 - オーバーレイの本体は `components/TelopOverlay.tsx`（`layout: 'landscape' | 'portrait'`。`LAYOUT_STYLES` で置き方を分ける）。2 つのページはこれを置くだけ。portrait（`/telop-overlay/vertical`、1080x1920）は上部のサイドパネル（縦型配信用）と重ならないよう、画面の下から 440px の位置に中央揃えで、少し大きな文字で出して長い文は折り返す
 - オーバーレイは 0.5 秒ごとにポーリングし（フォントは 2 秒ごとに `/api/stream-data` から取得）、出してから表示時間（`telopDisplayDuration`。通常は `TELOP_DISPLAY_DURATION`（4 秒）、フォローのお礼は `FOLLOW_TELOP_DISPLAY_DURATION`（8 秒）、記録のお祝いは `RECORD_TELOP_DISPLAY_DURATION`（8 秒））以内のものだけ表示する（開き直したときに古いテロップを出さない）。landscape（`/telop-overlay`）の位置は配信画面のゲーム画面の右下（右端揃え。右下の角に重なる立ち絵の左。`TELOP_RIGHT` / `TELOP_BOTTOM` の px で決め打ち。配信画面のレイアウトを変えたら見直す）。テロップごとにインクの色を変える。フォローのお礼は大きめの虹色の帯をバウンスさせて出し、`FireworksEffect`（`key` で作り直して再生。20 秒で自分で消えるので、テロップが消えても・別のテロップに置き換わっても続く）と `SparkleEffect` を重ねる。記録のお祝いは金色の帯で同じ演出をする（`white-space: pre-line` で 2 行に出す）。開いた時点で出ていたお礼・お祝いでは演出しない（OBS の再読み込みで演出が出ないように）
 - プリセットのボタンは、配信中の画面の `components/TelopBar.tsx` に置く（先頭 10 個は 2 列のキー、11 個目以降は「ほかのテロップ」で開く。コメントだけのプリセットにチャットのアイコン。出している間は「表示中」）。キーボードの 1〜9, 0 はコントロールパネルの共通の外枠の `useTelopHotkeys` が受けるので、どの画面（準備・振り返り・設定も）でも効く。プリセットは `controlPanelContext.tsx` の `TelopPresetsProvider` が 1 回だけ読み込んで、ボタンと数字キーで共有する
-- 設定の「テロップと読み上げ」（`components/TelopPanel.tsx`）は、自由入力とプリセットの編集（変更はその場で保存）。保存のたびに（失敗して読み込み直したときも）`onPresetsChange` を呼び、`TelopPresetsProvider` の `reload` でプリセットを読み込み直させる
+- 設定の「テロップのプリセット」（`components/TelopPanel.tsx`）は、自由入力とプリセットの編集（変更はその場で保存）。保存のたびに（失敗して読み込み直したときも）`onPresetsChange` を呼び、`TelopPresetsProvider` の `reload` でプリセットを読み込み直させる
 
 ### `/app/voice-overlay/page.tsx` と `/app/api/speech/` / `/app/api/voice/`
 
@@ -507,7 +510,7 @@ Twitch のフォロワー数とフォロワー目標を受け取る機能と、�
 - `/api/speech/audio?id=` はキューにある id だけを受け付け、VOICEVOX の `audio_query` → `synthesis` を中継して wav を返す（任意の文を読ませないため）。合成は ID ごとに 1 回だけ（`synthesizeSpeech` が結果をキャッシュし、失敗したら次の要求で合成し直す。合成後に速度・音量を変えても、合成済みのものはそのまま）。VOICEVOX との通信は 10 秒（`VOICEVOX_TIMEOUT_MS`）で打ち切り、応答は `audio_query` 1 MB・wav 20 MB を超えた時点で読むのをやめる。失敗したら 502
 - 設定 `{enabled, speakerId, speakerName, speedScale, volumeScale}` は SQLite の `app_state`（キー `voice`）。既定は無効。`speakerId` は VOICEVOX のスタイル ID、`speakerName` はクレジット表記（`voiceCredit` → `VOICEVOX:キャラ名`）用のキャラクター名。`/api/voice/speakers` は VOICEVOX の `/speakers` の中継で、歌唱用（`type` が `talk` 以外）のスタイルは除く（`parseSpeakers`）
 - オーバーレイは 0.5 秒ごとにキューを取得し、開いた時点でキューにあったものは再生しない。新しいものを 1 件ずつ順に `Audio` で再生し、再生できなかったとき（VOICEVOX 未起動・自動再生の拒否など）も止まらずに次へ進む
-- コントロールパネルの設定の「テロップと読み上げ」に `components/VoiceSettingsPanel.tsx`（有効/無効・話者・速度・音量・テスト再生・クレジット表記）。VOICEVOX に接続できなくても保存済みの話者は表示する
+- コントロールパネルの設定の「読み上げ（VOICEVOX）」に `components/VoiceSettingsPanel.tsx`（有効/無効・話者・速度・音量・テスト再生・クレジット表記）。VOICEVOX に接続できなくても保存済みの話者は表示する
 - テストでは `fetch` を `vi.stubGlobal` で差し替える（実際の VOICEVOX には接続しない）
 
 ### `/app/api/clip/route.ts` と `lib/clips.ts`
@@ -729,7 +732,7 @@ docker-compose down
 新しい画面やオーバーレイを追加する場合：
 
 1. `/app` に新しいルートを作成
-2. `/app/page.tsx` の `OVERLAY_PAGES` に追加（映像の大きさ `size` を入れるとランチャーにプレビューが出る）
+2. `lib/overlayPages.ts` の `OVERLAY_PAGES` に追加（映像の大きさ `size` を入れるとランチャーにプレビューが出て、設定の「OBS のブラウザソース」に大きさが出る）
 3. 必要に応じて `StreamData` インターフェースを拡張
 4. テストファイルを作成
 
