@@ -334,6 +334,34 @@ def test_describe_details_does_not_include_names():
     assert "みかた" not in s.describe_details(details)
 
 
+def team_details(team_golden, delivered: dict) -> dict:
+    return {"teamGoldenEggs": team_golden, "waves": [{"wave": w, "delivered": d} for w, d in delivered.items()]}
+
+
+@pytest.mark.parametrize(
+    "team_golden, delivered, wave_reached, expected",
+    [
+        (174, {1: 37, 2: 35, 3: 42}, 3, 114),  # 「x114」を 174 と読んだ
+        (16, {1: 67, 2: 58, 3: 42}, 3, 167),  # 桁が落ちた
+        (None, {1: 37, 2: 35, 3: 42}, 3, 114),  # 読めなかったら合計で埋める
+        (54, {1: 37, 2: 17}, 2, 54),  # WAVE 2 で失敗（合っている）
+        (114, {1: 37, 2: 35, 3: 42, s.EX_WAVE: None}, 3, 114),  # EX-WAVE は数えない
+        (145, {2: 51, 3: 47}, 3, 145),  # WAVE 1 を読み落とした → 比べない
+        (145, {1: None, 2: 51, 3: 47}, 3, 145),  # 納品数が読めなかった → 比べない
+        (199, {1: 21, 2: 44, 3: 46, 4: 39, 5: 49}, 5, 199),  # バイトチームコンテスト
+    ],
+)
+def test_reconcile_team_golden(team_golden, delivered, wave_reached, expected):
+    details = team_details(team_golden, delivered)
+    assert s.reconcile_team_golden(details, {"waveReached": wave_reached}, lambda _: None)["teamGoldenEggs"] == expected
+
+
+def test_reconcile_team_golden_warns_when_it_changes():
+    logs = []
+    s.reconcile_team_golden(team_details(174, {1: 37, 2: 35, 3: 42}), {"waveReached": 3}, logs.append)
+    assert "x174" in logs[0] and "114" in logs[0]
+
+
 def test_read_result_keeps_the_job_when_details_fail(monkeypatch):
     monkeypatch.setattr(s, "ocr", lambda image, scale=1: [])
     monkeypatch.setattr(s, "read_job", lambda image, refs, boxes=None: ({"goldenEggs": 1}, "2026/11/09 21:18"))
