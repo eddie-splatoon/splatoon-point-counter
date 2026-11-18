@@ -20,10 +20,11 @@
 10. **サーモンランの振り返りオーバーレイ** (`/salmon-review-overlay`) - 配信の最後に、その日（セッション）のサーモンランの記録をグラフで大きく出す（1920x1080）。縦型配信用（1080x1920）は `/salmon-review-overlay/vertical`。コントロールパネルから SNS 用の PNG でダウンロードできる
 11. **視聴者参加の受付オーバーレイ** (`/join-queue-overlay`) - チャットの `!参加` で並んだ列（番号・表示名）と書き方・部屋の推定キケン度を出す（420x600。受付中だけ表示）
 12. **休憩中オーバーレイ** (`/break-overlay`) - コントロールパネル上部の「休憩する」で、席を離れている間「休憩中・ちょっと待っててね🐟️」と経過時間を大きく出す（1920x1080）。縦型配信用（1080x1920）は `/break-overlay/vertical`
-13. **バックエンドAPI** (`/api/stream-data`, `/api/score-display`, `/api/caption`, `/api/twitch`, `/api/salmon`, `/api/side-panel`, `/api/salmon-schedule`, `/api/telop`, `/api/speech`, `/api/voice`, `/api/weapon-card`, `/api/clip`, `/api/salmon/import`, `/api/salmon/review`, `/api/join-queue`, `/api/break`) - データ管理とクライアント間の同期
-14. **文字起こしスクリプト** (`tools/caption-stt/`) - マイク音声を文字起こしして `/api/caption` へ送信。「クリップ撮って」などで `/api/clip` にクリップを依頼。休憩中に拾った声を `/api/break` に知らせる（Python, Mac ネイティブ実行）
-15. **リザルト取り込みスクリプト** (`tools/salmon-result/`) - iPhone ミラーリングのイカリング3を操作し、サーモンランの最新のリザルトを OCR で読み取って `/api/salmon/import` へ送信（Python, Mac ネイティブ実行）
-16. **Twitch連携スクリプト** (`tools/twitch-eventsub/`) - フォロワー数・フォロワー目標を EventSub で受信して `/api/twitch` へ送信。チャットの初コメの挨拶・配信者のコメントを `/api/speech` へ送信。`/api/clip` の依頼で Twitch のクリップを作成。チャットの `!参加` / `!取消`・削除・BAN・配信の終了・再接続を `/api/join-queue` へ送る（Node, 依存なし）
+13. **画面スタンプオーバーレイ** (`/screen-stamp-overlay`) - チャットの「ナイス」「ドンマイ」「カンスト」など（言葉だけのメッセージ・`!ナイス`・設定したフォロワースタンプ）を、ゲーム画面の右上に大きな文字（または設定した画像）で 2 秒出す（1920x1080）。縦型配信用（1080x1920）は `/screen-stamp-overlay/vertical`
+14. **バックエンドAPI** (`/api/stream-data`, `/api/score-display`, `/api/caption`, `/api/twitch`, `/api/salmon`, `/api/side-panel`, `/api/salmon-schedule`, `/api/telop`, `/api/speech`, `/api/voice`, `/api/weapon-card`, `/api/clip`, `/api/salmon/import`, `/api/salmon/review`, `/api/join-queue`, `/api/break`, `/api/screen-stamp`) - データ管理とクライアント間の同期
+15. **文字起こしスクリプト** (`tools/caption-stt/`) - マイク音声を文字起こしして `/api/caption` へ送信。「クリップ撮って」などで `/api/clip` にクリップを依頼。休憩中に拾った声を `/api/break` に知らせる（Python, Mac ネイティブ実行）
+16. **リザルト取り込みスクリプト** (`tools/salmon-result/`) - iPhone ミラーリングのイカリング3を操作し、サーモンランの最新のリザルトを OCR で読み取って `/api/salmon/import` へ送信（Python, Mac ネイティブ実行）
+17. **Twitch連携スクリプト** (`tools/twitch-eventsub/`) - フォロワー数・フォロワー目標を EventSub で受信して `/api/twitch` へ送信。チャットの初コメの挨拶・配信者のコメントを `/api/speech` へ送信。`/api/clip` の依頼で Twitch のクリップを作成。チャットの `!参加` / `!取消`・削除・BAN・配信の終了・再接続を `/api/join-queue` へ、短いチャットとスタンプの名前を `/api/screen-stamp` へ送る（Node, 依存なし）
 
 ## 技術スタック
 
@@ -98,6 +99,10 @@
 │   │   ├── page.tsx              # 休憩中オーバーレイ
 │   │   └── vertical/
 │   │       └── page.tsx          # 休憩中（縦型配信用 1080x1920）
+│   ├── screen-stamp-overlay/
+│   │   ├── page.tsx              # 画面スタンプオーバーレイ
+│   │   └── vertical/
+│   │       └── page.tsx          # 画面スタンプ（縦型配信用 1080x1920）
 │   └── api/
 │       ├── stream-data/
 │       │   └── route.ts          # データ管理API
@@ -135,8 +140,10 @@
 │       │   └── route.ts          # Twitch のクリップの依頼・結果API
 │       ├── join-queue/
 │       │   └── route.ts          # 視聴者参加の受付の列API
-│       └── break/
-│           └── route.ts          # 休憩の状態API
+│       ├── break/
+│       │   └── route.ts          # 休憩の状態API
+│       └── screen-stamp/
+│           └── route.ts          # 画面スタンプAPI（チャットの判定・いま出ているスタンプ・設定・集計）
 ├── components/                    # 再利用可能なReactコンポーネント
 │   ├── ScoreDisplay.tsx          # スコア表示
 │   ├── BurndownChart.tsx         # バーンダウンチャート
@@ -191,7 +198,9 @@
 │   ├── useStreamSettings.ts      # オーバーレイの設定の読み込み・その場で保存
 │   ├── StreamSettingsPanels.tsx  # 準備の画面の流すメッセージ・バーンダウンと、設定の見た目のカード
 │   ├── ControlPanelSettings.tsx  # 設定の画面（左のメニュー（600px 未満は上にセレクト）と中身・OBS のブラウザソースの一覧）
-│   └── BreakOverlay.tsx          # 休憩中オーバーレイの本体（横長 / 縦型配信用で共通）
+│   ├── BreakOverlay.tsx          # 休憩中オーバーレイの本体（横長 / 縦型配信用で共通）
+│   ├── ScreenStampOverlay.tsx    # 画面スタンプのオーバーレイの本体（横長 / 縦型配信用で共通）
+│   └── ScreenStampSettingsPanel.tsx # 設定の「画面スタンプ」と、振り返りの画面の画面スタンプの集計（ScreenStampHistoryCard）
 ├── lib/
 │   ├── overlayPages.ts           # オーバーレイのページと大きさ（ランチャー・設定の OBS のブラウザソース）
 │   ├── localStorage.ts           # ローカルストレージのラッパー
@@ -222,7 +231,9 @@
 │   ├── joinQueueTypes.ts         # 視聴者参加の受付の型・評価の読み取り・返信の文面・推定キケン度の計算（クライアントからも使う）
 │   ├── joinQueue.ts              # 視聴者参加の受付の列（サーバー専用。メモリだけ）
 │   ├── breakTypes.ts             # 休憩の型・定数・経過時間の表記（クライアントからも使う）
-│   └── break.ts                  # 休憩の状態（サーバー専用。メモリだけ）
+│   ├── break.ts                  # 休憩の状態（サーバー専用。メモリだけ）
+│   ├── screenStampTypes.ts       # 画面スタンプの型・定数・言葉の正規化と照合・設定の検証（クライアントからも使う）
+│   └── screenStamp.ts            # 画面スタンプの状態・間隔の制限・配信ごとの集計（サーバー専用）
 ├── data/                          # SQLite・Twitch トークン（Git / Docker イメージ管理外）
 ├── docs/design/control-panel/      # コントロールパネル刷新の設計書（Claude Design の成果物。README が実装の指示）
 ├── public/                        # 静的アセット
@@ -321,8 +332,8 @@ export interface StreamData extends StreamSettings {
 |---|---|---|
 | 配信中 | `/control-panel`（既定。配信中に開き直しても 1 手で戻れるように） | 3 列のカード: テロップ（`TelopBar`）→ エフェクト・クリップ（`EffectClipCard`）/ サーモンラン（`SalmonRunPanel`）→ ときどき直すもの（`TimelyFixesCard`）/ 視聴者参加（`JoinQueuePanel`）→ 本日のお題（`ChallengeChecklistCard`） |
 | 準備 | `/control-panel/prepare` | 2 列のカード: 今日の配信（`StreamStartCard`）→ 本日のお題（`ChallengeEditorCard`）/ サイドパネル（`SidePanelSettingsPanel`）→ 参加型の準備（`JoinStreamerRatingCard`）→ 流すメッセージ・バーンダウン（`MessageBurndownCard`） |
-| 振り返り | `/control-panel/review` | 今の見た目のままカードを縦に並べる（#131）: 振り返りの画像 → 過去のセッション（`SalmonPastSessionsCard`。画像は下で選んだセッション、選ばなければ今のセッション）→ ブキ埋め（`WeaponCardPanel`。画像・新しいカード）→ これまでの受付（`JoinHistoryCard`） |
-| 設定 | `/control-panel/settings/[section]`（`settings/sections.ts` のメニュー。`/control-panel/settings` は最初のメニューへ移る） | テロップのプリセット（`TelopPanel`）・読み上げ（`VoiceSettingsPanel`）・スコア表示の自動更新（`ScoreAutoUpdateCard`）・見た目（フォント・メッセージの切り替え）・OBS のブラウザソース（`lib/overlayPages.ts` のすべて） |
+| 振り返り | `/control-panel/review` | 今の見た目のままカードを縦に並べる（#131）: 振り返りの画像 → 過去のセッション（`SalmonPastSessionsCard`。画像は下で選んだセッション、選ばなければ今のセッション）→ ブキ埋め（`WeaponCardPanel`。画像・新しいカード）→ これまでの受付（`JoinHistoryCard`）→ 画面スタンプの集計（`ScreenStampHistoryCard`） |
+| 設定 | `/control-panel/settings/[section]`（`settings/sections.ts` のメニュー。`/control-panel/settings` は最初のメニューへ移る） | テロップのプリセット（`TelopPanel`）・読み上げ（`VoiceSettingsPanel`）・画面スタンプ（`ScreenStampSettingsPanel`）・スコア表示の自動更新（`ScoreAutoUpdateCard`）・見た目（フォント・メッセージの切り替え）・OBS のブラウザソース（`lib/overlayPages.ts` のすべて） |
 
 - **狭い幅（600px 未満）のコンパクト表示**（#133。設計書 2・3 章、キャンバス LiveNarrow）: 判定は `components/compactLayout.tsx` の `useCompact`（MUI の `useMediaQuery(breakpoints.down('sm'))`）。ヘッダーはフェーズの切り替えをセレクト（`NativeSelect`。選ぶと `router.push`）に、休憩を「休憩」/「終わる m:ss」に、「変更はすぐ保存」は保存に失敗したときだけ出す。画面の端の余白は 12px。配信中の画面は `CompactLive` で、テロップ（先頭 10 個、キー 46px）→ サーモンラン（取り込み・手入力、戦績は 1 行）→ 視聴者参加（受付中だけ。状態・いまの人・次の人）→ 本日のお題、の後に折りたたみ 1 つ。カードの「ふだん使わない部分」（ほかのテロップ・記録の一覧・列の一覧・キケン度・お知らせ・受付を始める）は `CompactRest` で囲み、コンパクト表示のときだけ折りたたみの置き場（slot）に portal で描く（カードを 2 回描くと状態や読み込みが二重になるため。それ以外の画面ではその場に描く）。エフェクト・クリップとときどき直すものは、折りたたみの中にそのまま置く。折りたたみは閉じていても描いたまま `hidden` にする（置き場と中の状態を保つため）。カードは `useInCompactLive` で見出しを隠して詰める。配信中の画面は表示した後に幅が決まるまで何も描かない（`useCompactAfterMount`。狭い画面でいったん横長を描いてから作り直すと、読み込みが二重になるため）。600px をまたぐとカードは作り直される（開いていたダイアログは閉じる。リザルトの取り込みの進み具合は、`SalmonRunPanel` が表示したときに途中の取り込みを読み直して出し続ける）
 
@@ -559,6 +570,35 @@ Twitch のフォロワー数とフォロワー目標を受け取る機能と、�
 - コントロールパネルのボタンは `components/BreakControl.tsx`（`useBreak` を共通の外枠で 1 回だけ使い、ヘッダーのボタン `BreakButton` と、ヘッダーの下の帯 `BreakBanner` に渡す。どの画面でも押せる）。1 秒ごとにポーリングし、休憩中は経過時間と「休憩を終わる」を出す。`BREAK_LONG_MS`（10 分）を超えたか声を拾ったら赤く点滅させ、タブのタイトルにも出す（`⚠️ 休憩中 m:ss | 元のタイトル`）
 - オーバーレイの本体は `components/BreakOverlay.tsx`（`layout: 'landscape' | 'portrait'`）。1 秒ごとにポーリングし、休憩中だけ半透明の暗幕に「休憩中」「ちょっと待っててね🐟️」と経過時間を出す。経過時間はサーバーの時計どうしで測る（`localBreakStart`）。フォントは `/api/stream-data` の `fontFamily`
 - 文字起こしスクリプトは `BreakNotifier` が字幕のフィルタを通った発話ごとに `heard` を送る（合言葉は `BREAK_END_PATTERN`。「ただいま」「休憩終わり」「戻りました」など）。字幕・テロップ・エフェクトは止めない。`BREAK_MATCH=off` で無効
+
+### `/app/screen-stamp-overlay/page.tsx` と `/app/api/screen-stamp/route.ts`
+
+チャットの反応を配信画面に大きなスタンプとして 2 秒出す機能。声を出さない日でも、チャットの反応が見えるようにする（依頼の仕様はナレッジベースの `workspaces/personal/output/twitch/handoff/screen-stamps-and-rewards.md` の 1 章）。
+
+- 流れ: Twitch 連携スクリプトの `parseStampChat` が `channel.chat.message` の fragments から 2 つを作り、`POST /api/screen-stamp {action: 'chat', userId, text, emotes}` で送る（`handleStampChat`）
+  - text: スタンプ・メンションを除いた文字（NFKC・ゼロ幅 / 方向制御文字の除去）。20 文字を超えるものは送らない
+  - emotes: スタンプの名前（前から順・重複なし）
+  - 配信者自身も出せる。`TWITCH_SPEECH_IGNORE` のボット・共有チャットのほかのチャンネルは除く
+  - 配信の終了（`stream.offline`）では `{action: 'offline'}` を送る
+- 判定（`lib/screenStampTypes.ts` の `matchScreenStamp`）
+  - 設定のフォロワースタンプの名前（`emotes`。例: `eddiesp2Nice`）がメッセージにあれば出す。絵を描き直すと ID も名前も変わるので、ID ではなく設定の名前で照合する
+  - 無ければ、メッセージ全体が辞書の言葉（`label` と `words`）と完全に一致したときだけ出す（「ナイスじゃない」は出さない）
+  - 正規化（`normalizeStampText`）: 参加受付と同じ `normalizeJoinText` のあと、先頭の「!」を 1 つと、末尾の「!」「ー」「ぅ」「〜」「~」と空白を除く
+- 間隔（`lib/screenStamp.ts` の `receiveChat`）: 同じスタンプは `SCREEN_STAMP_SAME_INTERVAL_MS`（10 秒）、どのスタンプも `SCREEN_STAMP_GLOBAL_INTERVAL_MS`（3 秒）に 1 回まで。制限中のものは捨てる（ためない）。いま出ているスタンプは `globalThis` のメモリに持つ
+- 設定 `{enabled, stamps: [{id, label, words, emotes, imageUrl}]}` は `app_state`（キー `screenStamp`）に置き、`PUT {settings}` で保存する
+  - `imageUrl` は https か public/ のパス（`/` から始まる）。空なら文字で描く
+  - `emotes`・`imageUrl` は後から足した項目なので、無ければ空として扱う
+  - 保存値が不正なら既定値（ナイス・ドンマイ・カンスト）を使う
+- 集計: 配信の枠ごとに、スタンプごとの表示回数と出した人の数を `app_state`（キー `screenStampStats`）に残す
+  - 名前・本文は残さない。人数を数える user_id はメモリだけ
+  - 出すたびに今の枠を書き込み、`offline` で閉じる。サーバーを再起動しても閉じていない枠に数え続ける（人数は再起動の後に出した人だけ数え直す）
+  - 28 日（`SCREEN_STAMP_STATS_DAYS`）を過ぎたものは捨てる。振り返りの画面の `ScreenStampHistoryCard` に出す
+- `GET` はオーバーレイ用（`{current, serverTime}`）。`?view=settings` で設定、`?view=stats` で集計を返す。POST / PUT は `Content-Type: application/json` 必須
+- オーバーレイの本体は `components/ScreenStampOverlay.tsx`（`layout: 'landscape' | 'portrait'`）
+  - 0.5 秒ごとにポーリングし、開いた時点で出ていたものは出さない
+  - 経過時間はサーバーの時計どうしで測る
+  - 文字はオレンジ #FF7A1A の地に紺 #121A34 の縁で、小さく弾ませる。画像が読み込めなければ文字で出す
+  - 位置: landscape はゲーム画面の右上（`top: 72, right: 380`）、portrait は上部のサイドパネルの下の右寄せ（`top: 600`）
 
 ### `/components/ScoreDisplay.tsx`
 

@@ -48,7 +48,7 @@ describe('ControlPanelSettings', () => {
 
     const menu = screen.getByRole('navigation', { name: '設定のメニュー' });
     expect(within(menu).getAllByRole('link').map((link) => link.textContent))
-      .toEqual(['テロップのプリセット', '読み上げ（VOICEVOX）', 'スコア表示の自動更新', '見た目', 'OBS のブラウザソース']);
+      .toEqual(['テロップのプリセット', '読み上げ（VOICEVOX）', '画面スタンプ', 'スコア表示の自動更新', '見た目', 'OBS のブラウザソース']);
     expect(screen.getByRole('link', { name: 'OBS のブラウザソース' })).toHaveAttribute('aria-current', 'page');
     expect(screen.getByRole('link', { name: '見た目' })).toHaveAttribute('href', '/control-panel/settings/appearance');
   });
