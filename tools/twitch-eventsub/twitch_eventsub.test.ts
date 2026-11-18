@@ -11,6 +11,7 @@ import {
   EVENTSUB_URL,
   EventSubConnection,
   HelixError,
+  describeError,
   JOIN_REPLY_GLOBAL_INTERVAL_MS,
   JOIN_REPLY_USER_INTERVAL_MS,
   MutedOwnMessages,
@@ -1338,5 +1339,21 @@ describe('publishStampOffline', () => {
     const fetchFn = vi.fn(async () => new Response('{}', { status: 200 }));
     await publishStampOffline('http://x/api/screen-stamp', fetchFn);
     expect(JSON.parse((fetchFn.mock.calls[0] as unknown as [string, RequestInit])[1].body as string)).toEqual({ action: 'offline' });
+  });
+});
+
+describe('describeError', () => {
+  it('fetch の通信の失敗は cause のコードと説明を付ける', () => {
+    const cause = Object.assign(new Error('getaddrinfo ENOTFOUND api.twitch.tv'), { code: 'ENOTFOUND' });
+    expect(describeError(new TypeError('fetch failed', { cause }))).toBe('fetch failed（ENOTFOUND: getaddrinfo ENOTFOUND api.twitch.tv）');
+  });
+
+  it('コードの無い cause は説明だけを付ける', () => {
+    expect(describeError(new Error('fetch failed', { cause: new Error('other side closed') }))).toBe('fetch failed（other side closed）');
+  });
+
+  it('cause が無ければ message だけ、Error でなければ文字列にする', () => {
+    expect(describeError(new Error('Helix GET /goals が失敗しました: 500'))).toBe('Helix GET /goals が失敗しました: 500');
+    expect(describeError('boom')).toBe('boom');
   });
 });
