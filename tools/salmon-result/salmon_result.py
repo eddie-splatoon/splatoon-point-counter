@@ -1175,6 +1175,21 @@ def read_details(image, boxes: list[Box], refs: dict, special_refs: dict, ocr_fn
     return {**read_header(image, boxes, ocr_fn), "kingName": king_name, "kingDefeated": king_defeated, "waves": waves, "players": players}
 
 
+def reconcile_team_golden(details: dict, job: dict, log=print) -> dict:
+    """チームの金イクラ（全体の OCR の 1 回の読み）を、WAVE ごとの納品数（切り出して多数決で読む）の合計と突き合わせる。
+    「x114」を 174 と読むことがあるので、到達した WAVE がすべて読めていて合わなければ合計を採る。
+    WAVE の行を読み落としているときは比べられないので、チームの値のままにする"""
+    delivered = {w["wave"]: w["delivered"] for w in details["waves"] if w["wave"] != EX_WAVE}
+    expected = range(1, job["waveReached"] + 1)
+    if any(delivered.get(wave) is None for wave in expected):
+        return details
+    total = sum(delivered[wave] for wave in expected)
+    if details["teamGoldenEggs"] == total:
+        return details
+    log(f"警告: チームの金イクラ x{details['teamGoldenEggs']} が WAVE の合計 {total} と合わないので {total} にします")
+    return {**details, "teamGoldenEggs": total}
+
+
 def describe_details(details: dict) -> str:
     """ログ用の詳細の要約。**味方の名前は出さない**（数だけ）"""
     waves = " ".join(f"W{w['wave']}:{w['delivered']}/{w['quota']}" for w in details["waves"])
@@ -1186,7 +1201,7 @@ def read_result(image, refs: dict, special_refs: dict, log=print) -> tuple[dict,
     boxes = ocr(image, FULL_OCR_SCALE)
     job, played_at = read_job(image, refs, boxes=boxes)
     try:
-        details = read_details(image, boxes, refs, special_refs)
+        details = reconcile_team_golden(read_details(image, boxes, refs, special_refs), job, log)
         log(f"詳細: {describe_details(details)}")
     except Exception as error:  # 詳細は「おまけ」なので、想定外の画面でも金イクラなどの記録は続ける
         log(f"警告: 詳細を読み取れませんでした: {error}")
