@@ -1,6 +1,6 @@
 // 実況テロップの型と定数。クライアントからも使うため DB に依存させない
 
-export const MAX_TELOP_PRESETS = 30;
+export const MAX_TELOP_PRESETS = 50;
 export const MAX_TELOP_LENGTH = 30;
 // オーバーレイに表示しておく時間（ミリ秒）
 export const TELOP_DISPLAY_DURATION = 4000;

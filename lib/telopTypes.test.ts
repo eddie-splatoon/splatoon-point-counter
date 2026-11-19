@@ -39,8 +39,8 @@ describe('parseTelopSettings', () => {
     expect(parseTelopSettings({ presets: [{ id: 1, text: 'ナイス!', speak: true }] })).toEqual({ presets: [{ id: 1, text: 'ナイス!', speak: true, followFont: true, display: true, chat: false }] });
   });
 
-  it('accepts up to 30 presets', () => {
-    expect(MAX_TELOP_PRESETS).toBe(30);
+  it('accepts up to 50 presets', () => {
+    expect(MAX_TELOP_PRESETS).toBe(50);
     const presets = Array.from({ length: MAX_TELOP_PRESETS }, (_, i) => ({ id: i + 1, text: `${i}`, speak: false, followFont: true, display: true, chat: false }));
     expect(parseTelopSettings({ presets })).toEqual({ presets });
   });
