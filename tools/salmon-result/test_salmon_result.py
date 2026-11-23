@@ -190,6 +190,7 @@ def test_read_disconnected_job_as_a_wave_1_failure():
     # キケン度 0%・獲得ポイント「-」は実際の値ではないので記録しない。オオモノの欄も無い
     assert (details["hazardLevel"], details["jobPoint"], details["bosses"], details["waves"]) == (None, None, [], [])
     assert (details["gradeName"], details["gradePoint"]) == ("でんせつ", 400)
+    assert (details["teamGoldenEggs"], details["teamPowerEggs"], details["kingName"]) == (0, 0, None)
     # 味方の「x0」を 3 などと読み違えないよう、数は 0 にする
     assert all(p[key] == 0 for p in details["players"] for key in s.DISCONNECTED_PLAYER_COUNTS)
     assert any("中断したバイト" in m for m in logs)

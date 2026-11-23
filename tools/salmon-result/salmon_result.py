@@ -1226,7 +1226,10 @@ def read_result(image, refs: dict, special_refs: dict, log=print) -> tuple[dict,
             log("回線落ちなどで中断したバイトです（WAVE 1 の失敗として記録します）")
             # 数はすべて x0 と表示されるので 0 にする（小さな「x0」の読み違いを残さない）
             players = [{**p, **{key: 0 for key in DISCONNECTED_PLAYER_COUNTS}} for p in details["players"]]
-            details = {**details, "hazardLevel": None, "jobPoint": None, "players": players, "bosses": []}
+            details = {
+                **details, "hazardLevel": None, "jobPoint": None, "teamGoldenEggs": 0, "teamPowerEggs": 0,
+                "kingName": None, "kingDefeated": None, "waves": [], "players": players, "bosses": [],
+            }
         log(f"詳細: {describe_details(details)}")
     except Exception as error:  # 詳細は「おまけ」なので、想定外の画面でも金イクラなどの記録は続ける
         log(f"警告: 詳細を読み取れませんでした: {error}")
