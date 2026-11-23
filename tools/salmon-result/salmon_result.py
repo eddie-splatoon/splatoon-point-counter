@@ -166,12 +166,26 @@ def classify_outcome(text: str) -> bool | None:
     return cleared if score >= OUTCOME_MATCH_CUTOFF else None
 
 
-def parse_outcome(boxes: list[Box], max_wave: int = MAX_WAVE) -> tuple[bool, int] | None:
+# 回線落ちなどで中断したバイトの詳細画面の文。Failure で WAVE の欄が無く、数はすべて x0、キケン度は 0%、獲得ポイントは「-」になる
+DISCONNECTED_TEXT = "正常に試合が終了しませんでした"
+DISCONNECTED_MATCH_CUTOFF = 0.7
+
+
+DISCONNECTED_PLAYER_COUNTS = ("bossKills", "goldenEggs", "goldenAssists", "powerEggs", "rescues", "rescued")
+
+
+def is_disconnected_job(boxes: list[Box]) -> bool:
+    """回線落ちなどで中断したバイトか（「正常に試合が終了しませんでした」があるか）"""
+    return any(SequenceMatcher(None, normalize(b.text), DISCONNECTED_TEXT).ratio() >= DISCONNECTED_MATCH_CUTOFF for b in boxes)
+
+
+def parse_outcome(boxes: list[Box], max_wave: int = MAX_WAVE, disconnected: bool = False) -> tuple[bool, int] | None:
     """クリアしたか、と到達した WAVE。クリアなら (True, max_wave)（バイトチームコンテストは 5）。
 
     見出しの「Clear!!」/「Failure」で判定する（「クリアボーナス」があるので日本語の「クリア」では判定しない）。
     明るいステージでは倍率によって Failure に似た文字（FiLcaP）に読むことがあるので、読めたものの多数決にする。
-    失敗した WAVE は、表示されている WAVE の番号の最大（失敗したバイトでは、失敗した WAVE までしか表示されない）
+    失敗した WAVE は、表示されている WAVE の番号の最大（失敗したバイトでは、失敗した WAVE までしか表示されない）。
+    回線落ち（disconnected）で WAVE が表示されていなければ WAVE 1 の失敗とする（ゲーム内の評価も WAVE 1 の失敗と同じだけ下がる）
     """
     votes = [result for b in boxes if (result := classify_outcome(b.text)) is not None]
     if votes.count(True) == votes.count(False):  # 読めない・どちらとも決められないなら決めない
@@ -182,7 +196,7 @@ def parse_outcome(boxes: list[Box], max_wave: int = MAX_WAVE) -> tuple[bool, int
     texts = [normalize(b.text) for b in boxes]
     waves = [int(m.group(1)) for t in texts for m in WAVE_PATTERN.finditer(t.upper()) if 1 <= int(m.group(1)) <= max_wave]
     if not waves:
-        return None
+        return (False, 1) if disconnected else None
     return False, max(waves)
 
 
@@ -747,7 +761,8 @@ def read_job(image, refs: dict, cells: SelfRowCells = SelfRowCells(), ocr_fn=ocr
     header_boxes = [Box(b.text, 0, 0, 0, 0) for scale in HEADER_OCR_SCALES for b in ocr_fn(header, scale)]
     header_boxes += [Box(b.text, 0, 0, 0, 0) for scale in HEADER_OCR_SCALES for b in ocr_fn(title_mask(header, scale), 1)]
     job_kind = parse_job_kind(boxes)
-    outcome = parse_outcome([b for b in boxes if b.y < row.y - 0.05] + header_boxes, max_wave_for(job_kind))
+    disconnected = is_disconnected_job(boxes)
+    outcome = parse_outcome([b for b in boxes if b.y < row.y - 0.05] + header_boxes, max_wave_for(job_kind), disconnected)
     if outcome is None:
         raise ImportError_("クリア / 失敗を読み取れませんでした")
 
@@ -764,11 +779,15 @@ def read_job(image, refs: dict, cells: SelfRowCells = SelfRowCells(), ocr_fn=ocr
             raise ImportError_(f"{label}を読み取れませんでした")
         return value
 
-    boss_kills = parse_count(row.text)
-    if boss_kills is None:
-        boss_kills = read_cell_count((0.05, 0, 0.3, 0.035), "オオモノの討伐数")
-    golden_eggs = read_cell_count(cells.golden_eggs, "金イクラの納品数")
-    deaths = read_cell_count(cells.deaths, "被救助数")
+    if disconnected:
+        # 中断したバイトの数はすべて x0 と表示される（小さな「x0」を 3 などと読み違えないよう、読まずに 0 にする）
+        boss_kills = golden_eggs = deaths = 0
+    else:
+        boss_kills = parse_count(row.text)
+        if boss_kills is None:
+            boss_kills = read_cell_count((0.05, 0, 0.3, 0.035), "オオモノの討伐数")
+        golden_eggs = read_cell_count(cells.golden_eggs, "金イクラの納品数")
+        deaths = read_cell_count(cells.deaths, "被救助数")
 
     weapons = [key for key in (match_weapon(icon, refs) for icon in weapon_icons(image, row, cells)) if key]
 
@@ -1202,6 +1221,12 @@ def read_result(image, refs: dict, special_refs: dict, log=print) -> tuple[dict,
     job, played_at = read_job(image, refs, boxes=boxes)
     try:
         details = reconcile_team_golden(read_details(image, boxes, refs, special_refs), job, log)
+        if is_disconnected_job(boxes):
+            # 中断したバイトのキケン度 0%・獲得ポイント「-」は実際の値ではない。オオモノの欄も無いので読みに行かない
+            log("回線落ちなどで中断したバイトです（WAVE 1 の失敗として記録します）")
+            # 数はすべて x0 と表示されるので 0 にする（小さな「x0」の読み違いを残さない）
+            players = [{**p, **{key: 0 for key in DISCONNECTED_PLAYER_COUNTS}} for p in details["players"]]
+            details = {**details, "hazardLevel": None, "jobPoint": None, "players": players, "bosses": []}
         log(f"詳細: {describe_details(details)}")
     except Exception as error:  # 詳細は「おまけ」なので、想定外の画面でも金イクラなどの記録は続ける
         log(f"警告: 詳細を読み取れませんでした: {error}")
@@ -1727,7 +1752,7 @@ def process_request(request_id: int, api: Api, refs: dict, capture_dir: Path, lo
             def add_bosses(job: dict, played_at: str, details: dict | None) -> None:
                 """詳細が読めたバイトだけ、オオモノの欄も読む（詳細と同じく「おまけ」なので、失敗しても記録は続ける）。
                 自分の「オオモノシャケ xN」を読み直したら、バイトと自分の行の数も直す"""
-                if details is None:
+                if details is None or "bosses" in details:  # 中断したバイトは読み取りの時点で空にしている
                     return
                 try:
                     details["bosses"], boss_kills = read_bosses(window, capture_screen, job["bossKills"], played_at, log)
