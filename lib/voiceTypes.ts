@@ -55,9 +55,16 @@ const CREDIT_NAMES: Record<string, string> = {
 /** VOICEVOX のキャラクターの規約で求められるクレジット表記（スタイル名は付けない。コロンは半角） */
 export const voiceCredit = (speakerName: string) => `VOICEVOX:${CREDIT_NAMES[speakerName] ?? speakerName}`;
 
-/** 読み上げる文を整える。1 行にまとめ（改行・連続する空白は空白 1 つ）、長すぎる分は切り詰める。空なら null */
+// 笑いの「ｗｗｗ」。VOICEVOX のユーザー辞書の「ｗ＝ワラ」は 1 文字ずつ当たって「ワラワラワラ」になるので、
+// 続いたものを 1 つにまとめる。英単語（aww など）を変えないよう、前後が英字のものは除く
+const LAUGH_PATTERN = /(?<![A-Za-zＡ-Ｚａ-ｚ])[wｗ]{2,}(?![A-Za-zＡ-Ｚａ-ｚ])/g;
+
+/**
+ * 読み上げる文を整える。1 行にまとめ（改行・連続する空白は空白 1 つ）、続いた「ｗ」を 1 つにし、
+ * 長すぎる分は切り詰める。空なら null
+ */
 export function normalizeSpeechText(text: string): string | null {
-    const normalized = text.replace(/\s+/g, ' ').trim();
+    const normalized = text.replace(/\s+/g, ' ').replace(LAUGH_PATTERN, 'ｗ').trim();
     return normalized === '' ? null : normalized.slice(0, MAX_SPEECH_LENGTH);
 }
 

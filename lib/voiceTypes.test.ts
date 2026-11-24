@@ -14,6 +14,23 @@ describe('normalizeSpeechText', () => {
   it('returns null for empty text', () => {
     expect(normalizeSpeechText(' \n ')).toBeNull();
   });
+
+  it.each([
+    ['すごいｗｗｗ', 'すごいｗ'],
+    ['すごいwww', 'すごいｗ'],
+    ['ｗｗ草ｗwｗ', 'ｗ草ｗ'],
+    ['ｗｗｗ ナイス', 'ｗ ナイス'],
+  ])('collapses repeated laughing w in %s', (text, expected) => {
+    expect(normalizeSpeechText(text)).toBe(expected);
+  });
+
+  it.each(['すごいｗ', 'aww', 'wwwa', 'ＷＷＷ'])('keeps %s unchanged', (text) => {
+    expect(normalizeSpeechText(text)).toBe(text);
+  });
+
+  it('collapses w before truncating', () => {
+    expect(normalizeSpeechText('ｗ'.repeat(MAX_SPEECH_LENGTH + 10))).toBe('ｗ');
+  });
 });
 
 describe('parseVoiceSettings', () => {
