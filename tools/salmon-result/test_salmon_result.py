@@ -177,6 +177,60 @@ def test_read_job_from_big_run_and_team_contest(fixture, played_at, expected, we
     assert job == {**expected, "weapons": []}
 
 
+def test_read_disconnected_job_as_a_wave_1_failure():
+    """回線落ちで中断したバイト（「正常に試合が終了しませんでした」。WAVE の欄が無く、数はすべて x0）は WAVE 1 の失敗として読む"""
+    logs = []
+    with Image.open(FIXTURES / "disconnected.png") as image:
+        job, played_at, details = s.read_result(image.convert("RGB"), {}, {}, logs.append)
+    assert played_at == "2026/11/23 09:23"
+    assert job == {
+        "goldenEggs": 0, "bossKills": 0, "deaths": 0, "cleared": False, "waveReached": 1,
+        "stage": "ムニ・エール海洋発電所", "weapons": [], "jobKind": "regular",
+    }
+    # キケン度 0%・獲得ポイント「-」は実際の値ではないので記録しない。オオモノの欄も無い
+    assert (details["hazardLevel"], details["jobPoint"], details["bosses"], details["waves"]) == (None, None, [], [])
+    assert (details["gradeName"], details["gradePoint"]) == ("でんせつ", 400)
+    assert (details["teamGoldenEggs"], details["teamPowerEggs"], details["kingName"]) == (0, 0, None)
+    # 味方の「x0」を 3 などと読み違えないよう、数は 0 にする
+    assert all(p[key] == 0 for p in details["players"] for key in s.DISCONNECTED_PLAYER_COUNTS)
+    assert any("中断したバイト" in m for m in logs)
+
+
+def test_parse_outcome_needs_a_wave_unless_disconnected():
+    failure = [Box("Failure", 0, 0, 0, 0)]
+    assert s.parse_outcome(failure) is None
+    assert s.parse_outcome(failure, disconnected=True) == (False, 1)
+    # 中断しても WAVE が出ていればそちらを使い、クリアならクリア
+    assert s.parse_outcome([*failure, Box("WAVE 2", 0, 0, 0, 0)], disconnected=True) == (False, 2)
+    assert s.parse_outcome([Box("Clear!!", 0, 0, 0, 0)], disconnected=True) == (True, 3)
+
+
+def test_is_disconnected_job():
+    assert s.is_disconnected_job([Box("正常に試合が終了しませんでした", 0, 0, 0, 0)])
+    assert s.is_disconnected_job([Box("正常に試合が終了しませんでレた", 0, 0, 0, 0)])
+    assert not s.is_disconnected_job(DETAIL_BOXES)
+
+
+def test_process_request_does_not_scroll_to_the_bosses_of_a_disconnected_job(monkeypatch, tmp_path):
+    monkeypatch.setattr(s, "find_mirroring_window", lambda: FakeWindow())
+    monkeypatch.setattr(s, "ensure_connected", lambda window, log: None)
+    monkeypatch.setattr(s, "open_latest_job", lambda window: None)
+    monkeypatch.setattr(s, "open_previous_job", lambda window, played_at: False)
+    monkeypatch.setattr(s, "capture", lambda window, path: blank_detail_image())
+    monkeypatch.setattr(
+        s, "read_result", lambda image, refs, special_refs, log: ({"bossKills": 0}, "2026/11/23 09:23", {"waves": [], "bosses": []}),
+    )
+
+    def unexpected(*args, **kwargs):
+        raise AssertionError("中断したバイトでオオモノの欄を読みに行った")
+
+    monkeypatch.setattr(s, "read_bosses", unexpected)
+    api = FakeApi(set())
+    s.process_request(1, api, {}, tmp_path, log=lambda m: None)
+    assert api.updates[-1]["status"] == "succeeded"
+    assert api.updates[-1]["jobs"][0]["details"] == {"waves": [], "bosses": []}
+
+
 TEAM_CONTEST_WAVES = {
     "teamcontest-clear.png": [(1, 21, 10), (2, 55, 18), (3, 82, 26), (4, 69, 30), (5, 57, 32)],
     "teamcontest-clear-2.png": [(1, 21, 10), (2, 62, 18), (3, 50, 26), (4, 46, 29), (5, 54, 30)],
